@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+.env*
+e2e
+tests
+test-results
+playwright-report
+Dockerfile
