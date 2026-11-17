@@ -10,12 +10,11 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC, app_rw;
 GRANT USAGE, CREATE ON SCHEMA public TO migrator;
 GRANT USAGE ON SCHEMA public TO app_rw;
 
--- Content the admin edits.
+-- Content the admin edits. Projects, experience, skills and the rest are
+-- rows in section_items.
 GRANT SELECT, INSERT, UPDATE, DELETE ON
-    site_settings, sections, section_items, projects, project_images,
-    project_fields, tags,
-    project_tags, experience, education, skill_groups, skills, links, media,
-    cv_files, messages, revisions
+    site_settings, sections, section_items, media, cv_files, messages,
+    revisions
 TO app_rw;
 
 -- Auth state.
