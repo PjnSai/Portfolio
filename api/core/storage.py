@@ -6,6 +6,7 @@ outside the store, whichever backend is in use.
 """
 
 import json
+import os
 import re
 import secrets
 from pathlib import Path
@@ -46,12 +47,13 @@ def _checked(key):
 class LocalStorage:
     def __init__(self, root):
         self.root = Path(root).resolve()
+        self._root_prefix = os.path.realpath(self.root) + os.sep
 
     def _path(self, key):
-        path = (self.root / _checked(key)).resolve()
-        if path.parent != self.root:
+        full = os.path.realpath(os.path.join(self.root, _checked(key)))
+        if not full.startswith(self._root_prefix):
             raise BadKey(key)
-        return path
+        return Path(full)
 
     def save(self, key, data, content_type):
         path = self._path(key)
