@@ -45,6 +45,18 @@ def conflict():
     return JsonResponse({"detail": "Not possible right now."}, status=409)
 
 
+def privacy_check(warnings):
+    """Publishing would put contact details on the site; ask the owner first."""
+    return JsonResponse(
+        {
+            "detail": "This text looks like it holds contact details.",
+            "code": "privacy_check",
+            "warnings": warnings,
+        },
+        status=409,
+    )
+
+
 def method_not_allowed(methods):
     return JsonResponse(
         {"detail": "Method not allowed."},

@@ -11,7 +11,17 @@ from core.models import AuditLog, Revision, Section, SectionItem
 
 pytestmark = pytest.mark.django_db
 
-PROJECT = {"title": "Ledger", "summary": "A small accounting tool.", "body": ""}
+PROJECT = {
+    "title": "Ledger",
+    "summary": "A small accounting tool.",
+    "body": "",
+    "status": "in_progress",
+    "colour": "orange",
+    "tags": [],
+    "links": [],
+    "fields": [],
+    "images": [],
+}
 
 
 def add_section(api, kind="projects", title="Projects"):

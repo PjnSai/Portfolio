@@ -50,4 +50,6 @@ urlpatterns = [
     path("items/<uuid:item_id>/trash", content.item_trash),
     path("items/<uuid:item_id>/restore", content.item_restore),
     path("trash", content.trash),
+    path("settings", content.site_settings),
+    path("settings/publish", content.site_settings_publish),
 ]

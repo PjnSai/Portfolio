@@ -6,14 +6,15 @@ text, its items, their order and whether each is shown) is a draft until the
 section is published. Publishing keeps a numbered version that can be restored.
 """
 
+import copy
 from datetime import timedelta
 
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from core import audit, pages, serializers
-from core.models import Owner, Revision, Section, SectionItem
+from core import audit, pages, privacy, serializers, theme
+from core.models import Owner, Revision, Section, SectionItem, SiteSettings
 
 PAGE_SIZE = pages.PAGE_SIZE
 SECTION_TYPES = serializers.SECTION_TYPES
@@ -48,9 +49,13 @@ def purge_after(trashed_at):
 
 
 def item_label(item):
+    return data_label(item.draft)
+
+
+def data_label(data):
     for key in LABEL_KEYS:
-        if item.draft.get(key):
-            return item.draft[key]
+        if data.get(key):
+            return data[key]
     return "Untitled"
 
 
@@ -79,6 +84,16 @@ def latest_revision(section):
 def unpublished_changes(section):
     latest = latest_revision(section)
     return latest is None or latest.data != draft_state(section)
+
+
+def publish_warnings(section):
+    """Contact details in what Publish would put on the site."""
+    state = draft_state(section)
+    found = privacy.scan(state["section"])
+    for entry in state["items"]:
+        if entry["visible"]:
+            found += privacy.scan(entry["data"], f"{data_label(entry['data'])}:")
+    return found
 
 
 def publish(section):
@@ -161,8 +176,8 @@ def add_section(kind, title):
     return section
 
 
-def edit_section(section, changes):
-    section.draft = {**section.draft, **changes}
+def edit_section(section, draft):
+    section.draft = draft
     section.save(update_fields=["draft", "updated_at"])
     audit.record("section_changed", section=str(section.id))
 
@@ -297,3 +312,61 @@ def purge_trash():
         sections = old_sections.delete()[1].get("core.Section", 0)
         audit.record("trash_purged", actor="system", sections=sections, items=items)
     return {"sections": sections, "items": items}
+
+
+# Site settings: one row, drafted and published like a section.
+
+SETTINGS = "settings"
+DEFAULT_SETTINGS = {
+    "title": "Pujan Shahi",
+    "description": "TODO: one-line description of the site",
+    "contact_form": True,
+    "showcase_layout": "ring",
+    "layout_switcher": False,
+    "theme": theme.DEFAULT,
+}
+
+
+def site_settings():
+    row = SiteSettings.objects.first()
+    if row is not None:
+        return row
+    with transaction.atomic():
+        Owner.objects.select_for_update().get()
+        return SiteSettings.objects.first() or SiteSettings.objects.create(
+            draft=copy.deepcopy(DEFAULT_SETTINGS)
+        )
+
+
+def settings_unpublished(row):
+    latest = (
+        Revision.objects.filter(entity=SETTINGS, entity_id=row.id)
+        .order_by("-version")
+        .first()
+    )
+    return latest is None or latest.data != row.draft
+
+
+def edit_settings(row, draft):
+    row.draft = draft
+    row.save(update_fields=["draft", "updated_at"])
+    audit.record("settings_changed")
+
+
+def publish_settings(row):
+    with transaction.atomic():
+        row = SiteSettings.objects.select_for_update().get(id=row.id)
+        version = (
+            Revision.objects.filter(entity=SETTINGS, entity_id=row.id).aggregate(
+                highest=Max("version")
+            )["highest"]
+            or 0
+        ) + 1
+        Revision.objects.create(
+            entity=SETTINGS, entity_id=row.id, version=version, data=row.draft
+        )
+        row.published = row.draft
+        row.published_at = timezone.now()
+        row.save(update_fields=["published", "published_at", "updated_at"])
+        audit.record("settings_published", version=version)
+    return version
