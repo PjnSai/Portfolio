@@ -19,7 +19,6 @@ from core.models import (
     AdminCredential,
     Message,
     PendingAction,
-    Project,
     Section,
     SectionItem,
 )
@@ -34,7 +33,6 @@ PERMANENT_DELETE = "permanent_delete"
 
 # Allow-list. Auth and audit tables can never be named here.
 DELETABLE = {
-    "project": Project,
     "message": Message,
     "section": Section,
     "item": SectionItem,

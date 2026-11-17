@@ -3,7 +3,7 @@ import logging
 import pytest
 
 from core import notify
-from core.models import AdminCredential, AuditLog, PendingAction, Project
+from core.models import AdminCredential, AuditLog, Message, PendingAction
 from tests.authenticator import SoftAuthenticator
 from tests.conftest import mature
 from tests.notifiers import Recorder
@@ -15,8 +15,8 @@ ADD = {"kind": "add_passkey", "payload": {"name": "Second key"}}
 
 
 def delete_body():
-    project = Project.objects.create(slug="demo", title="Demo")
-    return DELETE | {"payload": {"entity": "project", "id": str(project.id)}}
+    message = Message.objects.create(name="A", email="a@example.com", body="Hi")
+    return DELETE | {"payload": {"entity": "message", "id": str(message.id)}}
 
 
 def test_notifiers_are_chosen_in_settings(settings):
