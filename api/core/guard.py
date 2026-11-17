@@ -6,7 +6,9 @@
    on every request and before the URL is resolved, so unknown paths look the
    same as known ones.
 3. Admin requests are capped per client per minute.
-4. If the database or Redis is down, admin requests get a plain 503. This
+4. Bodies over the size limit are refused before anything reads them. The
+   limit is 1 MB, except for the media upload route.
+5. If the database or Redis is down, admin requests get a plain 503. This
    applies under /api/v1/admin/ only: the guard uses neither for a public
    request, so public routes keep answering.
 """
@@ -23,6 +25,8 @@ from core.authz import SAFE_METHODS
 log = logging.getLogger(__name__)
 
 ADMIN_PREFIX = "/api/v1/admin"
+UPLOAD_PATH = ADMIN_PREFIX + "/media"
+FORM_OVERHEAD = 65_536
 UNAVAILABLE = (DatabaseError, InterfaceError, redis.RedisError)
 
 
@@ -41,6 +45,16 @@ def _same_origin(request, admin):
     return request.headers.get("Origin") == origin
 
 
+def _body_refusal(request):
+    raw = request.META.get("CONTENT_LENGTH") or "0"
+    if not raw.isdigit():
+        return responses.bad_request()
+    limit = settings.MAX_BODY_BYTES
+    if request.path == UPLOAD_PATH:
+        limit = settings.MEDIA_MAX_BYTES + FORM_OVERHEAD
+    return responses.too_large() if int(raw) > limit else None
+
+
 class GuardMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
@@ -53,6 +67,9 @@ class GuardMiddleware:
         return refusal or self.get_response(request)
 
     def _check(self, request):
+        too_big = _body_refusal(request)
+        if too_big:
+            return too_big
         admin = _is_admin(request.path)
         if not _same_origin(request, admin):
             return responses.forbidden()

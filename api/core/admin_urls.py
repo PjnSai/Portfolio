@@ -4,6 +4,7 @@ from django.urls import path
 
 from core import admin_views as views
 from core import content_views as content
+from core import media_views as media
 
 urlpatterns = [
     path("csrf", views.csrf),
@@ -52,4 +53,11 @@ urlpatterns = [
     path("trash", content.trash),
     path("settings", content.site_settings),
     path("settings/publish", content.site_settings_publish),
+    path("media", media.library),
+    path("media/<uuid:media_id>", media.media_item),
+    path("media/<uuid:media_id>/trash", media.media_trash),
+    path("media/<uuid:media_id>/restore", media.media_restore),
+    path("media/<uuid:media_id>/file", media.media_file),
+    path("cache", media.cache_status),
+    path("cache/purge", media.cache_purge),
 ]

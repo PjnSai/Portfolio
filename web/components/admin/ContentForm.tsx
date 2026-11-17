@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { z } from "zod";
+import { MediaPicker, Thumbnail } from "@/components/admin/MediaPicker";
 import { Button, FieldErrors, INPUT, Label } from "@/components/admin/ui";
 import {
   EMPTY_ROW,
@@ -388,11 +389,31 @@ function ImageInputs({
   onRemove: () => void;
   removeLabel: string;
 }) {
+  const [choosing, setChoosing] = useState(false);
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted">
-        {row.media ? "Image chosen from the media library." : "No image file yet. Uploads come with the media library."}
-      </p>
+      <div className="flex flex-wrap items-center gap-3" data-testid="image-slot">
+        {row.media ? (
+          <Thumbnail id={row.media} alt={row.alt} />
+        ) : (
+          <p className="text-sm text-muted">No image chosen yet.</p>
+        )}
+        <Button onClick={() => setChoosing(!choosing)} aria-expanded={choosing}>
+          {row.media ? "Change image" : "Choose image"}
+        </Button>
+        {row.media && (
+          <Button onClick={() => onChange({ ...row, media: null })}>Clear image</Button>
+        )}
+      </div>
+      {choosing && (
+        <MediaPicker
+          onClose={() => setChoosing(false)}
+          onPick={(item) => {
+            onChange({ ...row, media: item.id, alt: row.alt || item.alt });
+            setChoosing(false);
+          }}
+        />
+      )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <SmallInput label="Alt text" max={300} value={row.alt} onChange={(alt) => onChange({ ...row, alt })} />
         <SmallInput

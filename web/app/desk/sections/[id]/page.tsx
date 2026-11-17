@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import type { z } from "zod";
+import { useAdmin } from "@/components/admin/AdminApp";
 import { ContentForm, type SaveResult } from "@/components/admin/ContentForm";
 import { privacyWarnings, PublishBar, type Warning } from "@/components/admin/PublishBar";
 import { Button, Card, Notice, PageTitle, Pager } from "@/components/admin/ui";
@@ -54,6 +55,7 @@ export default function SectionEditor() {
     [id, versionPage],
   );
   const { data, error: loadError, reload } = useLoaded(fetcher);
+  const { refreshCache } = useAdmin();
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
 
@@ -75,9 +77,10 @@ export default function SectionEditor() {
     setError("");
     setDone("");
     try {
-      await api.post(`/sections/${id}/publish`, { confirm });
+      const result = await api.post<{ cache_purged: boolean }>(`/sections/${id}/publish`, { confirm });
       await reload();
-      setDone("Published.");
+      await refreshCache().catch(() => undefined);
+      setDone(result.cache_purged ? "Published." : "Published. The cache could not be cleared yet: see the notice above.");
       return null;
     } catch (failure) {
       const warnings = privacyWarnings(failure);

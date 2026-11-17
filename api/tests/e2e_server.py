@@ -10,6 +10,7 @@ the browser to send, as Cloudflare Access would.
 import hashlib
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -22,6 +23,7 @@ PORT = os.environ.get("E2E_API_PORT", "8100")
 DATABASE_URL = os.environ.get(
     "E2E_DATABASE_URL", "postgres://postgres:postgres@127.0.0.1:5432/portfolio_e2e"
 )
+MEDIA_ROOT = Path(tempfile.mkdtemp(prefix="portfolio-e2e-media-"))
 TOKEN_FILE = Path(os.environ.get("E2E_TOKEN_FILE", API / ".e2e-access-token"))
 BOOTSTRAP_TOKEN = "e2e-bootstrap-token"
 TEAM = "team.cloudflareaccess.test"
@@ -42,6 +44,9 @@ os.environ.update(
         "NOTIFIERS": "core.notify.LogNotifier",
         "DATABASE_URL": DATABASE_URL,
         "REDIS_URL": os.environ.get("E2E_REDIS_URL", "redis://127.0.0.1:6379/14"),
+        "MEDIA_STORAGE": "local",
+        "MEDIA_ROOT": str(MEDIA_ROOT),
+        "CACHE_PURGER": "core.purge.LogPurger",
     }
 )
 

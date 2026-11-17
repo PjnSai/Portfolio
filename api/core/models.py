@@ -28,6 +28,8 @@ class SiteSettings(Timestamped):
     draft = models.JSONField(default=dict)
     published = models.JSONField(default=dict)
     published_at = models.DateTimeField(null=True, blank=True)
+    # Set when the last cache purge failed, cleared by the next one that works.
+    purge_failed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "site_settings"
@@ -70,6 +72,8 @@ class Media(Base):
     width = models.PositiveIntegerField(null=True, blank=True)
     height = models.PositiveIntegerField(null=True, blank=True)
     alt = models.CharField(max_length=300, blank=True)
+    # The stored sizes: [{"name", "width", "height", "size"}], smallest first.
+    variants = models.JSONField(default=list)
     created_at = models.DateTimeField(default=timezone.now)
     trashed_at = models.DateTimeField(null=True, blank=True)
 

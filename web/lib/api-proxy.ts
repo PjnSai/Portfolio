@@ -22,6 +22,15 @@ const NOT_RETURNED = new Set([
 ]);
 
 export const MAX_BODY_BYTES = 1_000_000;
+export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+const FORM_OVERHEAD = 65_536;
+
+/** The body size allowed: 1 MB, or one image plus its form for an upload. */
+export function bodyLimit(method: string, segments: string[]): number {
+  const upload =
+    method === "POST" && segments.length === 2 && segments[0] === "admin" && segments[1] === "media";
+  return upload ? MAX_UPLOAD_BYTES + FORM_OVERHEAD : MAX_BODY_BYTES;
+}
 
 const MAX_PATH = 1024;
 

@@ -11,6 +11,8 @@ COPY --from=build /venv /venv
 COPY manage.py gunicorn.conf.py ./
 COPY config ./config
 COPY core ./core
+# Media in local development only; production uses Cloud Storage.
+RUN mkdir /media && chown 10001:10001 /media
 USER 10001:10001
 EXPOSE 8000
 CMD ["gunicorn", "-c", "gunicorn.conf.py", "config.wsgi:application"]

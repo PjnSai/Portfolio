@@ -193,6 +193,10 @@ class ImageSlot(Strict):
         return value
 
 
+class MediaAlt(Strict):
+    alt = line(300)
+
+
 # Section drafts, one shape per type
 
 

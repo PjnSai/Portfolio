@@ -5,6 +5,7 @@ const BASE = "/api/v1/admin";
 const SAFE_PATH = /^\/[A-Za-z0-9/_-]*$/;
 
 type Body = Record<string, unknown>;
+type Payload = Body | FormData;
 type Query = Record<string, string | number | boolean | undefined>;
 type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -72,6 +73,8 @@ export function describeError(error: unknown): string {
       return "That no longer exists.";
     case 409:
       return "That is not possible right now.";
+    case 413:
+      return "That file is too large. Use an image under 8 MB.";
     case 429:
       return "Too many attempts. Wait a few minutes and try again.";
     case 503:
@@ -96,18 +99,20 @@ function url(path: string, query?: Query): string {
 export function createClient(fetcher: Fetcher = (u, i) => fetch(u, i)) {
   let csrf: string | null = null;
 
-  async function send<T>(method: string, path: string, body?: Body, query?: Query) {
+  async function send<T>(method: string, path: string, body?: Payload, query?: Query) {
     const target = url(path, query);
     const headers: Record<string, string> = { Accept: "application/json" };
+    const form = body instanceof FormData;
     if (method !== "GET") {
       if (csrf === null) await refreshCsrf();
-      headers["Content-Type"] = "application/json";
+      // A form body sets its own multipart type and boundary.
+      if (!form) headers["Content-Type"] = "application/json";
       headers["X-CSRF-Token"] = csrf ?? "";
     }
     const response = await fetcher(target, {
       method,
       headers,
-      body: method === "GET" ? undefined : JSON.stringify(body ?? {}),
+      body: method === "GET" ? undefined : form ? body : JSON.stringify(body ?? {}),
       credentials: "same-origin",
       cache: "no-store",
     });
@@ -137,6 +142,7 @@ export function createClient(fetcher: Fetcher = (u, i) => fetch(u, i)) {
       send<T>("GET", path, undefined, query),
     post: <T = Body>(path: string, body?: Body) => send<T>("POST", path, body),
     patch: <T = Body>(path: string, body?: Body) => send<T>("PATCH", path, body),
+    upload: <T = Body>(path: string, form: FormData) => send<T>("POST", path, form),
     refreshCsrf,
     /** Run a call; if it needs a fresh passkey confirmation, get one and retry once. */
     async withPasskey<T>(call: () => Promise<T>, confirm: () => Promise<void>) {

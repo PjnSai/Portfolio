@@ -36,6 +36,10 @@ services:
       NOTIFIERS: ${NOTIFIERS:-core.notify.LogNotifier}
       DATABASE_URL: postgres://portfolio:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/portfolio
       REDIS_URL: redis://redis:6379/0
+      MEDIA_STORAGE: local
+      MEDIA_ROOT: /media
+      CACHE_PURGER: core.purge.LogPurger
+    volumes: [media-data:/media]
     ports: ["127.0.0.1:8000:8000"]
     depends_on:
       db: { condition: service_healthy }
@@ -70,3 +74,4 @@ services:
 
 volumes:
   db-data:
+  media-data:

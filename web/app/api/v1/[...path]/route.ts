@@ -1,6 +1,6 @@
 import {
+  bodyLimit,
   forwardedHeaders,
-  MAX_BODY_BYTES,
   returnedHeaders,
   upstreamUrl,
 } from "@/lib/api-proxy";
@@ -24,10 +24,11 @@ async function pass(
 
   let body: ArrayBuffer | undefined;
   if (request.method !== "GET" && request.method !== "HEAD") {
+    const limit = bodyLimit(request.method, path);
     const declared = Number(request.headers.get("content-length") ?? 0);
-    if (declared > MAX_BODY_BYTES) return refusal(413, "Too large.");
+    if (declared > limit) return refusal(413, "Too large.");
     body = await request.arrayBuffer();
-    if (body.byteLength > MAX_BODY_BYTES) return refusal(413, "Too large.");
+    if (body.byteLength > limit) return refusal(413, "Too large.");
   }
 
   try {

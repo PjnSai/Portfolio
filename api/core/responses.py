@@ -57,6 +57,10 @@ def privacy_check(warnings):
     )
 
 
+def too_large():
+    return JsonResponse({"detail": "Too large."}, status=413)
+
+
 def method_not_allowed(methods):
     return JsonResponse(
         {"detail": "Method not allowed."},

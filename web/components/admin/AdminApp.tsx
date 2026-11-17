@@ -34,6 +34,8 @@ type Admin = {
   pending: PendingAction[];
   refresh: () => Promise<void>;
   refreshPending: () => Promise<void>;
+  /** Check again whether the last cache purge failed (after a publish). */
+  refreshCache: () => Promise<void>;
   /** Run a call that may need a fresh passkey confirmation. */
   vital: <T>(call: () => Promise<T>) => Promise<T>;
 };
@@ -52,24 +54,30 @@ async function confirmWithPasskey() {
   await api.post("/elevate/verify", { credential });
 }
 
-type SessionState = { status: Status; pending: PendingAction[] };
+type SessionState = { status: Status; pending: PendingAction[]; purgeFailedAt: string | null };
 
 async function fetchPending() {
   return (await api.get<{ actions: PendingAction[] }>("/vital-actions")).actions;
 }
 
+async function fetchPurgeFailedAt() {
+  return (await api.get<{ purge_failed_at: string | null }>("/cache")).purge_failed_at;
+}
+
 async function checkSession(): Promise<SessionState> {
   try {
     await api.get("/session");
-    return { status: "signed-in", pending: await fetchPending() };
+    const [pending, purgeFailedAt] = await Promise.all([fetchPending(), fetchPurgeFailedAt()]);
+    return { status: "signed-in", pending, purgeFailedAt };
   } catch (error) {
     const signedOut = error instanceof ApiError && error.status === 401;
-    return { status: signedOut ? "signed-out" : "unavailable", pending: [] };
+    return { status: signedOut ? "signed-out" : "unavailable", pending: [], purgeFailedAt: null };
   }
 }
 
 const NAV = [
   ["sections", "Sections"],
+  ["media", "Media"],
   ["settings", "Settings"],
   ["trash", "Trash"],
   ["pending", "Pending actions"],
@@ -81,6 +89,7 @@ export function AdminApp({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [status, setStatus] = useState<Status>("loading");
   const [pending, setPending] = useState<PendingAction[]>([]);
+  const [purgeFailedAt, setPurgeFailedAt] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const answer = useRef<{ resolve: () => void; reject: (e: Error) => void }>(null);
 
@@ -88,9 +97,14 @@ export function AdminApp({ children }: { children: ReactNode }) {
     setPending(await fetchPending());
   }, []);
 
+  const refreshCache = useCallback(async () => {
+    setPurgeFailedAt(await fetchPurgeFailedAt());
+  }, []);
+
   const apply = useCallback((state: SessionState) => {
     setStatus(state.status);
     setPending(state.pending);
+    setPurgeFailedAt(state.purgeFailedAt);
   }, []);
 
   useEffect(() => {
@@ -118,7 +132,7 @@ export function AdminApp({ children }: { children: ReactNode }) {
     [],
   );
 
-  const admin = { status, pending, refresh, refreshPending, vital };
+  const admin = { status, pending, refresh, refreshPending, refreshCache, vital };
   const open = pathname === `${ADMIN}/setup`;
 
   return (
@@ -149,6 +163,12 @@ export function AdminApp({ children }: { children: ReactNode }) {
         </header>
         {status === "signed-in" && pending.length > 0 && (
           <PendingBanner count={pending.length} />
+        )}
+        {status === "signed-in" && purgeFailedAt && (
+          <CacheBanner onRetry={async () => {
+            const result = await api.post<{ purge_failed_at: string | null }>("/cache/purge");
+            setPurgeFailedAt(result.purge_failed_at);
+          }} />
         )}
         <main className="pt-8">
           {open ? (
@@ -195,6 +215,39 @@ function PendingBanner({ count }: { count: number }) {
       <Link href={`${ADMIN}/pending`} className="underline underline-offset-4">
         Review pending actions
       </Link>
+    </div>
+  );
+}
+
+function CacheBanner({ onRetry }: { onRetry: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <div
+      role="status"
+      data-testid="cache-banner"
+      className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md bg-notice px-4 py-3 text-sm font-semibold text-on-notice"
+    >
+      <span>
+        Your last change is saved and live, but the cache could not be cleared, so some visitors may
+        still see the old version. {error}
+      </span>
+      <Button
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError("");
+          try {
+            await onRetry();
+          } catch (failure) {
+            setError(describeError(failure));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Clear the cache again
+      </Button>
     </div>
   );
 }

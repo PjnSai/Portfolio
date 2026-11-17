@@ -4,7 +4,7 @@ permanent deletion goes through the vital-action routes instead."""
 from django.db import transaction
 from django.http import JsonResponse
 
-from core import content, pages, privacy, responses, serializers, theme
+from core import content, pages, privacy, purge, responses, serializers, theme
 from core.authz import Level, admin_route
 from core.models import Revision, Section, SectionItem
 
@@ -105,6 +105,7 @@ def sections_reorder(request):
         return error
     if not content.reorder(content.live_sections(), data["ids"], "sections_reordered"):
         return responses.bad_request()
+    purge.run("sections_reordered")
     return JsonResponse({})
 
 
@@ -133,6 +134,7 @@ def section_visibility(request, section_id):
     if error:
         return error
     content.set_visible(found, data["visible"])
+    purge.run("section_visibility")
     return JsonResponse(_section_summary(found))
 
 
@@ -142,6 +144,7 @@ def section_trash(request, section_id):
     if found is None:
         return responses.not_found()
     content.trash(found)
+    purge.run("section_trashed")
     return JsonResponse({})
 
 
@@ -152,7 +155,10 @@ def section_restore(request, section_id):
         return responses.not_found()
     with transaction.atomic():
         refusal = _refused(content.restore, found)
-    return refusal or JsonResponse(_section_summary(found))
+    if refusal:
+        return refusal
+    purge.run("section_restored")
+    return JsonResponse(_section_summary(found))
 
 
 @admin_route(Level.SESSION, methods=POST)
@@ -161,7 +167,12 @@ def section_publish(request, section_id):
     if found is None:
         return responses.not_found()
     refusal = _privacy_check(request, content.publish_warnings(found))
-    return refusal or JsonResponse({"version": content.publish(found)})
+    return refusal or _published(content.publish(found), "section_published")
+
+
+def _published(version, reason):
+    """The publish is saved before the purge, so a failed purge cannot undo it."""
+    return JsonResponse({"version": version, "cache_purged": purge.run(reason)})
 
 
 def _privacy_check(request, warnings):
@@ -315,6 +326,7 @@ def _settings(row):
         "unpublished_changes": content.settings_unpublished(row),
         "privacy_warnings": privacy.scan(row.draft),
         "theme_presets": theme.PRESETS,
+        "purge_failed_at": _when(row.purge_failed_at),
     }
 
 
@@ -333,4 +345,4 @@ def site_settings(request):
 def site_settings_publish(request):
     row = content.site_settings()
     refusal = _privacy_check(request, privacy.scan(row.draft))
-    return refusal or JsonResponse({"version": content.publish_settings(row)})
+    return refusal or _published(content.publish_settings(row), "settings_published")
