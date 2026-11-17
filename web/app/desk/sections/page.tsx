@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useAdmin } from "@/components/admin/AdminApp";
 import { useCallback, useState } from "react";
 import {
   Button,
@@ -27,6 +28,7 @@ type Section = {
 export default function Sections() {
   const fetchSections = useCallback(() => allPages<Section>("/sections"), []);
   const { data: sections, error: loadError, reload } = useLoaded(fetchSections);
+  const { refreshCache } = useAdmin();
   const [error, setError] = useState("");
   const [fields, setFields] = useState<Record<string, string[]>>({});
   const [type, setType] = useState("projects");
@@ -38,6 +40,7 @@ export default function Sections() {
     try {
       await call();
       await reload();
+      void refreshCache().catch(() => undefined);
       return true;
     } catch (failure) {
       setError(describeError(failure));

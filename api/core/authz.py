@@ -19,7 +19,9 @@ class Level(enum.Enum):
     ELEVATED = "elevated"  # Passkey confirmed again in the last few minutes.
 
 
-def admin_route(level, methods=("GET",)):
+def admin_route(level, methods=("GET",), form=False):
+    """form=True: unsafe requests carry a multipart form (an upload), not JSON."""
+
     def decorate(view):
         @wraps(view)
         def guarded(request, *args, **kwargs):
@@ -35,7 +37,11 @@ def admin_route(level, methods=("GET",)):
                 if level is Level.ELEVATED and not sessions.is_elevated(session):
                     return responses.elevation_required()
                 request.admin_session = session
-            if unsafe:
+            if unsafe and form:
+                request.json = None
+                if request.content_type != "multipart/form-data":
+                    return responses.bad_request()
+            elif unsafe:
                 request.json = _json_object(request)
                 if request.json is None:
                     return responses.bad_request()

@@ -16,6 +16,7 @@ ADMIN = "/api/v1/admin"
 COOKIE = "__Host-session"
 CSRF_COOKIE = "__Host-csrf"
 PLACEHOLDER_ID = "00000000-0000-4000-8000-000000000000"
+PLACEHOLDER_FILE = "00000000000000000000000000000000-480.webp"
 
 
 @pytest.fixture(scope="session")
@@ -193,6 +194,7 @@ def age_sessions(**delta):
 def fill_path(path):
     """A route pattern with every converter replaced by a well-formed value."""
     path = re.sub(r"<uuid:\w+>", PLACEHOLDER_ID, path)
+    path = re.sub(r"<str:\w+>", PLACEHOLDER_FILE, path)
     return re.sub(r"<int:\w+>", "1", path)
 
 

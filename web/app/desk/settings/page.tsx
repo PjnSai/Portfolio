@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useAdmin } from "@/components/admin/AdminApp";
 import { ContentForm, type SaveResult } from "@/components/admin/ContentForm";
 import { privacyWarnings, PublishBar, type Warning } from "@/components/admin/PublishBar";
 import { ThemeEditor } from "@/components/admin/ThemeEditor";
@@ -32,6 +33,7 @@ const PAGE_NAMES: Record<string, string> = {
 export default function SettingsPage() {
   const fetcher = useCallback(() => api.get<Settings>("/settings"), []);
   const { data, error: loadError, reload } = useLoaded(fetcher);
+  const { refreshCache } = useAdmin();
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
 
@@ -53,9 +55,10 @@ export default function SettingsPage() {
     setError("");
     setDone("");
     try {
-      await api.post("/settings/publish", { confirm });
+      const result = await api.post<{ cache_purged: boolean }>("/settings/publish", { confirm });
       await reload();
-      setDone("Settings published.");
+      await refreshCache().catch(() => undefined);
+      setDone(result.cache_purged ? "Settings published." : "Settings published. The cache could not be cleared yet: see the notice above.");
       return null;
     } catch (failure) {
       const warnings = privacyWarnings(failure);

@@ -98,13 +98,33 @@ CSRF_FAILURE_VIEW = "core.responses.csrf_failure"
 # SHA-256 of the one-time token that enrols the first passkey. Empty closes it.
 BOOTSTRAP_TOKEN_SHA256 = os.environ.get("BOOTSTRAP_TOKEN_SHA256", "")
 
-ADMIN_REQUESTS_PER_MINUTE = 120
+ADMIN_REQUESTS_PER_MINUTE = 300
 LOGIN_MAX_FAILURES = 5
 LOGIN_GLOBAL_MAX_FAILURES = 20
 
 # Dotted paths of classes with send(event, context), comma-separated. With none
 # configured, vital actions are refused because the owner could not be told.
 NOTIFIERS = [path for path in os.environ.get("NOTIFIERS", "").split(",") if path]
+
+# Request bodies. The media upload route alone takes a larger multipart body,
+# held in memory only (nothing is written to a temporary file).
+MAX_BODY_BYTES = 1_000_000
+MEDIA_MAX_BYTES = 8 * 1024 * 1024
+MEDIA_MAX_PIXELS = 40_000_000
+MEDIA_DAILY_UPLOADS = 50
+FILE_UPLOAD_HANDLERS = ["django.core.files.uploadhandler.MemoryFileUploadHandler"]
+FILE_UPLOAD_MAX_MEMORY_SIZE = MEDIA_MAX_BYTES + 65_536
+DATA_UPLOAD_MAX_NUMBER_FILES = 1
+
+# "local" in development and tests, "gcs" in production.
+MEDIA_STORAGE = os.environ.get("MEDIA_STORAGE", "local")
+MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / ".media"))
+GCS_MEDIA_BUCKET = os.environ.get("GCS_MEDIA_BUCKET", "")
+
+# Dotted path of a class with purge(). The default only logs.
+CACHE_PURGER = os.environ.get("CACHE_PURGER", "core.purge.LogPurger")
+CLOUDFLARE_ZONE_ID = os.environ.get("CLOUDFLARE_ZONE_ID", "")
+CLOUDFLARE_PURGE_TOKEN = os.environ.get("CLOUDFLARE_PURGE_TOKEN", "")
 
 LANGUAGE_CODE = "en-gb"
 TIME_ZONE = "UTC"

@@ -9,13 +9,16 @@ import { shortDate } from "@/lib/admin/time";
 import { useLoaded } from "@/lib/admin/use-loaded";
 
 type Entry = {
-  entity: "section" | "item";
+  entity: "section" | "item" | "media";
   id: string;
   label: string;
   type: string;
   trashed_at: string;
   purge_after: string;
 };
+
+const ENTITY_LABEL = { section: "Section", item: "Item", media: "Image" } as const;
+const RESTORE_PATH = { section: "sections", item: "items", media: "media" } as const;
 
 export default function Trash() {
   const { vital, refreshPending } = useAdmin();
@@ -73,8 +76,9 @@ export default function Trash() {
               <div>
                 <p className="font-bold">{entry.label}</p>
                 <p className="font-mono text-xs uppercase tracking-wide text-muted">
-                  {entry.entity === "section" ? "Section" : "Item"} ·{" "}
-                  {typeLabel(entry.type)} · goes {shortDate(entry.purge_after)}
+                  {ENTITY_LABEL[entry.entity]} ·{" "}
+                  {entry.entity === "media" ? "" : `${typeLabel(entry.type)} · `}goes{" "}
+                  {shortDate(entry.purge_after)}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -84,7 +88,7 @@ export default function Trash() {
                     act(
                       () =>
                         api.post(
-                          `/${entry.entity === "section" ? "sections" : "items"}/${entry.id}/restore`,
+                          `/${RESTORE_PATH[entry.entity]}/${entry.id}/restore`,
                         ),
                       `“${entry.label}” is back.`,
                     )
@@ -92,13 +96,15 @@ export default function Trash() {
                 >
                   Restore
                 </Button>
-                <Button
-                  variant="danger"
-                  aria-label={`Delete ${entry.label} for good`}
-                  onClick={() => deleteForGood(entry)}
-                >
-                  Delete for good
-                </Button>
+                {entry.entity !== "media" && (
+                  <Button
+                    variant="danger"
+                    aria-label={`Delete ${entry.label} for good`}
+                    onClick={() => deleteForGood(entry)}
+                  >
+                    Delete for good
+                  </Button>
+                )}
               </div>
             </li>
           ))}

@@ -261,6 +261,115 @@ test("the theme editor blocks colours that fail contrast", async () => {
   await expect(page.getByLabel("Light theme Accent", { exact: true })).toHaveValue("#2a55c7");
 });
 
+const CAMERA_JPEG = resolve(__dirname, "fixtures/camera.jpg");
+
+function itemTitles() {
+  return page.getByTestId("item-row").locator(":scope > div:first-child > p > strong").allTextContents();
+}
+
+type PublicSite = {
+  sections: Array<{ title: string; items: Array<{ data: { title: string; images: Array<{ media: string }> } }> }>;
+  media: Record<string, { sources: Array<{ url: string }> }>;
+};
+
+test("media upload refuses a script and keeps no camera details", async () => {
+  await page.goto("/desk/media");
+  const upload = page.getByRole("button", { name: "Upload" });
+
+  await page.getByLabel(/^Image/).setInputFiles({
+    name: "photo.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("<script>window.__xss=1</script>"),
+  });
+  await page.getByLabel(/^Alt text/).fill("Not really a photo");
+  await upload.click();
+  await expect(page.getByText("Choose a JPEG, PNG or WebP image.")).toBeVisible();
+  await expect(page.getByTestId("media-row")).toHaveCount(0);
+
+  await page.getByLabel(/^Image/).setInputFiles(CAMERA_JPEG);
+  await page.getByLabel(/^Alt text/).fill("");
+  await upload.click();
+  await expect(page.getByText("Describe the image for people who cannot see it.")).toBeVisible();
+
+  await page.getByLabel(/^Alt text/).fill("Orange test card");
+  await upload.click();
+  await expect(page.getByText("Image added.")).toBeVisible();
+  const row = page.getByTestId("media-row");
+  await expect(row).toHaveCount(1);
+  await expect(row.getByTestId("thumbnail")).toHaveJSProperty("complete", true);
+
+  await row.getByLabel("Alt text").fill("Orange card on a desk");
+  await row.getByRole("button", { name: "Save alt text" }).click();
+  await expect(page.getByText("Alt text saved.")).toBeVisible();
+});
+
+test("project items go through every step and the published copy is public", async () => {
+  await page.goto("/desk/sections");
+  await page.getByLabel("Type").selectOption("projects");
+  await page.getByLabel("Title").fill("Showcase");
+  await page.getByRole("button", { name: "Add section" }).click();
+  await page.getByRole("link", { name: "Showcase" }).click();
+
+  const form = page.locator("form").filter({ has: page.getByRole("button", { name: "Add item" }) });
+  for (const title of ["Ledger", "Notes"]) {
+    await form.getByLabel("Title").fill(title);
+    if (title === "Ledger") {
+      await form.getByRole("button", { name: "Add image" }).click();
+      const slot = form.getByRole("group", { name: /^Images/ });
+      await slot.getByRole("button", { name: "Choose image" }).click();
+      await slot.getByRole("button", { name: "Use Orange card on a desk" }).click();
+      await expect(slot.getByTestId("thumbnail")).toHaveJSProperty("complete", true);
+      await expect(slot.getByLabel("Alt text")).toHaveValue("Orange card on a desk");
+    }
+    await form.getByRole("button", { name: "Add item" }).click();
+    await expect(page.getByText("Item added.")).toBeVisible();
+  }
+  await expect.poll(itemTitles).toEqual(["Ledger", "Notes"]);
+
+  // Edit
+  await page.getByTestId("item-row").filter({ hasText: "Ledger" })
+    .getByRole("button", { name: "Edit", exact: true }).click();
+  const editor = page.getByTestId("item-row").filter({ hasText: "Ledger" }).locator("form");
+  await editor.getByLabel("Title").fill("Ledger app");
+  await editor.getByRole("button", { name: "Save item" }).click();
+  await expect(page.getByText("Item saved.")).toBeVisible();
+
+  // Reorder, hide, unhide
+  await page.getByRole("button", { name: "Move Notes up" }).click();
+  await expect.poll(itemTitles).toEqual(["Notes", "Ledger app"]);
+  await page.getByRole("button", { name: "Hide Notes" }).click();
+  await page.getByRole("button", { name: "Show Notes" }).click();
+  await expect(page.getByRole("button", { name: "Hide Notes" })).toBeVisible();
+
+  // Delete (to the trash) and restore
+  await page.getByRole("button", { name: "Move Notes to the trash" }).click();
+  await expect.poll(itemTitles).toEqual(["Ledger app"]);
+  const editorUrl = page.url();
+  await page.goto("/desk/trash");
+  await page.getByRole("button", { name: "Restore Notes" }).click();
+  await expect(page.getByText("“Notes” is back.")).toBeVisible();
+  await page.goto(editorUrl);
+  await expect.poll(itemTitles).toEqual(["Notes", "Ledger app"]);
+
+  // Nothing is public before Publish
+  const before = (await (await page.request.get("/api/v1/site")).json()) as PublicSite;
+  expect(before.sections.map((s) => s.title)).not.toContain("Showcase");
+
+  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect(page.getByTestId("publish-state")).toContainText("The live site shows this draft.");
+
+  const response = await page.request.get("/api/v1/site");
+  expect(response.headers()["cache-control"]).toContain("public");
+  const site = (await response.json()) as PublicSite;
+  const showcase = site.sections.find((s) => s.title === "Showcase");
+  expect(showcase?.items.map((i) => i.data.title)).toEqual(["Notes", "Ledger app"]);
+  const mediaId = showcase!.items[1].data.images[0].media;
+  const image = await page.request.get(site.media[mediaId].sources[0].url);
+  expect(image.status()).toBe(200);
+  expect(image.headers()["content-type"]).toBe("image/webp");
+  expect((await image.body()).includes("SecretCam")).toBe(false);
+});
+
 test("the admin fits a phone screen", async () => {
   await page.setViewportSize({ width: 390, height: 844 });
   for (const path of ["/desk/sections", "/desk/settings", "/desk/trash", "/desk/audit"]) {

@@ -159,7 +159,7 @@ def test_settings_edit_is_a_draft_until_published(signed_in):
 
     assert before == {}
     assert published.status_code == 200
-    assert published.json() == {"version": 1}
+    assert published.json() == {"version": 1, "cache_purged": True}
     assert SiteSettings.objects.get().published["showcase_layout"] == "train"
     assert after["unpublished_changes"] is False
     assert Revision.objects.filter(entity="settings", version=1).exists()

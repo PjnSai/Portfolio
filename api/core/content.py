@@ -7,14 +7,15 @@ section is published. Publishing keeps a numbered version that can be restored.
 """
 
 import copy
+import re
 from datetime import timedelta
 
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from core import audit, pages, privacy, serializers, theme
-from core.models import Owner, Revision, Section, SectionItem, SiteSettings
+from core import audit, media, pages, privacy, serializers, theme
+from core.models import Media, Owner, Revision, Section, SectionItem, SiteSettings
 
 PAGE_SIZE = pages.PAGE_SIZE
 SECTION_TYPES = serializers.SECTION_TYPES
@@ -25,6 +26,7 @@ ONE_OF_A_KIND = {"hero", "contact"}
 MAX_SECTIONS = 40
 MAX_ITEMS = 200
 REVISION = "section"
+UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 LABEL_KEYS = ("title", "name", "label", "organisation", "institution", "alt")
 
 
@@ -225,12 +227,15 @@ def restore(target):
         ):
             raise Refused
         entity = "section"
+    elif isinstance(target, Media):
+        entity = "media"
     else:
         if target.section.trashed_at is not None:
             raise Refused
         entity = "item"
     target.trashed_at = None
-    target.save(update_fields=["trashed_at", "updated_at"])
+    fields = ["trashed_at"] if entity == "media" else ["trashed_at", "updated_at"]
+    target.save(update_fields=fields)
     audit.record(f"{entity}_restored", **{entity: str(target.id)})
 
 
@@ -263,27 +268,40 @@ def edit_item(item, data):
 
 def trashed():
     """Everything in the trash, most recently trashed first."""
-    entries = [
-        {
-            "entity": "section",
-            "id": str(section.id),
-            "label": section.draft.get("title") or "Untitled",
-            "type": section.type,
-            "trashed_at": section.trashed_at,
-        }
-        for section in Section.objects.exclude(trashed_at=None)
-    ] + [
-        {
-            "entity": "item",
-            "id": str(item.id),
-            "label": item_label(item),
-            "type": item.section.type,
-            "trashed_at": item.trashed_at,
-        }
-        for item in SectionItem.objects.exclude(trashed_at=None).select_related(
-            "section"
-        )
-    ]
+    entries = (
+        [
+            {
+                "entity": "section",
+                "id": str(section.id),
+                "label": section.draft.get("title") or "Untitled",
+                "type": section.type,
+                "trashed_at": section.trashed_at,
+            }
+            for section in Section.objects.exclude(trashed_at=None)
+        ]
+        + [
+            {
+                "entity": "item",
+                "id": str(item.id),
+                "label": item_label(item),
+                "type": item.section.type,
+                "trashed_at": item.trashed_at,
+            }
+            for item in SectionItem.objects.exclude(trashed_at=None).select_related(
+                "section"
+            )
+        ]
+        + [
+            {
+                "entity": "media",
+                "id": str(item.id),
+                "label": item.alt or "Image",
+                "type": "image",
+                "trashed_at": item.trashed_at,
+            }
+            for item in Media.objects.exclude(trashed_at=None)
+        ]
+    )
     entries.sort(key=lambda entry: entry["trashed_at"], reverse=True)
     return entries
 
@@ -310,8 +328,65 @@ def purge_trash():
         items = old_items.delete()[1].get("core.SectionItem", 0)
         Revision.objects.filter(entity=REVISION, entity_id__in=old_ids).delete()
         sections = old_sections.delete()[1].get("core.Section", 0)
-        audit.record("trash_purged", actor="system", sections=sections, items=items)
-    return {"sections": sections, "items": items}
+        old_media = list(Media.objects.filter(trashed_at__lt=cutoff))
+        for item in old_media:
+            # Files first: if storage fails, the row stays and the next run retries.
+            media.delete_files(item)
+            item.delete()
+        audit.record(
+            "trash_purged",
+            actor="system",
+            sections=sections,
+            items=items,
+            media=len(old_media),
+        )
+    return {"sections": sections, "items": items, "media": len(old_media)}
+
+
+# What the public site shows
+
+
+def _media_ids(value, found):
+    if isinstance(value, dict):
+        if isinstance(value.get("media"), str) and UUID.fullmatch(value["media"]):
+            found.add(value["media"])
+        for child in value.values():
+            _media_ids(child, found)
+    elif isinstance(value, list):
+        for child in value:
+            _media_ids(child, found)
+    return found
+
+
+def public_site():
+    """Published settings and the published copy of each shown section, with
+    the image sizes they use. Hidden and trashed sections are left out at once;
+    everything else changes only on Publish."""
+    row = SiteSettings.objects.first()
+    shown = [
+        section.published
+        for section in live_sections().filter(visible=True).exclude(published={})
+    ]
+    settings_copy = row.published if row else {}
+    ids = _media_ids([settings_copy, shown], set())
+    used = Media.objects.filter(id__in=ids, trashed_at=None)
+    return {
+        "settings": settings_copy,
+        "sections": shown,
+        "media": {
+            str(item.id): {
+                "width": item.width,
+                "height": item.height,
+                "sources": media.sources(item),
+            }
+            for item in used
+        },
+    }
+
+
+def is_published_media(item):
+    site = public_site()
+    return str(item.id) in site["media"]
 
 
 # Site settings: one row, drafted and published like a section.
