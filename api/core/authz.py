@@ -32,9 +32,6 @@ def admin_route(level, methods=("GET",)):
                 session = sessions.current(request)
                 if session is None:
                     return responses.not_signed_in()
-                supplied = request.headers.get("X-CSRF-Token")
-                if unsafe and not sessions.csrf_ok(session, supplied):
-                    return responses.forbidden()
                 if level is Level.ELEVATED and not sessions.is_elevated(session):
                     return responses.elevation_required()
                 request.admin_session = session

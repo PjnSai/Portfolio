@@ -1,12 +1,9 @@
 """Server-side sessions. The cookie holds a random token; the table its hash."""
 
-import base64
 import hashlib
-import hmac
 import secrets
 from datetime import timedelta
 
-from django.conf import settings
 from django.utils import timezone
 
 from core.models import Owner, Session
@@ -92,17 +89,3 @@ def revoke_all():
 
 def is_elevated(session):
     return bool(session.elevated_until and session.elevated_until > timezone.now())
-
-
-def csrf_token(session):
-    """Derived from the session, so it changes whenever the session rotates."""
-    key = settings.SECRET_KEY.encode()
-    digest = hmac.new(key, f"csrf:{session.token_hash}".encode(), hashlib.sha256)
-    return base64.urlsafe_b64encode(digest.digest()).rstrip(b"=").decode()
-
-
-def csrf_ok(session, supplied):
-    if not supplied:
-        return False
-    expected = csrf_token(session).encode()
-    return hmac.compare_digest(supplied.encode("utf-8", "replace"), expected)

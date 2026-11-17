@@ -19,6 +19,10 @@ def forbidden():
     return JsonResponse({"detail": "Forbidden."}, status=403)
 
 
+def csrf_failure(request, reason=""):
+    return forbidden()
+
+
 def elevation_required():
     return JsonResponse(
         {"detail": "Confirm with your passkey.", "code": "elevation_required"},

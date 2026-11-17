@@ -4,8 +4,10 @@ import re
 import secrets
 
 from django.conf import settings
+from django.contrib.auth.hashers import check_password, make_password
 from django.db import transaction
 from django.http import JsonResponse
+from django.middleware.csrf import get_token, rotate_token
 from django.utils import timezone
 
 from core import audit, notify, passkeys, ratelimit, responses, sessions, vital
@@ -26,11 +28,17 @@ def _sign_in_failed(request, event):
     return responses.sign_in_failed()
 
 
-def _signed_in(response, session):
-    """Add the session's CSRF token to a response that already has the cookie."""
-    body = JsonResponse({"csrf_token": sessions.csrf_token(session)})
+def _signed_in(request, response):
+    """New CSRF secret on every privilege change, sent with the session cookie."""
+    rotate_token(request)
+    body = JsonResponse({"csrf_token": get_token(request)})
     body.cookies = response.cookies
     return body
+
+
+@admin_route(Level.ACCESS)
+def csrf(request):
+    return JsonResponse({"csrf_token": get_token(request)})
 
 
 # Sign-in
@@ -66,9 +74,9 @@ def login_verify(request):
     response = JsonResponse({})
     with transaction.atomic():
         sessions.retire_presented(request)
-        session = sessions.start(response)
+        sessions.start(response)
         audit.record("login", passkey=str(passkey.id))
-    return _signed_in(response, session)
+    return _signed_in(request, response)
 
 
 # First passkey
@@ -84,6 +92,12 @@ def _secret_matches(supplied, expected_hash):
     return hmac.compare_digest(_sha256(supplied), expected_hash.lower())
 
 
+def _recovery_key_matches(supplied, owner):
+    if not owner.recovery_key_hash or not isinstance(supplied, str) or not supplied:
+        return False
+    return check_password(supplied, owner.recovery_key_hash)
+
+
 def _bootstrap_open(owner, token):
     """Open only once: before the owner has ever enrolled, with the token."""
     if owner.bootstrapped_at is not None:
@@ -96,7 +110,7 @@ def _bootstrap_open(owner, token):
 def _new_recovery_key(owner):
     """Store the hash of a fresh recovery key and return the key, shown once."""
     key = secrets.token_urlsafe(32)
-    owner.recovery_key_hash = _sha256(key)
+    owner.recovery_key_hash = make_password(key)
     return key
 
 
@@ -162,7 +176,7 @@ def recovery_options(request):
     if wait:
         return responses.too_many_requests(wait)
     owner = Owner.objects.get()
-    if not _secret_matches(request.json.get("key"), owner.recovery_key_hash):
+    if not _recovery_key_matches(request.json.get("key"), owner):
         return _sign_in_failed(request, "recovery_failed")
     return JsonResponse(passkeys.registration_options("recovery"))
 
@@ -181,9 +195,7 @@ def recovery_verify(request):
         with transaction.atomic():
             owner = Owner.objects.select_for_update().get()
             supplied = request.json.get("key")
-            if credential is not None and _secret_matches(
-                supplied, owner.recovery_key_hash
-            ):
+            if credential is not None and _recovery_key_matches(supplied, owner):
                 passkey = passkeys.register(credential, name, "recovery")
             if passkey is not None:
                 counts = _reset_access(keep=passkey)
@@ -208,7 +220,7 @@ def session(request):
     current = request.admin_session
     return JsonResponse(
         {
-            "csrf_token": sessions.csrf_token(current),
+            "csrf_token": get_token(request),
             "elevated": sessions.is_elevated(current),
             "pending_actions": vital.pending().count(),
         }
@@ -291,11 +303,11 @@ def elevate_verify(request):
         return responses.forbidden()
     response = JsonResponse({})
     with transaction.atomic():
-        fresh = sessions.rotate(
+        sessions.rotate(
             response, current, elevated_until=timezone.now() + sessions.ELEVATION
         )
         audit.record("elevated", passkey=str(passkey.id))
-    return _signed_in(response, fresh)
+    return _signed_in(request, response)
 
 
 # Audit log

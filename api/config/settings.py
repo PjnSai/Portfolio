@@ -43,12 +43,25 @@ INSTALLED_APPS = [
     "core",
 ]
 
-# Security headers are set in core.headers and nowhere else.
+# Django sets HSTS, nosniff, Referrer-Policy, COOP and X-Frame-Options;
+# core.headers adds only what Django lacks.
 MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
     "core.headers.SecurityHeadersMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "core.guard.GuardMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
 ]
+
+# Cloud Run ends TLS and sets this header itself, so a client cannot spoof it.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_HSTS_SECONDS = 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "no-referrer"
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
@@ -68,6 +81,19 @@ SITE_ORIGIN = os.environ.get("SITE_ORIGIN", "")
 CF_ACCESS_TEAM_DOMAIN = os.environ.get("CF_ACCESS_TEAM_DOMAIN", "")
 CF_ACCESS_AUD = os.environ.get("CF_ACCESS_AUD", "")
 CF_ACCESS_EMAIL = os.environ.get("CF_ACCESS_EMAIL", "")
+
+# CSRF token in a cookie, sent back in X-CSRF-Token. The cookie is HttpOnly:
+# the page gets the token from the JSON body of GET /api/v1/admin/csrf.
+CSRF_COOKIE_NAME = "__Host-csrf"
+CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = "Strict"
+CSRF_COOKIE_PATH = "/"
+CSRF_COOKIE_DOMAIN = None
+CSRF_COOKIE_AGE = None
+CSRF_HEADER_NAME = "HTTP_X_CSRF_TOKEN"
+CSRF_TRUSTED_ORIGINS = [SITE_ORIGIN] if SITE_ORIGIN else []
+CSRF_FAILURE_VIEW = "core.responses.csrf_failure"
 
 # SHA-256 of the one-time token that enrols the first passkey. Empty closes it.
 BOOTSTRAP_TOKEN_SHA256 = os.environ.get("BOOTSTRAP_TOKEN_SHA256", "")
