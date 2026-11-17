@@ -12,13 +12,36 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly fields: Record<string, string[]>;
+  readonly body: Body;
 
   constructor(status: number, body: Body) {
     super(typeof body.detail === "string" ? body.detail : `HTTP ${status}`);
     this.status = status;
     this.code = typeof body.code === "string" ? body.code : undefined;
-    this.fields = (body.errors as Record<string, string[]>) ?? {};
+    this.fields = flattenErrors(body.errors);
+    this.body = body;
   }
+}
+
+function messages(value: unknown, prefix = ""): string[] {
+  if (typeof value === "string") return [prefix + value];
+  if (Array.isArray(value)) {
+    return value.flatMap((entry, index) =>
+      typeof entry === "string" ? [prefix + entry] : messages(entry, `${prefix}Row ${index + 1}: `),
+    );
+  }
+  if (value && typeof value === "object") {
+    return Object.values(value).flatMap((entry) => messages(entry, prefix));
+  }
+  return [];
+}
+
+/** API field errors (nested for lists and groups) as messages per top-level field. */
+export function flattenErrors(errors: unknown): Record<string, string[]> {
+  if (!errors || typeof errors !== "object" || Array.isArray(errors)) return {};
+  return Object.fromEntries(
+    Object.entries(errors).map(([name, value]) => [name, messages(value)]),
+  );
 }
 
 /** The owner closed the passkey confirmation without using it. */

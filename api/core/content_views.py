@@ -4,7 +4,7 @@ permanent deletion goes through the vital-action routes instead."""
 from django.db import transaction
 from django.http import JsonResponse
 
-from core import content, pages, responses, serializers
+from core import content, pages, privacy, responses, serializers, theme
 from core.authz import Level, admin_route
 from core.models import Revision, Section, SectionItem
 
@@ -51,6 +51,7 @@ def _section_detail(section):
         **_section_summary(section),
         "draft": section.draft,
         "unpublished_changes": content.unpublished_changes(section),
+        "privacy_warnings": content.publish_warnings(section),
     }
 
 
@@ -113,10 +114,13 @@ def section(request, section_id):
     if found is None:
         return responses.not_found()
     if request.method == "PATCH":
-        changes, error = _valid(serializers.SectionContent, request.json, partial=True)
+        # Fields not sent keep their value; the whole result is checked, so a
+        # partial edit cannot leave out something the shape requires.
+        shape = serializers.SECTION_SHAPES[found.type]
+        draft, error = _valid(shape, {**found.draft, **request.json})
         if error:
             return error
-        content.edit_section(found, changes)
+        content.edit_section(found, draft)
     return JsonResponse(_section_detail(found))
 
 
@@ -156,7 +160,18 @@ def section_publish(request, section_id):
     found = _live_section(section_id)
     if found is None:
         return responses.not_found()
-    return JsonResponse({"version": content.publish(found)})
+    refusal = _privacy_check(request, content.publish_warnings(found))
+    return refusal or JsonResponse({"version": content.publish(found)})
+
+
+def _privacy_check(request, warnings):
+    """None to go ahead, or the response that stops the publish."""
+    data, error = _valid(serializers.Publish, request.json)
+    if error:
+        return error
+    if warnings and not data["confirm"]:
+        return responses.privacy_check(warnings)
+    return None
 
 
 @admin_route(Level.SESSION)
@@ -288,3 +303,34 @@ def trash(request):
             "purge_after": _when(content.purge_after(entry["trashed_at"])),
         },
     )
+
+
+# Site settings
+
+
+def _settings(row):
+    return {
+        "draft": row.draft,
+        "published_at": _when(row.published_at),
+        "unpublished_changes": content.settings_unpublished(row),
+        "privacy_warnings": privacy.scan(row.draft),
+        "theme_presets": theme.PRESETS,
+    }
+
+
+@admin_route(Level.SESSION, methods=READ_EDIT)
+def site_settings(request):
+    row = content.site_settings()
+    if request.method == "PATCH":
+        draft, error = _valid(serializers.Settings, {**row.draft, **request.json})
+        if error:
+            return error
+        content.edit_settings(row, draft)
+    return JsonResponse(_settings(row))
+
+
+@admin_route(Level.SESSION, methods=POST)
+def site_settings_publish(request):
+    row = content.site_settings()
+    refusal = _privacy_check(request, privacy.scan(row.draft))
+    return refusal or JsonResponse({"version": content.publish_settings(row)})

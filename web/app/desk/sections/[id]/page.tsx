@@ -3,25 +3,19 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useState } from "react";
-import {
-  Button,
-  Card,
-  FieldErrors,
-  INPUT,
-  Label,
-  Notice,
-  PageTitle,
-  Pager,
-} from "@/components/admin/ui";
+import type { z } from "zod";
+import { ContentForm, type SaveResult } from "@/components/admin/ContentForm";
+import { privacyWarnings, PublishBar, type Warning } from "@/components/admin/PublishBar";
+import { Button, Card, Notice, PageTitle, Pager } from "@/components/admin/ui";
 import { allPages, api, ApiError, describeError, type Page } from "@/lib/admin/api";
 import {
   type Field,
-  fromForm,
   ITEM_FIELDS,
   type ItemData,
-  toForm,
+  sectionFields,
   typeLabel,
 } from "@/lib/admin/content-types";
+import { ITEM_SCHEMAS, SECTION_SCHEMAS } from "@/lib/admin/schemas";
 import { shortDate } from "@/lib/admin/time";
 import { useLoaded } from "@/lib/admin/use-loaded";
 
@@ -31,8 +25,9 @@ type Detail = {
   visible: boolean;
   holds_items: boolean;
   published_at: string | null;
-  draft: { title: string; body: string };
+  draft: ItemData & { title: string };
   unpublished_changes: boolean;
+  privacy_warnings: Warning[];
 };
 
 type Item = { id: string; visible: boolean; label: string; data: ItemData };
@@ -49,7 +44,7 @@ async function fetchSection(id: string, versionPage: number) {
   return { detail, items, versions };
 }
 
-type Act = (call: () => Promise<unknown>, message?: string) => Promise<boolean>;
+type Act = (call: () => Promise<unknown>, message?: string) => Promise<SaveResult>;
 
 export default function SectionEditor() {
   const { id } = useParams<{ id: string }>();
@@ -61,23 +56,35 @@ export default function SectionEditor() {
   const { data, error: loadError, reload } = useLoaded(fetcher);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
-  const [fields, setFields] = useState<Record<string, string[]>>({});
 
   const act: Act = async (call, message = "") => {
     setError("");
     setDone("");
-    setFields({});
     try {
       await call();
       await reload();
       setDone(message);
-      return true;
+      return { ok: true, fields: {} };
     } catch (failure) {
       setError(describeError(failure));
-      if (failure instanceof ApiError) setFields(failure.fields);
-      return false;
+      return { ok: false, fields: failure instanceof ApiError ? failure.fields : {} };
     }
   };
+
+  async function publish(confirm: boolean): Promise<Warning[] | null> {
+    setError("");
+    setDone("");
+    try {
+      await api.post(`/sections/${id}/publish`, { confirm });
+      await reload();
+      setDone("Published.");
+      return null;
+    } catch (failure) {
+      const warnings = privacyWarnings(failure);
+      if (!warnings) setError(describeError(failure));
+      return warnings;
+    }
+  }
 
   if (loadError instanceof ApiError && loadError.status === 404) {
     return (
@@ -99,6 +106,7 @@ export default function SectionEditor() {
 
   const { detail: section, items, versions } = data;
   const itemFields = ITEM_FIELDS[section.type] ?? [];
+  const itemSchema = ITEM_SCHEMAS[section.type];
 
   function moveItem(index: number, by: number) {
     const ids = items.map((item) => item.id);
@@ -116,34 +124,22 @@ export default function SectionEditor() {
       </p>
       <PageTitle>{section.draft.title}</PageTitle>
 
-      <div className="mb-8 flex flex-wrap items-center gap-4 rounded-lg border-2 border-ink p-4">
-        <p className="grow text-sm" data-testid="publish-state">
-          {section.unpublished_changes
-            ? "The draft has changes that are not live yet."
-            : "The live site shows this draft."}{" "}
-          {section.published_at
-            ? `Last published ${shortDate(section.published_at)}.`
-            : "Never published."}
-        </p>
-        <Button
-          variant="primary"
-          onClick={() =>
-            act(() => api.post(`/sections/${id}/publish`), "Published.")
-          }
-        >
-          Publish
-        </Button>
-      </div>
+      <PublishBar
+        unpublished={section.unpublished_changes}
+        publishedAt={section.published_at}
+        warnings={section.privacy_warnings}
+        publish={publish}
+      />
       <Notice kind="error">{error}</Notice>
       <Notice kind="done">{done}</Notice>
 
-      <DraftForm
+      <ContentForm
         key={JSON.stringify(section.draft)}
-        draft={section.draft}
-        fields={fields}
-        onSave={(changes) =>
-          act(() => api.patch(`/sections/${id}`, changes), "Draft saved.")
-        }
+        fields={sectionFields(section.type)}
+        data={section.draft}
+        schema={SECTION_SCHEMAS[section.type]}
+        submitLabel="Save draft"
+        onSave={(changes) => act(() => api.patch(`/sections/${id}`, changes), "Draft saved.")}
       />
 
       {section.holds_items && (
@@ -160,6 +156,7 @@ export default function SectionEditor() {
                 <ItemRow
                   item={item}
                   fields={itemFields}
+                  schema={itemSchema}
                   first={index === 0}
                   last={index === items.length - 1}
                   onMove={(by) => moveItem(index, by)}
@@ -170,16 +167,13 @@ export default function SectionEditor() {
           </ol>
           <Card>
             <h3 className="mb-4 text-lg font-bold">Add an item</h3>
-            <ItemForm
+            <ContentForm
               fields={itemFields}
               data={{}}
+              schema={itemSchema}
               submitLabel="Add item"
-              onSave={(data) =>
-                act(
-                  () => api.post(`/sections/${id}/items`, { data }),
-                  "Item added.",
-                )
-              }
+              clearAfterSave
+              onSave={(data) => act(() => api.post(`/sections/${id}/items`, { data }), "Item added.")}
             />
           </Card>
         </section>
@@ -229,54 +223,10 @@ export default function SectionEditor() {
   );
 }
 
-function DraftForm({
-  draft,
-  fields,
-  onSave,
-}: {
-  draft: Detail["draft"];
-  fields: Record<string, string[]>;
-  onSave: (changes: { title: string; body: string }) => Promise<boolean>;
-}) {
-  const [title, setTitle] = useState(draft.title);
-  const [body, setBody] = useState(draft.body ?? "");
-  return (
-    <form
-      className="space-y-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void onSave({ title, body });
-      }}
-    >
-      <label className="block">
-        <Label>Title</Label>
-        <input
-          className={INPUT}
-          required
-          maxLength={80}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-        <FieldErrors messages={fields.title} />
-      </label>
-      <label className="block">
-        <Label>Text (Markdown)</Label>
-        <textarea
-          className={`${INPUT} min-h-40`}
-          maxLength={20000}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-        />
-        <FieldErrors messages={fields.body} />
-      </label>
-      <Button type="submit">Save draft</Button>
-    </form>
-  );
-}
-
 function ItemRow({
   item,
   fields,
+  schema,
   first,
   last,
   onMove,
@@ -284,6 +234,7 @@ function ItemRow({
 }: {
   item: Item;
   fields: Field[];
+  schema: z.ZodType;
   first: boolean;
   last: boolean;
   onMove: (by: number) => Promise<unknown>;
@@ -328,76 +279,19 @@ function ItemRow({
       </div>
       {editing && (
         <div className="mt-4 border-t border-line pt-4">
-          <ItemForm
+          <ContentForm
             fields={fields}
             data={item.data}
+            schema={schema}
             submitLabel="Save item"
             onSave={async (data) => {
-              const saved = await act(
-                () => api.patch(`/items/${item.id}`, { data }),
-                "Item saved.",
-              );
-              if (saved) setEditing(false);
+              const saved = await act(() => api.patch(`/items/${item.id}`, { data }), "Item saved.");
+              if (saved.ok) setEditing(false);
               return saved;
             }}
           />
         </div>
       )}
     </div>
-  );
-}
-
-function ItemForm({
-  fields,
-  data,
-  submitLabel,
-  onSave,
-}: {
-  fields: Field[];
-  data: ItemData;
-  submitLabel: string;
-  onSave: (data: ItemData) => Promise<boolean>;
-}) {
-  const [values, setValues] = useState(() => toForm(fields, data));
-
-  return (
-    <form
-      className="space-y-4"
-      onSubmit={async (event) => {
-        event.preventDefault();
-        if ((await onSave(fromForm(fields, values, data))) && !Object.keys(data).length) {
-          setValues(toForm(fields, {}));
-        }
-      }}
-    >
-      {fields.map((field) => (
-        <label key={field.name} className="block">
-          <Label>
-            {field.label}
-            {field.hint ? ` (${field.hint})` : ""}
-          </Label>
-          {field.kind === "text" || field.kind === "list" ? (
-            <textarea
-              className={`${INPUT} min-h-24`}
-              required={field.required}
-              value={values[field.name]}
-              onChange={(e) => setValues({ ...values, [field.name]: e.target.value })}
-            />
-          ) : (
-            <input
-              className={INPUT}
-              required={field.required}
-              type={field.kind === "url" ? "url" : "text"}
-              pattern={field.kind === "month" ? "[0-9]{4}-[0-9]{2}" : undefined}
-              value={values[field.name]}
-              onChange={(e) => setValues({ ...values, [field.name]: e.target.value })}
-            />
-          )}
-        </label>
-      ))}
-      <Button type="submit" variant="primary">
-        {submitLabel}
-      </Button>
-    </form>
   );
 }

@@ -161,9 +161,109 @@ test("the audit log lists the actions and can show flagged ones only", async () 
   await expect(page.getByText("section trashed")).toHaveCount(0);
 });
 
+const PAYLOAD = '<img src=x onerror="window.__xss=1">';
+const MARKDOWN_PAYLOAD =
+  "<script>window.__xss=1</script> [click](javascript:window.__xss=1) **bold**";
+
+async function expectNothingInjected() {
+  const found = await page.evaluate(() => ({
+    handlers: document.querySelectorAll("[onerror], [onload], [onclick]").length,
+    scriptLinks: document.querySelectorAll('a[href^="javascript"]').length,
+    images: document.querySelectorAll('img[src="x"]').length,
+    ran: "__xss" in window,
+  }));
+  expect(found).toEqual({ handlers: 0, scriptLinks: 0, images: 0, ran: false });
+}
+
+test("script payloads in every project field stay plain text", async () => {
+  const dialogs: string[] = [];
+  page.on("dialog", (dialog) => {
+    dialogs.push(dialog.message());
+    void dialog.dismiss();
+  });
+  await page.goto("/desk/sections");
+  await page.getByLabel("Type").selectOption("projects");
+  await page.getByLabel("Title").fill("Work");
+  await page.getByRole("button", { name: "Add section" }).click();
+  await page.getByRole("link", { name: "Work" }).click();
+
+  const form = page.locator("form").filter({ has: page.getByRole("button", { name: "Add item" }) });
+  await form.getByLabel("Title").fill(PAYLOAD);
+  await form.getByLabel("Short description").fill(MARKDOWN_PAYLOAD);
+  await form.getByLabel("Category").fill(PAYLOAD.slice(0, 40));
+  await form.getByLabel("Tags").fill(PAYLOAD.slice(0, 40));
+  await form.getByRole("button", { name: "Add link" }).click();
+  const links = form.getByRole("group", { name: /^Links/ });
+  await links.getByLabel("Label").fill(PAYLOAD.slice(0, 60));
+  await links.getByLabel("Address").fill("https://example.test/");
+  await form.getByRole("button", { name: "Add field" }).click();
+  const extra = form.getByRole("group", { name: /^Extra fields/ });
+  await extra.getByLabel("Label").fill(PAYLOAD.slice(0, 60));
+  await extra.getByLabel("Value").fill(PAYLOAD);
+  await form.getByRole("button", { name: "Add image" }).click();
+  await form.getByRole("group", { name: /^Images/ }).getByLabel("Alt text").fill(PAYLOAD);
+  await form.getByLabel("Case study").fill(MARKDOWN_PAYLOAD);
+  await form.getByRole("button", { name: "Add item" }).click();
+
+  await expect(page.getByText("Item added.")).toBeVisible();
+  const row = page.getByTestId("item-row");
+  await expect(row.getByText(PAYLOAD)).toBeVisible();
+  await row.getByRole("button", { name: "Edit", exact: true }).click();
+  const preview = row.getByRole("button", { name: "Preview" });
+  await preview.first().click();
+  await preview.last().click();
+  const rendered = row.getByTestId("markdown-preview");
+  await expect(rendered.first()).toContainText("<script>window.__xss=1</script>");
+  await expect(rendered.first().locator("strong")).toHaveText("bold");
+  await expect(rendered.first().locator("a")).toHaveCount(0);
+  await expectNothingInjected();
+
+  await page.reload();
+  await expect(page.getByTestId("item-row").getByText(PAYLOAD)).toBeVisible();
+  await expectNothingInjected();
+  expect(dialogs).toEqual([]);
+});
+
+test("publishing text with contact details asks first", async () => {
+  await page.getByTestId("item-row").getByRole("button", { name: "Edit", exact: true }).click();
+  const editor = page.getByTestId("item-row").locator("form");
+  await editor.getByLabel("Title").fill("Ledger");
+  await editor.getByLabel("Short description").fill("Write to someone@example.test");
+  await editor.getByRole("button", { name: "Save item" }).click();
+  await expect(page.getByText("Item saved.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  const warnings = page.getByTestId("privacy-warnings");
+  await expect(warnings).toContainText("Ledger: summary: an email address someone@example.test");
+  await page.getByRole("button", { name: "Go back and edit" }).click();
+  await expect(page.getByTestId("publish-state")).toContainText("Never published.");
+
+  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await page.getByRole("button", { name: "Publish anyway" }).click();
+  await expect(page.getByText("Published.")).toBeVisible();
+  await expect(page.getByTestId("publish-state")).toContainText("The live site shows this draft.");
+});
+
+test("the theme editor blocks colours that fail contrast", async () => {
+  await page.goto("/desk/settings");
+  const save = page.getByRole("button", { name: "Save theme" });
+
+  await page.getByLabel("Light theme Text", { exact: true }).fill("#bbbbbb");
+  await expect(page.getByTestId("contrast-failures")).toContainText(
+    "Light theme: Text on the background is",
+  );
+  await expect(save).toBeDisabled();
+
+  await page.getByRole("button", { name: "Blue" }).click();
+  await expect(page.getByTestId("contrast-failures")).toHaveCount(0);
+  await save.click();
+  await expect(page.getByText("Theme saved.")).toBeVisible();
+  await expect(page.getByLabel("Light theme Accent", { exact: true })).toHaveValue("#2a55c7");
+});
+
 test("the admin fits a phone screen", async () => {
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ["/desk/sections", "/desk/trash", "/desk/audit"]) {
+  for (const path of ["/desk/sections", "/desk/settings", "/desk/trash", "/desk/audit"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     const width = await page.evaluate(
