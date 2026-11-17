@@ -14,8 +14,15 @@ from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
 
-from core import audit, notify, passkeys
-from core.models import AdminCredential, Message, PendingAction, Project
+from core import audit, content, notify, passkeys
+from core.models import (
+    AdminCredential,
+    Message,
+    PendingAction,
+    Project,
+    Section,
+    SectionItem,
+)
 
 DELAY = timedelta(hours=24)
 # How long a matured action stays runnable before it expires unused.
@@ -26,7 +33,14 @@ REVOKE_PASSKEY = "revoke_passkey"
 PERMANENT_DELETE = "permanent_delete"
 
 # Allow-list. Auth and audit tables can never be named here.
-DELETABLE = {"project": Project, "message": Message}
+DELETABLE = {
+    "project": Project,
+    "message": Message,
+    "section": Section,
+    "item": SectionItem,
+}
+# Content that must be in the trash first, and still be there when it runs.
+TRASH_FIRST = {"section", "item"}
 
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 Status = PendingAction.Status
@@ -65,7 +79,10 @@ def clean(kind, payload):
         model = DELETABLE.get(entity)
         if model is None or not UUID.fullmatch(target):
             return None
-        if not model.objects.filter(id=target).exists():
+        rows = model.objects.filter(id=target)
+        if entity in TRASH_FIRST:
+            rows = rows.exclude(trashed_at=None)
+        if not rows.exists():
             return None
         return {"entity": entity, "id": target}
     return None
@@ -198,10 +215,15 @@ def run(action_id, credential=None):
             if not _revoke_passkey(action):
                 return action, Outcome.CONFLICT
         elif action.kind == PERMANENT_DELETE:
-            model = DELETABLE.get(action.payload.get("entity"))
+            entity = action.payload.get("entity")
+            model = DELETABLE.get(entity)
             if model is None:
                 return action, Outcome.CONFLICT
-            model.objects.filter(id=action.payload["id"]).delete()
+            if entity in TRASH_FIRST:
+                if not content.delete_for_good(entity, action.payload["id"]):
+                    return action, Outcome.CONFLICT
+            else:
+                model.objects.filter(id=action.payload["id"]).delete()
         else:
             return action, Outcome.CONFLICT
         _resolve(action, Status.EXECUTED)

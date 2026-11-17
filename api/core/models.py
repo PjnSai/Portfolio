@@ -40,9 +40,25 @@ class Section(Timestamped):
     draft = models.JSONField(default=dict)
     published = models.JSONField(default=dict)
     published_at = models.DateTimeField(null=True, blank=True)
+    trashed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "sections"
+        ordering = ["position"]
+
+
+class SectionItem(Timestamped):
+    """One entry in a section: a project, a job, a skill group, a link."""
+
+    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name="items")
+    position = models.PositiveIntegerField(default=0)
+    visible = models.BooleanField(default=True)
+    draft = models.JSONField(default=dict)
+    published = models.JSONField(default=dict)
+    trashed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "section_items"
         ordering = ["position"]
 
 

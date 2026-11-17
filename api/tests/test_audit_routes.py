@@ -22,7 +22,15 @@ def test_entries_are_listed_newest_first(entries):
     assert seqs == sorted(seqs, reverse=True)
     assert len(seqs) == AuditLog.objects.count()
     assert body["next_before"] is None
-    assert set(body["entries"][0]) == {"seq", "at", "event", "actor", "detail", "hash"}
+    assert set(body["entries"][0]) == {
+        "seq",
+        "at",
+        "event",
+        "actor",
+        "detail",
+        "hash",
+        "flagged",
+    }
 
 
 def test_entries_are_paged_by_sequence_number(entries):
@@ -57,11 +65,43 @@ def test_entries_can_be_filtered_by_event(entries):
         {"event": "x" * 61},
         {"event": "a\nb"},
         {"order": "seq"},
+        {"flagged": "0"},
+        {"flagged": "true"},
+        {"flagged": ""},
         {"limit": ["5", "6"]},
     ],
 )
 def test_bad_query_is_refused(entries, params):
     assert entries.get("/audit", params).status_code == 400
+
+
+def test_entries_can_be_filtered_to_flagged_security_events(entries):
+    audit.record("login_failed", actor="anonymous")
+    audit.record("vital_action_requested", kind="permanent_delete")
+
+    listed = entries.get("/audit", {"flagged": "1"}).json()["entries"]
+    everything = entries.get("/audit").json()["entries"]
+
+    assert [entry["event"] for entry in listed] == [
+        "vital_action_requested",
+        "login_failed",
+    ]
+    assert all(entry["flagged"] for entry in listed)
+    assert not any(e["flagged"] for e in everything if e["event"] == "publish")
+
+
+def test_flagged_filter_pages_like_the_full_list(entries):
+    for _ in range(4):
+        audit.record("login_failed", actor="anonymous")
+
+    first = entries.get("/audit", {"flagged": "1", "limit": "3"}).json()
+    second = entries.get(
+        "/audit", {"flagged": "1", "limit": "3", "before": str(first["next_before"])}
+    ).json()
+
+    assert len(first["entries"]) == 3
+    assert len(second["entries"]) == 1
+    assert second["next_before"] is None
 
 
 def test_listing_never_shows_secrets(entries):

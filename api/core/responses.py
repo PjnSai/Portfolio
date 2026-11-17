@@ -7,6 +7,13 @@ def bad_request():
     return JsonResponse({"detail": "Bad request."}, status=400)
 
 
+def invalid(errors):
+    """A form the owner filled in wrongly, with a message for each field."""
+    return JsonResponse(
+        {"detail": "Some fields need changing.", "errors": errors}, status=400
+    )
+
+
 def sign_in_failed():
     return JsonResponse({"detail": "Sign-in failed."}, status=401)
 

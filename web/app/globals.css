@@ -1,1 +1,62 @@
 @import "tailwindcss";
+
+/* One set of colour variables; the dark theme only swaps their values. */
+:root {
+  --paper: #f5efe3;
+  --ink: #161412;
+  --muted: #5b544b;
+  --line: #d6ccba;
+  --panel: #fffaf1;
+  --accent: #e2531b;
+  --notice: #f4b63d;
+  --on-notice: #161412;
+  --danger: #a1221a;
+  --ok: #3f6b1f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #161412;
+    --ink: #f5efe3;
+    --muted: #bdb3a4;
+    --line: #3d3832;
+    --panel: #221f1b;
+    --accent: #f06a35;
+    --notice: #f4b63d;
+    --danger: #ff8a7a;
+    --ok: #a8d17a;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-panel: var(--panel);
+  --color-accent: var(--accent);
+  --color-notice: var(--notice);
+  --color-on-notice: var(--on-notice);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

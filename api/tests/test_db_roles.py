@@ -94,3 +94,16 @@ def test_migrator_can_change_the_schema(roles):
     with as_migrator() as cursor:
         cursor.execute("CREATE TABLE scratch (id int)")
         cursor.execute("DROP TABLE scratch")
+
+
+def test_app_role_can_manage_sections_and_items(roles):
+    from core.models import Section, SectionItem
+
+    with as_app():
+        section = Section.objects.create(type="projects", draft={"title": "P"})
+        item = SectionItem.objects.create(section=section, draft={"title": "I"})
+        item.visible = False
+        item.save()
+        section.delete()
+
+        assert SectionItem.objects.count() == 0

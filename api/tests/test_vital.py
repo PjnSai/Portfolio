@@ -370,3 +370,81 @@ def test_passkeys_are_listed_without_key_material(signed_in, passkey):
             }
         ]
     }
+
+
+# Permanent delete of content from the trash
+
+
+def trashed_section(api):
+    section = api.post("/sections", {"type": "projects", "title": "Old"}).json()
+    item = api.post(
+        f"/sections/{section['id']}/items",
+        {"data": {"title": "Gone", "summary": "", "body": ""}},
+    ).json()
+    api.post(f"/sections/{section['id']}/publish")
+    api.post(f"/sections/{section['id']}/trash")
+    return section, item
+
+
+def request_purge(api, entity, target_id):
+    return api.post(
+        "/vital-actions/request",
+        {"kind": "permanent_delete", "payload": {"entity": entity, "id": target_id}},
+    )
+
+
+def test_content_must_be_in_the_trash_before_permanent_delete(elevated):
+    section = elevated.post("/sections", {"type": "text", "title": "Live"}).json()
+
+    response = request_purge(elevated, "section", section["id"])
+
+    assert response.status_code == 400
+    assert PendingAction.objects.count() == 0
+
+
+def test_trashed_section_is_deleted_for_good_after_the_wait(elevated, passkey):
+    from core.models import Revision, Section, SectionItem
+
+    section, item = trashed_section(elevated)
+    action_id = request_purge(elevated, "section", section["id"]).json()["id"]
+    mature(PendingAction.objects.get(), hours=24, seconds=1)
+    reconfirm(elevated, passkey)
+
+    response = elevated.post(f"/vital-actions/{action_id}/execute")
+
+    assert response.status_code == 200
+    assert not Section.objects.filter(id=section["id"]).exists()
+    assert not SectionItem.objects.filter(id=item["id"]).exists()
+    assert not Revision.objects.filter(entity_id=section["id"]).exists()
+
+
+def test_trashed_item_is_deleted_for_good_after_the_wait(elevated, passkey):
+    from core.models import SectionItem
+
+    section = elevated.post("/sections", {"type": "links", "title": "Links"}).json()
+    item = elevated.post(
+        f"/sections/{section['id']}/items",
+        {"data": {"label": "Code", "url": "https://code.test"}},
+    ).json()
+    elevated.post(f"/items/{item['id']}/trash")
+    action_id = request_purge(elevated, "item", item["id"]).json()["id"]
+    mature(PendingAction.objects.get(), hours=24, seconds=1)
+    reconfirm(elevated, passkey)
+
+    assert elevated.post(f"/vital-actions/{action_id}/execute").status_code == 200
+    assert not SectionItem.objects.filter(id=item["id"]).exists()
+
+
+def test_restoring_from_the_trash_stops_the_permanent_delete(elevated, passkey):
+    from core.models import Section
+
+    section, _ = trashed_section(elevated)
+    action_id = request_purge(elevated, "section", section["id"]).json()["id"]
+    elevated.post(f"/sections/{section['id']}/restore")
+    mature(PendingAction.objects.get(), hours=24, seconds=1)
+    reconfirm(elevated, passkey)
+
+    response = elevated.post(f"/vital-actions/{action_id}/execute")
+
+    assert response.status_code == 409
+    assert Section.objects.filter(id=section["id"]).exists()

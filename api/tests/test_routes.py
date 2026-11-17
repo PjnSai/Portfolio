@@ -9,18 +9,17 @@ from django.utils import timezone
 from core import admin_urls
 from core.authz import Level
 from core.models import Session
-from tests.conftest import age_sessions
+from tests.conftest import age_sessions, fill_path
 
 pytestmark = pytest.mark.django_db
 
-ACTION_ID = "00000000-0000-4000-8000-000000000000"
 NOT_SIGNED_IN = {"detail": "Not signed in."}
 
 
 def routes(*levels):
     found = []
     for pattern in admin_urls.urlpatterns:
-        path = "/" + str(pattern.pattern).replace("<uuid:action_id>", ACTION_ID)
+        path = fill_path("/" + str(pattern.pattern))
         level = getattr(pattern.callback, "admin_level", None)
         for method in getattr(pattern.callback, "admin_methods", ["GET"]):
             if not levels or level in levels:

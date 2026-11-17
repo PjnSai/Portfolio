@@ -12,7 +12,8 @@ GRANT USAGE ON SCHEMA public TO app_rw;
 
 -- Content the admin edits.
 GRANT SELECT, INSERT, UPDATE, DELETE ON
-    site_settings, sections, projects, project_images, project_fields, tags,
+    site_settings, sections, section_items, projects, project_images,
+    project_fields, tags,
     project_tags, experience, education, skill_groups, skills, links, media,
     cv_files, messages, revisions
 TO app_rw;

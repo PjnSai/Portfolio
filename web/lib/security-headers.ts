@@ -53,3 +53,17 @@ export function securityHeaders(
     ...STATIC_HEADERS,
   };
 }
+
+/** The admin pages and the admin API: never indexed, never cached. */
+export const ADMIN_PATH = "/desk";
+
+export function isPrivatePath(pathname: string): boolean {
+  return [ADMIN_PATH, "/api/v1/admin"].some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+export const PRIVATE_HEADERS: Readonly<Record<string, string>> = {
+  "X-Robots-Tag": "noindex, nofollow",
+  "Cache-Control": "no-store",
+};

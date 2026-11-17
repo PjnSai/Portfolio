@@ -9,6 +9,7 @@ select = ["E", "F", "I", "B", "S", "UP", "DJ"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S106", "S107"]
 "tests/settings.py" = ["S105"]
+"tests/e2e_server.py" = ["S105"]
 "gunicorn.conf.py" = ["S104", "S108"]
 
 [tool.pytest.ini_options]

@@ -135,3 +135,21 @@ describe("proxy", () => {
     );
   });
 });
+
+describe("admin pages", () => {
+  it.each(["/desk", "/desk/sections", "/api/v1/admin/session"])(
+    "%s is kept out of search engines and caches",
+    (path) => {
+      const response = proxy(new NextRequest(`https://portfolio.test${path}`));
+
+      expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    },
+  );
+
+  it.each(["/", "/desktop", "/projects/desk"])("%s is left alone", (path) => {
+    const response = proxy(new NextRequest(`https://portfolio.test${path}`));
+
+    expect(response.headers.get("x-robots-tag")).toBeNull();
+  });
+});
