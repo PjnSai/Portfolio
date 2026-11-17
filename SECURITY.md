@@ -13,6 +13,7 @@ Please include the affected URL or file, the steps to reproduce, and what you ex
 - `docs/THREAT-MODEL.md`: what is protected, from whom, and how.
 - `docs/OWASP-MAP.md`: each OWASP Top 10 (2025) item mapped to its control and test.
 - `docs/DECISIONS.md`: design decisions and their reasons.
+- `docs/SECURITY-NOTES.md`: how the admin area is protected and operated, and what is still open.
 
 ## Ground rules of the design
 

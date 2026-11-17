@@ -37,21 +37,17 @@ ALLOWED_HOSTS = [
     host for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if host
 ]
 
+# No django.contrib auth, sessions or admin: passkeys and sessions live in core.
 INSTALLED_APPS = [
-    "django.contrib.contenttypes",
-    "django.contrib.auth",
-    "django.contrib.sessions",
     "rest_framework",
     "core",
 ]
 
+# Security headers are set in core.headers and nowhere else.
 MIDDLEWARE = [
-    "django.middleware.security.SecurityMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware",
+    "core.headers.SecurityHeadersMiddleware",
     "django.middleware.common.CommonMiddleware",
-    "django.middleware.csrf.CsrfViewMiddleware",
-    "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "core.guard.GuardMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -64,25 +60,36 @@ if os.environ.get("DATABASE_URL"):
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+REDIS_URL = os.environ.get("REDIS_URL", "")
+AUDIT_CHAIN_KEY = required_env("AUDIT_CHAIN_KEY")
+
+# Admin guard. If any of these four is empty, every admin request is refused.
+SITE_ORIGIN = os.environ.get("SITE_ORIGIN", "")
+CF_ACCESS_TEAM_DOMAIN = os.environ.get("CF_ACCESS_TEAM_DOMAIN", "")
+CF_ACCESS_AUD = os.environ.get("CF_ACCESS_AUD", "")
+CF_ACCESS_EMAIL = os.environ.get("CF_ACCESS_EMAIL", "")
+
+# SHA-256 of the one-time token that enrols the first passkey. Empty closes it.
+BOOTSTRAP_TOKEN_SHA256 = os.environ.get("BOOTSTRAP_TOKEN_SHA256", "")
+
+ADMIN_REQUESTS_PER_MINUTE = 120
+LOGIN_MAX_FAILURES = 5
+LOGIN_GLOBAL_MAX_FAILURES = 20
+
+# Dotted paths of classes with send(event, context), comma-separated. With none
+# configured, vital actions are refused because the owner could not be told.
+NOTIFIERS = [path for path in os.environ.get("NOTIFIERS", "").split(",") if path]
+
 LANGUAGE_CODE = "en-gb"
 TIME_ZONE = "UTC"
 USE_I18N = False
 USE_TZ = True
 
-SESSION_COOKIE_SECURE = True
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = "Strict"
-CSRF_COOKIE_SECURE = True
-CSRF_COOKIE_SAMESITE = "Strict"
-SECURE_CONTENT_TYPE_NOSNIFF = True
-X_FRAME_OPTIONS = "DENY"
 
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
-    "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication"
-    ],
+    "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "UNAUTHENTICATED_USER": None,
 }

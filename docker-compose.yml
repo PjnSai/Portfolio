@@ -26,7 +26,14 @@ services:
     tmpfs: [/tmp]
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in .env}
+      AUDIT_CHAIN_KEY: ${AUDIT_CHAIN_KEY:?set AUDIT_CHAIN_KEY in .env}
       DJANGO_ALLOWED_HOSTS: api,localhost,127.0.0.1
+      SITE_ORIGIN: ${SITE_ORIGIN:-}
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+      CF_ACCESS_EMAIL: ${CF_ACCESS_EMAIL:-}
+      BOOTSTRAP_TOKEN_SHA256: ${BOOTSTRAP_TOKEN_SHA256:-}
+      NOTIFIERS: ${NOTIFIERS:-core.notify.LogNotifier}
       DATABASE_URL: postgres://portfolio:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/portfolio
       REDIS_URL: redis://redis:6379/0
     ports: ["127.0.0.1:8000:8000"]
