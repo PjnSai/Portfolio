@@ -1,3 +1,4 @@
+import re
 import time
 from datetime import timedelta
 
@@ -14,6 +15,7 @@ ORIGIN = "https://portfolio.test"
 ADMIN = "/api/v1/admin"
 COOKIE = "__Host-session"
 CSRF_COOKIE = "__Host-csrf"
+PLACEHOLDER_ID = "00000000-0000-4000-8000-000000000000"
 
 
 @pytest.fixture(scope="session")
@@ -91,8 +93,19 @@ class Api:
             headers=self.headers(headers),
         )
 
+    def patch(self, path, body=None, headers=None):
+        if self.csrf is None:
+            self.fetch_csrf()
+        return self.client.patch(
+            ADMIN + path,
+            body or {},
+            content_type="application/json",
+            secure=True,
+            headers=self.headers(headers),
+        )
+
     def request(self, method, path, headers=None):
-        send = self.get if method == "GET" else self.post
+        send = {"GET": self.get, "PATCH": self.patch}.get(method, self.post)
         return send(path, headers=headers)
 
     @property
@@ -175,6 +188,12 @@ def age_sessions(**delta):
         if session.elevated_until:
             session.elevated_until -= shift
         session.save()
+
+
+def fill_path(path):
+    """A route pattern with every converter replaced by a well-formed value."""
+    path = re.sub(r"<uuid:\w+>", PLACEHOLDER_ID, path)
+    return re.sub(r"<int:\w+>", "1", path)
 
 
 def mature(action, **past):

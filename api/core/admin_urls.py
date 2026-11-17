@@ -3,6 +3,7 @@
 from django.urls import path
 
 from core import admin_views as views
+from core import content_views as content
 
 urlpatterns = [
     path("csrf", views.csrf),
@@ -30,4 +31,23 @@ urlpatterns = [
     ),
     path("vital-actions/<uuid:action_id>/passkey-options", views.vital_passkey_options),
     path("vital-actions/<uuid:action_id>/execute", views.vital_execute),
+    path("sections", content.sections),
+    path("sections/reorder", content.sections_reorder),
+    path("sections/<uuid:section_id>", content.section),
+    path("sections/<uuid:section_id>/visibility", content.section_visibility),
+    path("sections/<uuid:section_id>/trash", content.section_trash),
+    path("sections/<uuid:section_id>/restore", content.section_restore),
+    path("sections/<uuid:section_id>/publish", content.section_publish),
+    path("sections/<uuid:section_id>/revisions", content.section_revisions),
+    path(
+        "sections/<uuid:section_id>/revisions/<int:version>/restore",
+        content.section_revision_restore,
+    ),
+    path("sections/<uuid:section_id>/items", content.section_items),
+    path("sections/<uuid:section_id>/items/reorder", content.section_items_reorder),
+    path("items/<uuid:item_id>", content.item),
+    path("items/<uuid:item_id>/visibility", content.item_visibility),
+    path("items/<uuid:item_id>/trash", content.item_trash),
+    path("items/<uuid:item_id>/restore", content.item_restore),
+    path("trash", content.trash),
 ]

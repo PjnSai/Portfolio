@@ -1,5 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { newNonce, securityHeaders } from "@/lib/security-headers";
+import {
+  isPrivatePath,
+  newNonce,
+  PRIVATE_HEADERS,
+  securityHeaders,
+} from "@/lib/security-headers";
 
 // Runs on every request: there is no matcher, so no response goes without the
 // headers. The policy is also put on the request, which is where Next.js reads
@@ -21,6 +26,11 @@ export function proxy(request: NextRequest): NextResponse {
   const response = NextResponse.next({ request: { headers: forwarded } });
   for (const [name, value] of Object.entries(headers)) {
     response.headers.set(name, value);
+  }
+  if (isPrivatePath(request.nextUrl.pathname)) {
+    for (const [name, value] of Object.entries(PRIVATE_HEADERS)) {
+      response.headers.set(name, value);
+    }
   }
   return response;
 }

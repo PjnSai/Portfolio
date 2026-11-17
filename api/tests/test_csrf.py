@@ -15,11 +15,10 @@ from django.urls import URLPattern, get_resolver
 
 from core.authz import Level
 from core.models import Session
-from tests.conftest import ADMIN, CSRF_COOKIE, ORIGIN
+from tests.conftest import ADMIN, CSRF_COOKIE, ORIGIN, fill_path
 
 pytestmark = pytest.mark.django_db
 
-ACTION_ID = "00000000-0000-4000-8000-000000000000"
 UNSAFE_METHODS = ["POST", "PUT", "PATCH", "DELETE"]
 FORBIDDEN = {"detail": "Forbidden."}
 
@@ -39,7 +38,7 @@ def walk(patterns, prefix="/"):
     for pattern in patterns:
         path = prefix + str(pattern.pattern)
         if isinstance(pattern, URLPattern):
-            yield path.replace("<uuid:action_id>", ACTION_ID), pattern.callback
+            yield fill_path(path), pattern.callback
         else:
             yield from walk(pattern.url_patterns, path)
 

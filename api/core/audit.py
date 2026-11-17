@@ -21,6 +21,26 @@ from django.utils import timezone
 from core.models import AuditLog
 
 GENESIS = "0" * 64
+
+# Security events the owner should look at. The audit page can show only these.
+FLAGGED = frozenset(
+    {
+        "login_failed",
+        "bootstrap_failed",
+        "recovery_failed",
+        "recovery_used",
+        "recovery_refused",
+        "lockout",
+        "elevation_failed",
+        "sessions_revoked",
+        "access_revoked",
+        "passkey_added",
+        "passkey_revoked",
+        "vital_action_requested",
+        "vital_action_executed",
+        "vital_action_refused",
+    }
+)
 ATTEMPTS = 5
 
 

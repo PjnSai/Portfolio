@@ -312,7 +312,7 @@ def elevate_verify(request):
 
 # Audit log
 
-AUDIT_PARAMS = {"event", "before", "limit"}
+AUDIT_PARAMS = {"event", "before", "limit", "flagged"}
 AUDIT_PAGE = 50
 AUDIT_MAX_PAGE = 100
 DIGITS = re.compile(r"[0-9]{1,18}")
@@ -346,6 +346,10 @@ def audit_list(request):
         if not 0 < len(event) <= 60 or not event.isprintable():
             return responses.bad_request()
         entries = entries.filter(event=event)
+    if "flagged" in params:
+        if params.get("flagged") != "1":
+            return responses.bad_request()
+        entries = entries.filter(event__in=audit.FLAGGED)
     page = list(entries[: limit + 1])
     more = len(page) > limit
     page = page[:limit]
@@ -359,6 +363,7 @@ def audit_list(request):
                     "actor": entry.actor,
                     "detail": entry.detail,
                     "hash": entry.hash,
+                    "flagged": entry.event in audit.FLAGGED,
                 }
                 for entry in page
             ],

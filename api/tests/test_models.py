@@ -9,6 +9,7 @@ from core.models import Project
 TABLES = {
     "site_settings",
     "sections",
+    "section_items",
     "projects",
     "project_images",
     "project_fields",
