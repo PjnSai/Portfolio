@@ -5,6 +5,7 @@ from django.urls import path
 from core import admin_views as views
 
 urlpatterns = [
+    path("csrf", views.csrf),
     path("login/options", views.login_options),
     path("login/verify", views.login_verify),
     path("bootstrap/options", views.bootstrap_options),

@@ -4,7 +4,7 @@ import pytest
 from django.utils import timezone
 
 from core.models import AuditLog, Session
-from tests.conftest import COOKIE, age_sessions
+from tests.conftest import COOKIE, CSRF_COOKIE, age_sessions
 from tests.notifiers import Recorder
 
 pytestmark = pytest.mark.django_db
@@ -12,16 +12,17 @@ pytestmark = pytest.mark.django_db
 
 def test_cookie_flags(api, passkey):
     response = api.login(passkey)
-    cookie = response.cookies[COOKIE]
 
-    assert cookie["secure"] is True
-    assert cookie["httponly"] is True
-    assert cookie["samesite"] == "Strict"
-    assert cookie["path"] == "/"
-    assert cookie["domain"] == ""
-    assert cookie["max-age"] == ""
-    assert cookie["expires"] == ""
-    assert list(response.cookies) == [COOKIE]
+    assert set(response.cookies) == {COOKIE, CSRF_COOKIE}
+    for name in (COOKIE, CSRF_COOKIE):
+        cookie = response.cookies[name]
+        assert cookie["secure"] is True, name
+        assert cookie["httponly"] is True, name
+        assert cookie["samesite"] == "Strict", name
+        assert cookie["path"] == "/", name
+        assert cookie["domain"] == "", name
+        assert cookie["max-age"] == "", name
+        assert cookie["expires"] == "", name
 
 
 def test_session_id_is_256_bits_and_only_its_hash_is_stored(signed_in):
@@ -139,7 +140,8 @@ def test_revoke_all_needs_a_fresh_passkey_confirmation(signed_in):
 def test_session_endpoint_reports_state_for_the_admin_banner(signed_in, passkey):
     body = signed_in.get("/session").json()
 
-    assert body["csrf_token"] == signed_in.csrf
+    token = {"X-CSRF-Token": body["csrf_token"]}
+    assert signed_in.post("/elevate/options", headers=token).status_code == 200
     assert body["elevated"] is False
     assert body["pending_actions"] == 0
 
@@ -154,6 +156,17 @@ def test_csrf_tokens_differ_between_sessions(signed_in, new_api, passkey):
 
     assert other.csrf != signed_in.csrf
     assert len(signed_in.csrf) >= 43
+    response = signed_in.post("/logout", headers={"X-CSRF-Token": other.csrf})
+    assert response.status_code == 403
+
+
+def test_csrf_token_is_masked_differently_on_each_response(signed_in):
+    first = signed_in.get("/session").json()["csrf_token"]
+    second = signed_in.get("/session").json()["csrf_token"]
+
+    assert first != second
+    response = signed_in.post("/logout", headers={"X-CSRF-Token": first})
+    assert response.status_code == 200
 
 
 def test_failed_passkey_confirmation_does_not_elevate(signed_in, passkey):

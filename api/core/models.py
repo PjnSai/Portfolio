@@ -267,7 +267,7 @@ class Owner(Base):
     singleton = models.BooleanField(default=True, unique=True, editable=False)
     created_at = models.DateTimeField(default=timezone.now)
     bootstrapped_at = models.DateTimeField(null=True, blank=True)
-    recovery_key_hash = models.CharField(max_length=64, blank=True, default="")
+    recovery_key_hash = models.CharField(max_length=128, blank=True, default="")
 
     class Meta:
         db_table = "admin_owner"

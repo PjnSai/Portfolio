@@ -130,7 +130,8 @@ def test_refused_when_site_origin_is_not_configured(api, settings):
 
 
 def test_admin_request_rate_is_capped(signed_in, settings):
-    settings.ADMIN_REQUESTS_PER_MINUTE = 3
+    # Signing in took three requests: CSRF token, options and verify.
+    settings.ADMIN_REQUESTS_PER_MINUTE = 4
 
     statuses = [signed_in.get("/session").status_code for _ in range(5)]
 

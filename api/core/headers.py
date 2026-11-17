@@ -1,7 +1,8 @@
-"""The API's security headers. This is the only place they are defined.
+"""Security headers Django does not set itself.
 
-The API serves JSON only, so the policy allows nothing: no scripts, no frames,
-no forms.
+Django's SecurityMiddleware and XFrameOptionsMiddleware set HSTS, nosniff,
+Referrer-Policy, COOP and X-Frame-Options (see config/settings.py). The API
+serves JSON only, so the policy allows nothing: no scripts, no frames, no forms.
 """
 
 HEADERS = {
@@ -9,11 +10,6 @@ HEADERS = {
         "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; "
         "form-action 'none'"
     ),
-    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
-    "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-origin",
     "Permissions-Policy": (
         "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "

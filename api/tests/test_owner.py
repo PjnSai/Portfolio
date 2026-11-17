@@ -3,6 +3,7 @@
 import hashlib
 
 import pytest
+from django.contrib.auth.hashers import check_password
 from django.db import IntegrityError, transaction
 
 from core import admin_urls
@@ -188,7 +189,10 @@ def test_bootstrap_hands_out_the_recovery_key_once(owned):
 
     stored = Owner.objects.get().recovery_key_hash
     assert len(key) >= 43
-    assert stored == hashlib.sha256(key.encode()).hexdigest()
+    assert stored.startswith("pbkdf2_sha256$")
+    assert check_password(key, stored)
+    assert not check_password(key + "x", stored)
+    assert key not in stored
     assert key not in str(list(AuditLog.objects.values_list("detail", flat=True)))
     assert key not in str(Recorder.sent)
 
@@ -311,6 +315,14 @@ def test_recovery_is_closed_before_a_key_exists(api, passkey):
     for key in ("", "guess", hashlib.sha256(b"").hexdigest()):
         assert recover(api, key, SoftAuthenticator()).status_code in (400, 401)
     assert AdminCredential.objects.count() == 1
+
+
+def test_a_plain_sha256_recovery_hash_is_not_accepted(new_api, owned):
+    _, key = owned
+    Owner.objects.update(recovery_key_hash=hashlib.sha256(key.encode()).hexdigest())
+
+    assert recover(new_api(), key, SoftAuthenticator()).status_code == 401
+    assert AdminCredential.objects.get().name == "First key"
 
 
 def test_recovery_guesses_are_rate_limited(new_api, owned):

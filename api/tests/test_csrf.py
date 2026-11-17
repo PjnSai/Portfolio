@@ -3,10 +3,10 @@
 The route list is read from the URL configuration, so a new route is covered
 without being added here. Three kinds of route exist:
 
-- Session routes need the session's CSRF token.
-- The four sign-in routes run before a session exists, so there is no token to
-  ask for. They are listed by name below and must prove the request came from
-  this site instead. Adding a fifth fails this file until it is listed.
+- Session routes need a CSRF token from Django's CsrfViewMiddleware.
+- The six sign-in routes run before a session exists. They need the same token,
+  fetched from GET /csrf, and must also pass the Origin and Fetch-Metadata
+  checks. They are listed by name; adding another fails this file.
 - Public routes accept no state-changing method at all.
 """
 
@@ -15,7 +15,7 @@ from django.urls import URLPattern, get_resolver
 
 from core.authz import Level
 from core.models import Session
-from tests.conftest import ADMIN, ORIGIN
+from tests.conftest import ADMIN, CSRF_COOKIE, ORIGIN
 
 pytestmark = pytest.mark.django_db
 
@@ -31,6 +31,8 @@ NO_SESSION_YET = {
     f"{ADMIN}/recovery/options",
     f"{ADMIN}/recovery/verify",
 }
+TOKEN_ROUTE = f"{ADMIN}/csrf"
+BAD_TOKENS = [None, "", "wrong-token", "x" * 64]
 
 
 def walk(patterns, prefix="/"):
@@ -59,11 +61,15 @@ def cases(*levels):
 
 
 WITH_SESSION = cases(Level.SESSION, Level.ELEVATED)
-BEFORE_SESSION = cases(Level.ACCESS)
+BEFORE_SESSION = [
+    case for case in cases(Level.ACCESS) if case.values[1] in NO_SESSION_YET
+]
 PUBLIC = cases(None)
 
 
 def send(api, method, path, **headers):
+    if api.csrf is None:
+        api.fetch_csrf()
     return api.client.generic(
         method,
         path,
@@ -76,15 +82,36 @@ def send(api, method, path, **headers):
 
 def test_every_route_is_covered():
     assert all("<" not in path for path, _ in ROUTES)
-    assert len(WITH_SESSION) + len(BEFORE_SESSION) + len(PUBLIC) == len(ROUTES) * 4
+    token_route = len(UNSAFE_METHODS)
+    covered = len(WITH_SESSION) + len(BEFORE_SESSION) + len(PUBLIC) + token_route
+    assert covered == len(ROUTES) * 4
     assert len(WITH_SESSION) >= 12 * 4
+    assert len(BEFORE_SESSION) == len(NO_SESSION_YET) * 4
     assert len(PUBLIC) >= 2 * 4
 
 
-def test_only_the_sign_in_routes_run_without_a_csrf_token():
-    without_token = {path for path, view in ROUTES if level(view) is Level.ACCESS}
+def test_only_the_sign_in_routes_run_without_a_session():
+    without_session = {path for path, view in ROUTES if level(view) is Level.ACCESS}
 
-    assert without_token == NO_SESSION_YET
+    assert without_session == NO_SESSION_YET | {TOKEN_ROUTE}
+
+
+@pytest.mark.parametrize("method", UNSAFE_METHODS)
+def test_the_token_route_changes_nothing(api, method):
+    assert dict(ROUTES)[TOKEN_ROUTE].admin_methods == ["GET"]
+    assert send(api, method, TOKEN_ROUTE).status_code == 405
+
+
+def test_csrf_cookie_is_locked_down(api):
+    response = api.fetch_csrf()
+    cookie = response.cookies[CSRF_COOKIE]
+
+    assert response.status_code == 200
+    assert cookie["secure"] and cookie["httponly"]
+    assert cookie["samesite"] == "Strict"
+    assert cookie["path"] == "/"
+    assert not cookie["domain"]
+    assert cookie.value not in response.content.decode()
 
 
 @pytest.mark.parametrize("method,path,view", WITH_SESSION)
@@ -98,18 +125,48 @@ def test_rejected_without_a_valid_csrf_token(
     live = Session.objects.filter(revoked_at=None).count()
     declared = method in view.admin_methods
 
-    for token in (None, "", "wrong-token", stale, other.csrf, signed_in.csrf + "x"):
+    for token in (*BAD_TOKENS, stale, other.csrf, signed_in.csrf + "x"):
         response = send(signed_in, method, path, **{"X-CSRF-Token": token})
 
-        if declared:
-            assert response.status_code == 403, token
-            assert response.json() == FORBIDDEN
-        else:
-            assert response.status_code == 405, token
+        assert response.status_code == 403, token
+        assert response.json() == FORBIDDEN
     assert Session.objects.filter(revoked_at=None).count() == live
 
+    response = send(signed_in, method, path)
     if declared:
-        assert send(signed_in, method, path).status_code != 403
+        assert response.status_code != 403
+    else:
+        assert response.status_code == 405
+
+
+@pytest.mark.parametrize("method,path,view", BEFORE_SESSION)
+def test_sign_in_routes_need_a_csrf_token(api, new_api, method, path, view):
+    other = new_api()
+    other.fetch_csrf()
+    api.fetch_csrf()
+
+    for token in (*BAD_TOKENS, other.csrf, api.csrf + "x"):
+        response = send(api, method, path, **{"X-CSRF-Token": token})
+
+        assert response.status_code == 403, token
+        assert response.json() == FORBIDDEN
+
+    del api.client.cookies[CSRF_COOKIE]
+    response = send(api, method, path)
+
+    assert response.status_code == 403
+    assert response.json() == FORBIDDEN
+
+
+def test_signing_in_replaces_the_csrf_token(api, passkey):
+    api.fetch_csrf()
+    before = api.csrf
+
+    assert api.login(passkey).status_code == 200
+
+    response = api.post("/logout", headers={"X-CSRF-Token": before})
+    assert response.status_code == 403
+    assert api.post("/logout").status_code == 200
 
 
 @pytest.mark.parametrize("method,path,view", BEFORE_SESSION)

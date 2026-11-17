@@ -13,6 +13,7 @@ from tests.notifiers import Recorder
 ORIGIN = "https://portfolio.test"
 ADMIN = "/api/v1/admin"
 COOKIE = "__Host-session"
+CSRF_COOKIE = "__Host-csrf"
 
 
 @pytest.fixture(scope="session")
@@ -53,9 +54,16 @@ class Api:
     """Test client that sends what the owner's browser would send."""
 
     def __init__(self, token):
-        self.client = Client()
+        self.client = Client(enforce_csrf_checks=True)
         self.access_token = token
         self.csrf = None
+
+    def fetch_csrf(self):
+        """Get a CSRF token and its cookie, as the admin page does on load."""
+        response = self.client.get(ADMIN + "/csrf", secure=True, headers=self.headers())
+        if response.status_code == 200:
+            self.csrf = response.json()["csrf_token"]
+        return response
 
     def headers(self, overrides=None):
         headers = {
@@ -73,6 +81,8 @@ class Api:
         )
 
     def post(self, path, body=None, headers=None):
+        if self.csrf is None:
+            self.fetch_csrf()
         return self.client.post(
             ADMIN + path,
             body or {},
