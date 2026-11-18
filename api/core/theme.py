@@ -1,61 +1,28 @@
-"""Theme colours as tokens, checked against WCAG AA contrast before they are kept.
+"""Palette colours as tokens, checked against WCAG AA contrast before they are kept.
 web/lib/admin/contrast.ts does the same sums so the editor can warn as you type."""
 
 MODES = ("light", "dark")
+ACCENTS = (1, 2, 3, 4)
 
-# (foreground, background, minimum ratio, what the pair is used for)
-PAIRS = (
-    ("ink", "background", 4.5, "Text on the background"),
-    ("on_accent", "accent", 4.5, "Text on the accent colour"),
-    ("accent", "background", 3.0, "The accent colour against the background"),
+SLOTS = (
+    "bg",
+    "ink",
+    "surface",
+    "primary",
+    "on_primary",
+    *(f"accent_{n}" for n in ACCENTS),
+    *(f"on_accent_{n}" for n in ACCENTS),
 )
 
-DEFAULT = {
-    "light": {
-        "background": "#f5efe3",
-        "ink": "#161412",
-        "accent": "#e2531b",
-        "on_accent": "#161412",
-    },
-    "dark": {
-        "background": "#161412",
-        "ink": "#f5efe3",
-        "accent": "#f06a35",
-        "on_accent": "#161412",
-    },
-}
-
-PRESETS = {
-    "orange": DEFAULT,
-    "blue": {
-        "light": {
-            "background": "#f5efe3",
-            "ink": "#161412",
-            "accent": "#2a55c7",
-            "on_accent": "#ffffff",
-        },
-        "dark": {
-            "background": "#161412",
-            "ink": "#f5efe3",
-            "accent": "#7a9cf0",
-            "on_accent": "#161412",
-        },
-    },
-    "olive": {
-        "light": {
-            "background": "#f5efe3",
-            "ink": "#161412",
-            "accent": "#6b7022",
-            "on_accent": "#ffffff",
-        },
-        "dark": {
-            "background": "#161412",
-            "ink": "#f5efe3",
-            "accent": "#b9bf5a",
-            "on_accent": "#161412",
-        },
-    },
-}
+# (foreground, background, minimum ratio). 4.5:1 for text, 3:1 for the primary
+# colour as an interface part against the page.
+PAIRS = (
+    ("ink", "bg", 4.5),
+    ("ink", "surface", 4.5),
+    ("on_primary", "primary", 4.5),
+    *((f"on_accent_{n}", f"accent_{n}", 4.5) for n in ACCENTS),
+    ("primary", "bg", 3.0),
+)
 
 
 def _channel(value):
@@ -73,16 +40,18 @@ def contrast(one, two):
     return (lighter + 0.05) / (darker + 0.05)
 
 
-def failures(tokens):
-    """A message for each pair below its minimum; empty when all pass."""
+def failures(mode, colours):
+    """A message for each pair in one mode below its minimum; empty when all pass."""
     problems = []
-    for mode in MODES:
-        colours = tokens[mode]
-        for front, back, minimum, use in PAIRS:
-            ratio = contrast(colours[front], colours[back])
-            if ratio < minimum:
-                problems.append(
-                    f"{mode.title()} theme: {use} is {ratio:.2f}:1; "
-                    f"it needs at least {minimum}:1."
-                )
+    for front, back, minimum in PAIRS:
+        ratio = contrast(colours[front], colours[back])
+        if ratio < minimum:
+            problems.append(
+                f"{mode.title()}: {front} on {back} is {ratio:.2f}:1; "
+                f"it needs at least {minimum}:1."
+            )
     return problems
+
+
+# Preset E, made by migration 0009 with this fixed id so new settings can name it.
+DEFAULT_PALETTE = "b399fb8f-5de4-462d-98f5-a81bf8046a6f"

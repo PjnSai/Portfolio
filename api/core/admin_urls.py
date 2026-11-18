@@ -5,6 +5,7 @@ from django.urls import path
 from core import admin_views as views
 from core import content_views as content
 from core import media_views as media
+from core import palette_views as palettes
 
 urlpatterns = [
     path("csrf", views.csrf),
@@ -53,6 +54,12 @@ urlpatterns = [
     path("trash", content.trash),
     path("settings", content.site_settings),
     path("settings/publish", content.site_settings_publish),
+    path("palettes", palettes.palette_list),
+    path("palettes/use", palettes.palette_use),
+    path("palettes/<uuid:palette_id>", palettes.palette),
+    path("palettes/<uuid:palette_id>/duplicate", palettes.palette_duplicate),
+    path("palettes/<uuid:palette_id>/trash", palettes.palette_trash),
+    path("palettes/<uuid:palette_id>/restore", palettes.palette_restore),
     path("media", media.library),
     path("media/<uuid:media_id>", media.media_item),
     path("media/<uuid:media_id>/trash", media.media_trash),

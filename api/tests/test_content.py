@@ -364,7 +364,7 @@ def test_purge_removes_only_what_has_been_in_the_trash_thirty_days(signed_in):
     assert not Revision.objects.filter(entity_id=old["id"]).exists()
     last = AuditLog.objects.order_by("-seq").first()
     assert (last.event, last.actor) == ("trash_purged", "system")
-    assert last.detail == {"sections": 1, "items": 1, "media": 0}
+    assert last.detail == {"sections": 1, "items": 1, "media": 0, "palettes": 0}
 
 
 # Limits

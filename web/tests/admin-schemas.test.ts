@@ -1,12 +1,54 @@
 import { describe, expect, it } from "vitest";
 import { flattenErrors } from "@/lib/admin/api";
-import { contrast, DEFAULT_THEME, failures } from "@/lib/admin/contrast";
+import { contrast, failures, PAIRS } from "@/lib/admin/contrast";
 import {
   issuesByField,
   ITEM_SCHEMAS,
+  paletteChoiceSchema,
+  paletteSchema,
   SECTION_SCHEMAS,
   settingsSchema,
 } from "@/lib/admin/schemas";
+import { MODES, type PaletteColours } from "@/lib/palettes";
+
+const ORIGINAL_ID = "b399fb8f-5de4-462d-98f5-a81bf8046a6f";
+const OTHER_ID = "0c63ed98-cf1f-4c4d-945f-8725c81ab5b4";
+
+// The Original preset, as migration 0010 seeds it.
+const ORIGINAL: PaletteColours = {
+  light: {
+    bg: "#F3EBDD",
+    ink: "#17140F",
+    surface: "#FBF6EE",
+    primary: "#E8551C",
+    on_primary: "#17140F",
+    accent_1: "#2B57C9",
+    on_accent_1: "#FFFFFF",
+    accent_2: "#F2A6C6",
+    on_accent_2: "#17140F",
+    accent_3: "#F2B835",
+    on_accent_3: "#17140F",
+    accent_4: "#5E621C",
+    on_accent_4: "#FFFFFF",
+  },
+  dark: {
+    bg: "#17140F",
+    ink: "#F3EBDD",
+    surface: "#24201A",
+    primary: "#FF5A1F",
+    on_primary: "#17140F",
+    accent_1: "#6E93F0",
+    on_accent_1: "#17140F",
+    accent_2: "#F2A6C6",
+    on_accent_2: "#17140F",
+    accent_3: "#F2B835",
+    on_accent_3: "#17140F",
+    accent_4: "#A9AE4A",
+    on_accent_4: "#17140F",
+  },
+};
+
+const palette = { name: "Mine", ...structuredClone(ORIGINAL) };
 
 const project = {
   title: "Ledger",
@@ -28,7 +70,9 @@ const settings = {
   contact_form: true,
   showcase_layout: "ring",
   layout_switcher: false,
-  theme: DEFAULT_THEME,
+  palette_mode: "fixed",
+  default_palette_id: ORIGINAL_ID,
+  enabled_palette_ids: [ORIGINAL_ID],
 };
 
 const refused = (result: { success: boolean }) => expect(result.success).toBe(false);
@@ -119,19 +163,60 @@ describe("settings schema", () => {
     accepted(settingsSchema.safeParse(settings));
   });
 
-  it.each(["red", "#fff", "#e2531b;}", "var(--x)"])("refuses colour %s", (colour) => {
-    const theme = { ...DEFAULT_THEME, light: { ...DEFAULT_THEME.light, accent: colour } };
-    refused(settingsSchema.safeParse({ ...settings, theme }));
-  });
-
-  it("refuses a pair that fails contrast", () => {
-    const theme = { ...DEFAULT_THEME, light: { ...DEFAULT_THEME.light, ink: "#bbbbbb" } };
-    refused(settingsSchema.safeParse({ ...settings, theme }));
-  });
-
   it("refuses an unknown layout and an unknown SEO page", () => {
     refused(settingsSchema.safeParse({ ...settings, showcase_layout: "carousel" }));
     refused(settingsSchema.safeParse({ ...settings, seo: { blog: { title: "x" } } }));
+  });
+
+  it("no longer takes the old theme field", () => {
+    refused(settingsSchema.safeParse({ ...settings, theme: {} }));
+  });
+
+  it.each([
+    { palette_mode: "random" },
+    { enabled_palette_ids: [] },
+    { default_palette_id: OTHER_ID },
+    { default_palette_id: "not-an-id" },
+  ])("refuses the palette choice %o", (change) => {
+    refused(settingsSchema.safeParse({ ...settings, ...change }));
+    refused(paletteChoiceSchema.safeParse({ ...settings, ...change, title: undefined }));
+  });
+
+  it("accepts a choice whose default is enabled", () => {
+    accepted(
+      paletteChoiceSchema.safeParse({
+        palette_mode: "rotate",
+        default_palette_id: OTHER_ID,
+        enabled_palette_ids: [ORIGINAL_ID, OTHER_ID],
+      }),
+    );
+  });
+});
+
+describe("palette schema", () => {
+  it("accepts the Original preset", () => {
+    accepted(paletteSchema.safeParse(palette));
+  });
+
+  it.each(["red", "#fff", "#E2531B;}", "var(--x)", "url(x)", "#E2531BFF", ""])(
+    "refuses colour %s",
+    (colour) => {
+      refused(paletteSchema.safeParse({ ...palette, light: { ...palette.light, primary: colour } }));
+    },
+  );
+
+  it("refuses a missing or extra slot", () => {
+    const missing: Record<string, string> = { ...palette.dark };
+    delete missing.accent_4;
+    refused(paletteSchema.safeParse({ ...palette, dark: missing }));
+    refused(paletteSchema.safeParse({ ...palette, dark: { ...palette.dark, accent_5: "#000000" } }));
+    refused(paletteSchema.safeParse({ ...palette, kind: "preset" }));
+  });
+
+  it("refuses a pair that fails contrast, under the mode", () => {
+    const result = paletteSchema.safeParse({ ...palette, dark: { ...palette.dark, ink: "#24201A" } });
+    if (result.success) throw new Error("expected failure");
+    expect(issuesByField(result.error).dark[0]).toMatch(/^Dark: ink on bg is/);
   });
 });
 
@@ -182,17 +267,33 @@ describe("contrast", () => {
     expect(contrast(one, two)).toBeCloseTo(ratio, 2);
   });
 
-  it("passes the default theme", () => {
-    expect(failures(DEFAULT_THEME)).toEqual([]);
+  it("passes the Original preset", () => {
+    expect(failures(ORIGINAL)).toEqual([]);
   });
 
-  it("names each failing pair", () => {
-    const theme = {
-      ...DEFAULT_THEME,
-      dark: { ...DEFAULT_THEME.dark, on_accent: "#f5efe3" },
-    };
-    const found = failures(theme);
-    expect(found).toHaveLength(1);
-    expect(found[0]).toMatchObject({ mode: "dark", front: "on_accent", back: "accent" });
+  it("checks the same pairs as the API", () => {
+    expect(PAIRS.map((p) => `${p.front}/${p.back}/${p.minimum}`)).toEqual([
+      "ink/bg/4.5",
+      "ink/surface/4.5",
+      "on_primary/primary/4.5",
+      "on_accent_1/accent_1/4.5",
+      "on_accent_2/accent_2/4.5",
+      "on_accent_3/accent_3/4.5",
+      "on_accent_4/accent_4/4.5",
+      "primary/bg/3",
+    ]);
   });
+
+  it.each(MODES.flatMap((mode) => PAIRS.map((pair) => [mode, pair] as const)))(
+    "names a failing pair in %s: %o",
+    (mode, pair) => {
+      const colours = structuredClone(ORIGINAL);
+      colours[mode][pair.front] = colours[mode][pair.back];
+      const found = failures(colours);
+      expect(found.map((f) => f.message)).toContain(
+        `${mode === "light" ? "Light" : "Dark"}: ${pair.front} on ${pair.back} is 1.00:1; it needs at least ${pair.minimum}:1.`,
+      );
+      expect(found.every((f) => f.mode === mode)).toBe(true);
+    },
+  );
 });

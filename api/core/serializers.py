@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 from rest_framework import serializers
 
 from core import theme
-from core.models import Media
+from core.models import Media, Palette
 
 SECTION_TYPES = (
     "hero",
@@ -157,15 +157,15 @@ class Choice(serializers.ChoiceField):
 
 
 class Colour(serializers.CharField):
-    """A colour token: #rrggbb and nothing else, so no CSS can ride along."""
+    """A colour token: #RRGGBB and nothing else, so no CSS can ride along."""
 
     def __init__(self, **kwargs):
         super().__init__(max_length=7, **kwargs)
 
     def to_internal_value(self, data):
         if not isinstance(data, str) or not HEX.fullmatch(data):
-            raise serializers.ValidationError("Use a colour like #1a2b3c.")
-        return data.lower()
+            raise serializers.ValidationError("Use a colour like #1A2B3C.")
+        return data.upper()
 
 
 def tags(max_items, max_length=40):
@@ -314,25 +314,71 @@ class Seo(Strict):
     how_built = PageSeo(required=False)
 
 
-class Tokens(Strict):
-    background = Colour()
-    ink = Colour()
-    accent = Colour()
-    on_accent = Colour()
+# Palettes
+
+PALETTE_MODES = ("fixed", "rotate", "pick")
+# Five presets and at most twelve custom palettes.
+MAX_PALETTES = 17
+
+Slots = type(
+    "Slots",
+    (Strict,),
+    {
+        "__doc__": "Every colour slot of one mode; none may be left out.",
+        **{slot: Colour() for slot in theme.SLOTS},
+    },
+)
 
 
-class Theme(Strict):
-    light = Tokens()
-    dark = Tokens()
+class PaletteBody(Strict):
+    name = line(60)
+    light = Slots()
+    dark = Slots()
 
     def validate(self, attrs):
-        problems = theme.failures(attrs)
+        problems = {
+            mode: found
+            for mode in theme.MODES
+            if (found := theme.failures(mode, attrs[mode]))
+        }
         if problems:
             raise serializers.ValidationError(problems)
         return attrs
 
 
-class Settings(Strict):
+class Duplicate(Strict):
+    name = line(60, required=False)
+
+
+class PaletteChoice(Strict):
+    """Which palettes the public site uses, and how visitors get one."""
+
+    palette_mode = Choice(choices=PALETTE_MODES)
+    default_palette_id = Id()
+    enabled_palette_ids = serializers.ListField(
+        child=Id(), min_length=1, max_length=MAX_PALETTES, validators=[_once]
+    )
+
+    def validate(self, attrs):
+        enabled = attrs["enabled_palette_ids"]
+        if attrs["default_palette_id"] not in enabled:
+            raise serializers.ValidationError(
+                {"default_palette_id": ["The default must be one of the enabled."]}
+            )
+        live = {
+            str(found)
+            for found in Palette.objects.filter(
+                id__in=enabled, trashed_at=None
+            ).values_list("id", flat=True)
+        }
+        if set(enabled) - live:
+            raise serializers.ValidationError(
+                {"enabled_palette_ids": ["Each must be a palette that exists."]}
+            )
+        return attrs
+
+
+class Settings(PaletteChoice):
     title = line(80)
     description = line(300, required=False)
     contact_form = Flag()
@@ -340,7 +386,6 @@ class Settings(Strict):
     layout_switcher = Flag()
     seo = Seo(required=False)
     social_image = ImageSlot(required=False, allow_null=True)
-    theme = Theme()
 
 
 def as_json(value):

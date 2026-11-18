@@ -4,7 +4,7 @@ permanent deletion goes through the vital-action routes instead."""
 from django.db import transaction
 from django.http import JsonResponse
 
-from core import content, deploy, pages, privacy, responses, serializers, theme
+from core import content, deploy, pages, responses, serializers
 from core.authz import Level, admin_route
 from core.models import Revision, Section, SectionItem
 
@@ -324,8 +324,7 @@ def _settings(row):
         "draft": row.draft,
         "published_at": _when(row.published_at),
         "unpublished_changes": content.settings_unpublished(row),
-        "privacy_warnings": privacy.scan(row.draft),
-        "theme_presets": theme.PRESETS,
+        "privacy_warnings": content.settings_warnings(row),
         "purge_failed_at": _when(row.purge_failed_at),
     }
 
@@ -344,5 +343,11 @@ def site_settings(request):
 @admin_route(Level.SESSION, methods=POST)
 def site_settings_publish(request):
     row = content.site_settings()
-    refusal = _privacy_check(request, privacy.scan(row.draft))
-    return refusal or _published(content.publish_settings(row), "settings_published")
+    refusal = _privacy_check(request, content.settings_warnings(row))
+    if refusal:
+        return refusal
+    try:
+        version = content.publish_settings(row)
+    except content.Refused as refused:
+        return responses.conflict(refused.args[0])
+    return _published(version, "settings_published")

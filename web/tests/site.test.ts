@@ -2,9 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { apiOrigin } from "@/lib/api-base";
 import { EMPTY_SITE, loadSite, srcset } from "@/lib/site";
 
+const PALETTE_ID = "b399fb8f-5de4-462d-98f5-a81bf8046a6f";
 const SITE = {
-  settings: { title: "Pujan Shahi" },
+  settings: {
+    title: "Pujan Shahi",
+    palette_mode: "fixed",
+    default_palette_id: PALETTE_ID,
+    enabled_palette_ids: [PALETTE_ID],
+  },
   sections: [{ title: "Projects" }],
+  palettes: [{ id: PALETTE_ID, name: "Original", light: { bg: "#F3EBDD" }, dark: { bg: "#17140F" } }],
   media: {},
 };
 
@@ -80,12 +87,20 @@ describe("loadSite", () => {
 
 describe("loadSite with nothing published", () => {
   it("returns the empty site, so the build goes ahead and /desk is built", async () => {
-    const empty = { settings: { title: "Pujan Shahi" }, sections: [], media: {} };
+    const empty = { settings: { title: "Pujan Shahi" }, sections: [], palettes: [], media: {} };
     const site = await loadSite({ API_BASE_URL: "https://api.portfolio.test" }, async () =>
       Response.json(empty),
     );
 
     expect(site).toEqual(empty);
+  });
+
+  it("treats a missing palette list as empty", async () => {
+    const site = await loadSite({ API_BASE_URL: "https://api.portfolio.test" }, async () =>
+      Response.json({ settings: {}, sections: [], media: {} }),
+    );
+
+    expect(site.palettes).toEqual([]);
   });
 });
 

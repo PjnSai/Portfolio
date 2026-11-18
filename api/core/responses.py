@@ -41,8 +41,12 @@ def not_found():
     return JsonResponse({"detail": "Not found."}, status=404)
 
 
-def conflict():
-    return JsonResponse({"detail": "Not possible right now."}, status=409)
+def conflict(code=None):
+    """code, if given, names the rule so the admin can explain it."""
+    body = {"detail": "Not possible right now."}
+    if code:
+        body["code"] = code
+    return JsonResponse(body, status=409)
 
 
 def privacy_check(warnings):

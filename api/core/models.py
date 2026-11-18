@@ -40,6 +40,27 @@ class SiteSettings(Timestamped):
         db_table = "site_settings"
 
 
+class Palette(Timestamped):
+    """A set of colour tokens for light and dark. Presets come from a migration
+    and cannot be changed; the owner duplicates one to make a custom palette."""
+
+    class Kind(models.TextChoices):
+        PRESET = "preset"
+        CUSTOM = "custom"
+
+    name = models.CharField(max_length=60)
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.CUSTOM)
+    # {"bg": "#RRGGBB", ...}, one entry per slot in core.theme.SLOTS.
+    light = models.JSONField(default=dict)
+    dark = models.JSONField(default=dict)
+    trashed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "palettes"
+        # Presets first ("preset" sorts after "custom", so descending).
+        ordering = ["-kind", "created_at", "name"]
+
+
 class Section(Timestamped):
     type = models.CharField(max_length=40)
     position = models.PositiveIntegerField(default=0)

@@ -14,7 +14,7 @@ GRANT USAGE ON SCHEMA public TO app_rw;
 -- rows in section_items.
 GRANT SELECT, INSERT, UPDATE, DELETE ON
     site_settings, sections, section_items, media, cv_files, messages,
-    revisions
+    revisions, palettes
 TO app_rw;
 
 -- Auth state.
