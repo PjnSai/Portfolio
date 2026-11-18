@@ -83,7 +83,7 @@ export default function Sections() {
             >
               <div>
                 <Link
-                  href={`/desk/sections/${section.id}`}
+                  href={`/desk/sections/edit?id=${section.id}`}
                   className="text-lg font-bold underline-offset-4 hover:underline"
                 >
                   {section.title}

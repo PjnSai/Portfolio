@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import { api, ApiError, Cancelled, describeError } from "@/lib/admin/api";
+import { shortDate } from "@/lib/admin/time";
 import { signWithPasskey } from "@/lib/admin/webauthn";
 import { Button, Notice } from "./ui";
 
@@ -34,7 +35,7 @@ type Admin = {
   pending: PendingAction[];
   refresh: () => Promise<void>;
   refreshPending: () => Promise<void>;
-  /** Check again whether the last cache purge failed (after a publish). */
+  /** Check again how the last cache purge and site build went (after a publish). */
   refreshCache: () => Promise<void>;
   /** Run a call that may need a fresh passkey confirmation. */
   vital: <T>(call: () => Promise<T>) => Promise<T>;
@@ -54,7 +55,20 @@ async function confirmWithPasskey() {
   await api.post("/elevate/verify", { credential });
 }
 
-type SessionState = { status: Status; pending: PendingAction[]; purgeFailedAt: string | null };
+/** The last call to the Pages deploy hook (see api/core/deploy.py). */
+export type DeployStatus = {
+  called_at: string | null;
+  result: "ok" | "failed" | null;
+  pending: boolean;
+  retry_after: number;
+};
+
+type SessionState = {
+  status: Status;
+  pending: PendingAction[];
+  purgeFailedAt: string | null;
+  deploy: DeployStatus | null;
+};
 
 async function fetchPending() {
   return (await api.get<{ actions: PendingAction[] }>("/vital-actions")).actions;
@@ -64,14 +78,27 @@ async function fetchPurgeFailedAt() {
   return (await api.get<{ purge_failed_at: string | null }>("/cache")).purge_failed_at;
 }
 
+async function fetchDeploy() {
+  return api.get<DeployStatus>("/deploy");
+}
+
 async function checkSession(): Promise<SessionState> {
   try {
     await api.get("/session");
-    const [pending, purgeFailedAt] = await Promise.all([fetchPending(), fetchPurgeFailedAt()]);
-    return { status: "signed-in", pending, purgeFailedAt };
+    const [pending, purgeFailedAt, deploy] = await Promise.all([
+      fetchPending(),
+      fetchPurgeFailedAt(),
+      fetchDeploy(),
+    ]);
+    return { status: "signed-in", pending, purgeFailedAt, deploy };
   } catch (error) {
     const signedOut = error instanceof ApiError && error.status === 401;
-    return { status: signedOut ? "signed-out" : "unavailable", pending: [], purgeFailedAt: null };
+    return {
+      status: signedOut ? "signed-out" : "unavailable",
+      pending: [],
+      purgeFailedAt: null,
+      deploy: null,
+    };
   }
 }
 
@@ -90,6 +117,7 @@ export function AdminApp({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>("loading");
   const [pending, setPending] = useState<PendingAction[]>([]);
   const [purgeFailedAt, setPurgeFailedAt] = useState<string | null>(null);
+  const [deploy, setDeploy] = useState<DeployStatus | null>(null);
   const [asking, setAsking] = useState(false);
   const answer = useRef<{ resolve: () => void; reject: (e: Error) => void }>(null);
 
@@ -98,13 +126,16 @@ export function AdminApp({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshCache = useCallback(async () => {
-    setPurgeFailedAt(await fetchPurgeFailedAt());
+    const [failedAt, deployed] = await Promise.all([fetchPurgeFailedAt(), fetchDeploy()]);
+    setPurgeFailedAt(failedAt);
+    setDeploy(deployed);
   }, []);
 
   const apply = useCallback((state: SessionState) => {
     setStatus(state.status);
     setPending(state.pending);
     setPurgeFailedAt(state.purgeFailedAt);
+    setDeploy(state.deploy);
   }, []);
 
   useEffect(() => {
@@ -169,6 +200,12 @@ export function AdminApp({ children }: { children: ReactNode }) {
             const result = await api.post<{ purge_failed_at: string | null }>("/cache/purge");
             setPurgeFailedAt(result.purge_failed_at);
           }} />
+        )}
+        {status === "signed-in" && deploy && (
+          <DeployState
+            deploy={deploy}
+            onDeploy={async () => setDeploy(await api.post<DeployStatus>("/deploy"))}
+          />
         )}
         <main className="pt-8">
           {open ? (
@@ -248,6 +285,59 @@ function CacheBanner({ onRetry }: { onRetry: () => Promise<void> }) {
       >
         Clear the cache again
       </Button>
+    </div>
+  );
+}
+
+function DeployState({
+  deploy,
+  onDeploy,
+}: {
+  deploy: DeployStatus;
+  onDeploy: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const needed = deploy.pending || deploy.result === "failed";
+  const last = deploy.called_at
+    ? `Last site build requested ${shortDate(deploy.called_at)}${
+        deploy.result === "failed" ? ", but Cloudflare did not accept it" : ""
+      }.`
+    : "No site build requested yet.";
+  return (
+    <div
+      role="status"
+      data-testid="deploy-state"
+      className={`mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md px-4 py-3 text-sm ${
+        needed ? "bg-notice font-semibold text-on-notice" : "text-muted"
+      }`}
+    >
+      <span>
+        {last}{" "}
+        {deploy.pending &&
+          (deploy.retry_after > 0
+            ? `A later change waits for the next build, possible in ${deploy.retry_after} seconds.`
+            : "A later change waits for the next build.")}{" "}
+        {error}
+      </span>
+      {needed && (
+        <Button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError("");
+            try {
+              await onDeploy();
+            } catch (failure) {
+              setError(describeError(failure));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Build the site now
+        </Button>
+      )}
     </div>
   );
 }

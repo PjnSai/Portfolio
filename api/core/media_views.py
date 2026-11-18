@@ -7,7 +7,7 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
-from core import content, media, pages, purge, responses, serializers, storage
+from core import content, deploy, media, pages, purge, responses, serializers, storage
 from core.authz import Level, admin_route
 from core.models import Media
 
@@ -107,7 +107,7 @@ def media_trash(request, media_id):
     if item is None:
         return responses.not_found()
     media.trash(item)
-    purge.run("media_trashed")
+    deploy.went_live("media_trashed")
     return JsonResponse({})
 
 
@@ -151,6 +151,14 @@ def media_file(request, media_id):
 @admin_route(Level.SESSION)
 def cache_status(request):
     return JsonResponse({"purge_failed_at": _when(purge.failed_at())})
+
+
+@admin_route(Level.SESSION, methods=("GET", "POST"))
+def site_deploy(request):
+    """The last rebuild of the static site; POST asks for one now."""
+    if request.method == "POST":
+        return JsonResponse(deploy.request("manual"))
+    return JsonResponse(deploy.status())
 
 
 @admin_route(Level.SESSION, methods=POST)

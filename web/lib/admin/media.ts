@@ -2,9 +2,10 @@
 // decides what a file is from its bytes; these only save a pointless upload.
 
 import { z } from "zod";
-import { MAX_UPLOAD_BYTES } from "@/lib/api-proxy";
+import { API_ORIGIN } from "@/lib/api-base";
 
-export { MAX_UPLOAD_BYTES };
+/** The API's own limit for one image (MEDIA_MAX_BYTES). */
+export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 export type Variant = { name: string; width: number; height: number; size: number };
 
@@ -40,5 +41,5 @@ export function checkUpload(file: File): string | null {
 /** Where the admin shows a preview of a media item, published or not. */
 export function previewUrl(id: string): string {
   if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error("Not a media id.");
-  return `/api/v1/admin/media/${id}/file`;
+  return `${API_ORIGIN}/api/v1/admin/media/${id}/file`;
 }

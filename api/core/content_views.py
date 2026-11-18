@@ -4,7 +4,7 @@ permanent deletion goes through the vital-action routes instead."""
 from django.db import transaction
 from django.http import JsonResponse
 
-from core import content, pages, privacy, purge, responses, serializers, theme
+from core import content, deploy, pages, privacy, responses, serializers, theme
 from core.authz import Level, admin_route
 from core.models import Revision, Section, SectionItem
 
@@ -105,7 +105,7 @@ def sections_reorder(request):
         return error
     if not content.reorder(content.live_sections(), data["ids"], "sections_reordered"):
         return responses.bad_request()
-    purge.run("sections_reordered")
+    deploy.went_live("sections_reordered")
     return JsonResponse({})
 
 
@@ -134,7 +134,7 @@ def section_visibility(request, section_id):
     if error:
         return error
     content.set_visible(found, data["visible"])
-    purge.run("section_visibility")
+    deploy.went_live("section_visibility")
     return JsonResponse(_section_summary(found))
 
 
@@ -144,7 +144,7 @@ def section_trash(request, section_id):
     if found is None:
         return responses.not_found()
     content.trash(found)
-    purge.run("section_trashed")
+    deploy.went_live("section_trashed")
     return JsonResponse({})
 
 
@@ -157,7 +157,7 @@ def section_restore(request, section_id):
         refusal = _refused(content.restore, found)
     if refusal:
         return refusal
-    purge.run("section_restored")
+    deploy.went_live("section_restored")
     return JsonResponse(_section_summary(found))
 
 
@@ -171,8 +171,8 @@ def section_publish(request, section_id):
 
 
 def _published(version, reason):
-    """The publish is saved before the purge, so a failed purge cannot undo it."""
-    return JsonResponse({"version": version, "cache_purged": purge.run(reason)})
+    """The publish is saved first, so a failed purge or build cannot undo it."""
+    return JsonResponse({"version": version, "cache_purged": deploy.went_live(reason)})
 
 
 def _privacy_check(request, warnings):

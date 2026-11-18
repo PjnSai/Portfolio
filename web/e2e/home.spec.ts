@@ -9,12 +9,25 @@ test("home page renders without JavaScript", async ({ browser }) => {
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "Pujan Shahi",
   );
+  // Read from the API at build time (api/tests/e2e_server.py publishes it).
+  await expect(page.getByRole("heading", { level: 2, name: "Seeded" })).toBeVisible();
   await context.close();
 });
 
-test("healthz responds", async ({ request }) => {
-  const response = await request.get("/healthz");
+test("fonts are served by the site, never fetched from Google", async ({ page }) => {
+  const elsewhere: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.hostname !== "localhost") elsewhere.push(url.hostname);
+  });
 
-  expect(response.status()).toBe(200);
-  expect(await response.json()).toEqual({ status: "ok" });
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+  const fonts = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return Array.from(document.fonts, (font) => font.family);
+  });
+
+  expect(elsewhere).toEqual([]);
+  expect(fonts.join(" ")).toMatch(/Instrument Sans/);
 });

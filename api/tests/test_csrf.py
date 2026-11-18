@@ -176,7 +176,7 @@ def test_signing_in_replaces_the_csrf_token(api, passkey):
         {"Origin": "https://evil.test"},
         {"Sec-Fetch-Site": None},
         {"Sec-Fetch-Site": "cross-site"},
-        {"Sec-Fetch-Site": "same-site"},
+        {"Sec-Fetch-Site": "same-site", "Origin": "https://other.portfolio.test"},
     ],
 )
 def test_sign_in_routes_are_rejected_unless_sent_by_this_site(

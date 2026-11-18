@@ -50,6 +50,7 @@ MIDDLEWARE = [
     "core.headers.SecurityHeadersMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "core.cors.CorsMiddleware",
     "core.guard.GuardMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
 ]
@@ -125,6 +126,10 @@ GCS_MEDIA_BUCKET = os.environ.get("GCS_MEDIA_BUCKET", "")
 CACHE_PURGER = os.environ.get("CACHE_PURGER", "core.purge.LogPurger")
 CLOUDFLARE_ZONE_ID = os.environ.get("CLOUDFLARE_ZONE_ID", "")
 CLOUDFLARE_PURGE_TOKEN = os.environ.get("CLOUDFLARE_PURGE_TOKEN", "")
+
+# Rebuilds the static site on Cloudflare Pages after a change goes live.
+SITE_DEPLOYER = os.environ.get("SITE_DEPLOYER", "core.deploy.LogDeployer")
+PAGES_DEPLOY_HOOK_URL = os.environ.get("PAGES_DEPLOY_HOOK_URL", "")
 
 LANGUAGE_CODE = "en-gb"
 TIME_ZONE = "UTC"

@@ -29,6 +29,7 @@ BOOTSTRAP_TOKEN = "e2e-bootstrap-token"
 TEAM = "team.cloudflareaccess.test"
 AUDIENCE = "e2e-audience"
 EMAIL = "owner@portfolio.test"
+SEEDED_SECTION = "Seeded"
 
 os.environ.update(
     {
@@ -68,6 +69,22 @@ def fresh_database():
         connection.execute(sql.SQL("CREATE DATABASE {}").format(quoted))
 
 
+def seed_published_section():
+    # The site build refuses a site with nothing published (web/lib/site.ts).
+    from django.utils import timezone
+
+    from core.models import Section
+
+    copy = {"title": SEEDED_SECTION, "body": ""}
+    Section.objects.create(
+        type="text",
+        position=0,
+        draft=copy,
+        published={"type": "text", **copy, "items": []},
+        published_at=timezone.now(),
+    )
+
+
 def access_token(key):
     import jwt
 
@@ -95,6 +112,7 @@ def main():
 
     call_command("migrate", verbosity=0)
     cache.client().flushdb()
+    seed_published_section()
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     access.fetch_signing_key = lambda token: key.public_key()

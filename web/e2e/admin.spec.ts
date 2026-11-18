@@ -5,6 +5,7 @@ import {
   type CDPSession,
   expect,
   type Page,
+  type Response,
   test,
 } from "@playwright/test";
 
@@ -12,6 +13,8 @@ import {
 test.describe.configure({ mode: "serial" });
 
 const TOKEN_FILE = resolve(__dirname, "../../api/.e2e-access-token");
+// The API is on its own origin, as in production (see playwright.config.ts).
+const API = "http://localhost:8100";
 const BOOTSTRAP_TOKEN = "e2e-bootstrap-token";
 
 let context: BrowserContext;
@@ -19,11 +22,15 @@ let page: Page;
 let authenticator: CDPSession;
 
 test.beforeAll(async ({ browser }) => {
-  // Cloudflare Access adds this header to every request in production.
+  // In production Cloudflare Access adds this header at the edge, after the
+  // browser's CORS checks, so it is added here on the way to the API too.
   const accessToken = readFileSync(TOKEN_FILE, "utf8").trim();
-  context = await browser.newContext({
-    extraHTTPHeaders: { "Cf-Access-Jwt-Assertion": accessToken },
-  });
+  context = await browser.newContext();
+  await context.route(`${API}/**`, (route) =>
+    route.continue({
+      headers: { ...route.request().headers(), "cf-access-jwt-assertion": accessToken },
+    }),
+  );
   page = await context.newPage();
   authenticator = await context.newCDPSession(page);
   await authenticator.send("WebAuthn.enable");
@@ -48,8 +55,12 @@ async function signIn() {
   await expect(page.getByRole("navigation", { name: "Admin" })).toBeVisible();
 }
 
-function rowTitles() {
-  return page.getByTestId("section-row").getByRole("link").allTextContents();
+// api/tests/e2e_server.py publishes one section so the site build has content.
+const SEEDED_SECTION = "Seeded";
+
+async function rowTitles() {
+  const titles = await page.getByTestId("section-row").getByRole("link").allTextContents();
+  return titles.filter((title) => title !== SEEDED_SECTION);
 }
 
 test("admin pages are not indexed and the public page does not link to them", async ({
@@ -66,7 +77,7 @@ test("admin pages are not indexed and the public page does not link to them", as
 test("admin API refuses a request without the Access token", async ({
   request,
 }) => {
-  const response = await request.get("/api/v1/admin/csrf");
+  const response = await request.get(`${API}/api/v1/admin/csrf`);
 
   expect(response.status()).toBe(403);
 });
@@ -122,6 +133,39 @@ test("sections can be added, reordered and hidden", async () => {
   await expect.poll(rowTitles).toEqual(["Beta", "Alpha"]);
   const alpha = page.getByTestId("section-row").filter({ hasText: "Alpha" });
   await expect(alpha.getByTestId("visibility")).toHaveText("Hidden");
+});
+
+// The static export writes nested prefetch files where the client does not ask
+// for them; scripts/flatten-segments.ts renames them. A Next upgrade that
+// changes either side shows up here as a 404.
+test("every prefetch the admin makes is found", async () => {
+  const prefetches: { url: string; status: number }[] = [];
+  const record = (response: Response) => {
+    const request = response.request();
+    const url = new URL(request.url());
+    const prefetch =
+      request.headers()["next-router-prefetch"] !== undefined ||
+      /\/__next\.|\.txt$/.test(url.pathname);
+    if (url.origin === new URL(page.url()).origin && prefetch) {
+      prefetches.push({ url: url.pathname, status: response.status() });
+    }
+  };
+  const nested = () => prefetches.some((p) => p.url.includes("__next.desk.sections"));
+  const missing = () => prefetches.filter((p) => p.status === 404);
+  page.on("response", record);
+  for (const path of ["/desk", "/desk/media", "/desk/settings", "/desk/sections"]) {
+    const before = prefetches.length;
+    await page.goto(path);
+    // Not networkidle: a prefetch that gets the 404 page never settles.
+    await expect.poll(() => prefetches.length, { message: path }).toBeGreaterThan(before);
+  }
+  await page.getByRole("link", { name: "Beta" }).hover();
+  await expect.poll(nested, { message: "nested prefetch requested" }).toBe(true);
+  page.off("response", record);
+
+  expect(missing()).toEqual([]);
+  await page.getByRole("link", { name: "Beta" }).click();
+  await page.waitForURL(/\/desk\/sections\/edit/);
 });
 
 test("a vital action needs the passkey, waits, and can be cancelled", async () => {
@@ -352,19 +396,21 @@ test("project items go through every step and the published copy is public", asy
   await expect.poll(itemTitles).toEqual(["Notes", "Ledger app"]);
 
   // Nothing is public before Publish
-  const before = (await (await page.request.get("/api/v1/site")).json()) as PublicSite;
+  const before = (await (await page.request.get(`${API}/api/v1/site`)).json()) as PublicSite;
   expect(before.sections.map((s) => s.title)).not.toContain("Showcase");
 
   await page.getByRole("button", { name: "Publish", exact: true }).click();
   await expect(page.getByTestId("publish-state")).toContainText("The live site shows this draft.");
+  // The API asked Pages to rebuild the site (the development deployer only logs).
+  await expect(page.getByTestId("deploy-state")).toContainText("Last site build requested");
 
-  const response = await page.request.get("/api/v1/site");
+  const response = await page.request.get(`${API}/api/v1/site`);
   expect(response.headers()["cache-control"]).toContain("public");
   const site = (await response.json()) as PublicSite;
   const showcase = site.sections.find((s) => s.title === "Showcase");
   expect(showcase?.items.map((i) => i.data.title)).toEqual(["Notes", "Ledger app"]);
   const mediaId = showcase!.items[1].data.images[0].media;
-  const image = await page.request.get(site.media[mediaId].sources[0].url);
+  const image = await page.request.get(`${API}${site.media[mediaId].sources[0].url}`);
   expect(image.status()).toBe(200);
   expect(image.headers()["content-type"]).toBe("image/webp");
   expect((await image.body()).includes("SecretCam")).toBe(false);

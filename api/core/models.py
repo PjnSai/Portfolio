@@ -30,6 +30,11 @@ class SiteSettings(Timestamped):
     published_at = models.DateTimeField(null=True, blank=True)
     # Set when the last cache purge failed, cleared by the next one that works.
     purge_failed_at = models.DateTimeField(null=True, blank=True)
+    # The last call to the Pages deploy hook, its result, and whether a change
+    # made since is waiting for the next call (see core.deploy).
+    deploy_called_at = models.DateTimeField(null=True, blank=True)
+    deploy_result = models.CharField(max_length=10, blank=True, default="")
+    deploy_pending = models.BooleanField(default=False)
 
     class Meta:
         db_table = "site_settings"

@@ -1,7 +1,10 @@
-// The admin pages talk to /api/v1/admin on this site only. Every state-changing
-// request carries the CSRF token from GET /csrf (or the one a sign-in returns).
+// The admin pages talk to /api/v1/admin on the API's origin (fixed at build
+// time), sending its cookies. Every state-changing request carries the CSRF
+// token from GET /csrf (or the one a sign-in returns).
 
-const BASE = "/api/v1/admin";
+import { API_ORIGIN } from "@/lib/api-base";
+
+const BASE = `${API_ORIGIN}/api/v1/admin`;
 const SAFE_PATH = /^\/[A-Za-z0-9/_-]*$/;
 
 type Body = Record<string, unknown>;
@@ -113,7 +116,7 @@ export function createClient(fetcher: Fetcher = (u, i) => fetch(u, i)) {
       method,
       headers,
       body: method === "GET" ? undefined : form ? body : JSON.stringify(body ?? {}),
-      credentials: "same-origin",
+      credentials: "include",
       cache: "no-store",
     });
     let data: Body = {};
@@ -129,7 +132,7 @@ export function createClient(fetcher: Fetcher = (u, i) => fetch(u, i)) {
 
   async function refreshCsrf() {
     const response = await fetcher(url("/csrf"), {
-      credentials: "same-origin",
+      credentials: "include",
       cache: "no-store",
     });
     const data = (await response.json().catch(() => ({}))) as Body;

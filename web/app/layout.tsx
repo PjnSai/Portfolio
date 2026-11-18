@@ -1,18 +1,16 @@
 import type { Metadata } from "next";
-import { connection } from "next/server";
+import { fontVariables } from "@/lib/fonts";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Pujan Shahi",
 };
 
-export default async function RootLayout({ children }: LayoutProps<"/">) {
-  // Every page is rendered per request, so its scripts and styles carry the
-  // nonce from this request's Content-Security-Policy (see proxy.ts).
-  await connection();
-
+// Every page is built ahead of time; the policy in out/_headers lists the
+// hashes of each page's inline scripts (see scripts/write-headers.ts).
+export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en-GB">
+    <html lang="en-GB" className={fontVariables}>
       <body>{children}</body>
     </html>
   );

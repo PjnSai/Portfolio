@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useState } from "react";
 import type { z } from "zod";
 import { useAdmin } from "@/components/admin/AdminApp";
 import { ContentForm, type SaveResult } from "@/components/admin/ContentForm";
@@ -47,8 +47,34 @@ async function fetchSection(id: string, versionPage: number) {
 
 type Act = (call: () => Promise<unknown>, message?: string) => Promise<SaveResult>;
 
-export default function SectionEditor() {
-  const { id } = useParams<{ id: string }>();
+// The page is one static file; the section id comes from the query string
+// because sections are created after the site is built.
+const ID = /^[0-9a-f-]{36}$/;
+
+export default function SectionEditorPage() {
+  return (
+    <Suspense fallback={<p className="text-muted">Loading…</p>}>
+      <SectionEditorFromQuery />
+    </Suspense>
+  );
+}
+
+function SectionEditorFromQuery() {
+  const id = useSearchParams().get("id") ?? "";
+  if (!ID.test(id)) {
+    return (
+      <Notice kind="error">
+        No section chosen.{" "}
+        <Link href="/desk/sections" className="underline">
+          Back to sections
+        </Link>
+      </Notice>
+    );
+  }
+  return <SectionEditor key={id} id={id} />;
+}
+
+function SectionEditor({ id }: { id: string }) {
   const [versionPage, setVersionPage] = useState(1);
   const fetcher = useCallback(
     () => fetchSection(id, versionPage),

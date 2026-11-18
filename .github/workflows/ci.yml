@@ -64,7 +64,13 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      # The static export for Cloudflare Pages, without content (no API here).
+      # The browser tests build it again against the real API.
       - run: npm run build
+      - name: Static export only, no server output
+        run: npm run check:export
+      - name: Builds fail without a usable site, never ship an empty one
+        run: npm run check:build-refuses
       - run: npm audit --omit=dev --audit-level=high
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e

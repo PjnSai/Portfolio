@@ -1,8 +1,12 @@
 import type { NextConfig } from "next";
+import { apiOrigin } from "./lib/api-base";
 
+// A static export for Cloudflare Pages: no server, no middleware, no route
+// handlers. scripts/check-export.ts fails the build if any server output appears.
 const nextConfig: NextConfig = {
-  output: "standalone",
-  poweredByHeader: false,
+  output: "export",
+  images: { unoptimized: true },
+  env: { NEXT_PUBLIC_API_BASE_URL: apiOrigin(process.env.API_BASE_URL) },
   turbopack: {
     rules: {
       "*.css": {

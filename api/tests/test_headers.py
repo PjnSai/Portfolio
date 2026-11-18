@@ -13,7 +13,8 @@ EXPECTED = {
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
     "Cross-Origin-Opener-Policy": "same-origin",
-    "Cross-Origin-Resource-Policy": "same-origin",
+    # The site shows the API's images from a sibling host of the same domain.
+    "Cross-Origin-Resource-Policy": "same-site",
 }
 
 PATHS = ["/api/v1/status", "/healthz", "/api/v1/missing", "/api/v1/admin/session"]
