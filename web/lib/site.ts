@@ -5,6 +5,8 @@
 // keeps serving the last good build. Only a build with no API_BASE_URL (local
 // work, CI checks), or one that says SKIP_SITE_FETCH=1 (a container image built
 // before its API runs), renders without content, and never on Pages itself.
+// An answer with no published sections is not an error: the build goes ahead with
+// a placeholder home page, so /desk is built and the owner can publish.
 
 import { apiOrigin } from "./api-base";
 
@@ -39,10 +41,6 @@ export async function loadSite(
   const site = (await response.json()) as Partial<PublicSite>;
   if (!Array.isArray(site.sections) || typeof site.media !== "object" || !site.media) {
     throw new Error("GET /api/v1/site did not return a site document.");
-  }
-  // An empty answer is never published: it would replace the live site with a blank one.
-  if (site.sections.length === 0) {
-    throw new Error("GET /api/v1/site has no published sections.");
   }
   return { settings: site.settings ?? {}, sections: site.sections, media: site.media };
 }

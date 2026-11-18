@@ -69,13 +69,23 @@ describe("loadSite", () => {
   it.each([
     ["an error status", async () => new Response("down", { status: 503 })],
     ["something else", async () => Response.json({ detail: "x" })],
-    ["no published sections", async () => Response.json({ settings: {}, sections: [], media: {} })],
     ["a redirect it may not follow", async () => new Response(null, { status: 302 })],
     ["no answer", async () => Promise.reject(new TypeError("fetch failed"))],
   ])("fails the build on %s, so the last good build stays live", async (_, fetcher) => {
     await expect(
       loadSite({ API_BASE_URL: "https://api.portfolio.test" }, fetcher as typeof fetch),
     ).rejects.toThrow();
+  });
+});
+
+describe("loadSite with nothing published", () => {
+  it("returns the empty site, so the build goes ahead and /desk is built", async () => {
+    const empty = { settings: { title: "Pujan Shahi" }, sections: [], media: {} };
+    const site = await loadSite({ API_BASE_URL: "https://api.portfolio.test" }, async () =>
+      Response.json(empty),
+    );
+
+    expect(site).toEqual(empty);
   });
 });
 
