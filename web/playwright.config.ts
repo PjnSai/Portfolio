@@ -5,6 +5,9 @@ const apiPort = 8100;
 
 // The admin tests need the API too. It is started by api/tests/e2e_server.py
 // with a fresh database (see that file); E2E_PYTHON picks the interpreter.
+// The site is then built against it, as Pages builds it, and served with its
+// _headers by scripts/serve-static.ts. Site and API are different origins on
+// one site (localhost), as in production.
 export default defineConfig({
   testDir: "e2e",
   forbidOnly: Boolean(process.env.CI),
@@ -26,14 +29,15 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: "node e2e/serve.mjs",
+      command: "npm run build && npm start",
       env: {
         PORT: String(port),
         HOSTNAME: "localhost",
-        API_URL: `http://127.0.0.1:${apiPort}`,
+        API_BASE_URL: `http://localhost:${apiPort}`,
       },
-      url: `http://localhost:${port}/healthz`,
+      url: `http://localhost:${port}/`,
       reuseExistingServer: !process.env.CI,
+      timeout: 300_000,
     },
   ],
 });

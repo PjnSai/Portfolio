@@ -7,3 +7,4 @@ tests
 test-results
 playwright-report
 Dockerfile
+out

@@ -6,7 +6,7 @@ How the admin area is protected, how to operate it, and what is still open. Writ
 
 In order, for every request under `/api/v1/admin/`:
 
-1. **Same-site check.** A state-changing request must carry the exact site `Origin` and `Sec-Fetch-Site: same-origin`. Admin reads from another site are refused too.
+1. **Same-site check.** The admin pages are static files on Cloudflare Pages and call the API on another host of the same domain. A state-changing request must carry the site's exact `Origin` and `Sec-Fetch-Site` of `same-origin` or `same-site`. Admin reads with any other `Origin`, or from another site, are refused. CORS headers are sent to that one origin only, and only under `/api/v1/admin/`; a preflight from anywhere else is refused.
 2. **Cloudflare Access.** The request must carry a token Cloudflare signed for this application and for the owner's email. The API verifies it itself on every request and compares the email exactly: no case folding, no trimming.
 3. **Request cap.** 120 admin requests per client per minute.
 4. **Declared level.** The route must have one of three levels; a route without one is refused.
@@ -59,7 +59,9 @@ A stolen session can therefore neither start nor finish a vital action, and a st
 
 ## Web pages
 
-Every response from the web service carries a Content-Security-Policy with a nonce made for that request, plus HSTS, `nosniff`, frame denial and the other headers in `web/lib/security-headers.ts`. Inline scripts and event handlers without the nonce do not run. Do not add `'unsafe-inline'`, and do not add a third-party script host without a decision recorded in `DECISIONS.md`.
+The site is a static export. After each build `web/scripts/write-headers.ts` writes `out/_headers`, which Cloudflare Pages applies: HSTS, `nosniff`, frame denial and the other headers in `web/lib/security-headers.ts`, and for each page a Content-Security-Policy listing the SHA-256 hashes of that page's own inline scripts. Inline scripts and event handlers not in the list do not run. Only the admin pages may connect to the API. Do not add `'unsafe-inline'`, and do not add a third-party script host without a decision recorded in `DECISIONS.md`. A script written by hand goes in `EXTRA_SCRIPT_HASHES`.
+
+The Pages deploy hook URL (`PAGES_DEPLOY_HOOK_URL`) lets anyone holding it start builds. It lives in the API's secret store, must point at Cloudflare's deploy hook path, and is never logged, stored, audited or returned. Builds are asked for at most once per two minutes.
 
 ## Operating
 
@@ -82,6 +84,6 @@ Every response from the web service carries a Content-Security-Policy with a non
 | Only `LogNotifier` exists; no email notice yet. | The 24-hour notice depends on someone watching the log or the admin banner. | Phase 5 |
 | The newest audit entries could be removed without breaking the chain. | Someone with table-owner rights could hide their latest actions. | Phase 7 (anchor kept with backups) |
 | Client address comes from `Cf-Connecting-Ip`, which is only trustworthy if traffic cannot bypass Cloudflare. | Without the origin lock, a caller holding a valid Access token could spread failures across made-up addresses. The global cool-down still applies. | Phase 7 (origin lock) |
-| Nonce CSP makes every page render per request. | No security risk; public pages cannot be cached at the edge yet. | Phase 3 |
+| `_headers` rules (detaching the default policy per page) are checked against a local server that follows the Pages rules, not against Pages itself. | A page could get two policies, which would block its scripts (fails closed). | Phase 7 (smoke test of live headers) |
 | Permanent delete does not cover media or CV files. | None; they simply cannot be permanently deleted yet. | Phases 2, 4 |
 | Base images pinned by tag, not digest. | A re-tagged image would be picked up. | Phase 6 |

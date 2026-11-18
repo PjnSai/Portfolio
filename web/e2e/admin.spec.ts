@@ -12,6 +12,8 @@ import {
 test.describe.configure({ mode: "serial" });
 
 const TOKEN_FILE = resolve(__dirname, "../../api/.e2e-access-token");
+// The API is on its own origin, as in production (see playwright.config.ts).
+const API = "http://localhost:8100";
 const BOOTSTRAP_TOKEN = "e2e-bootstrap-token";
 
 let context: BrowserContext;
@@ -19,11 +21,15 @@ let page: Page;
 let authenticator: CDPSession;
 
 test.beforeAll(async ({ browser }) => {
-  // Cloudflare Access adds this header to every request in production.
+  // In production Cloudflare Access adds this header at the edge, after the
+  // browser's CORS checks, so it is added here on the way to the API too.
   const accessToken = readFileSync(TOKEN_FILE, "utf8").trim();
-  context = await browser.newContext({
-    extraHTTPHeaders: { "Cf-Access-Jwt-Assertion": accessToken },
-  });
+  context = await browser.newContext();
+  await context.route(`${API}/**`, (route) =>
+    route.continue({
+      headers: { ...route.request().headers(), "cf-access-jwt-assertion": accessToken },
+    }),
+  );
   page = await context.newPage();
   authenticator = await context.newCDPSession(page);
   await authenticator.send("WebAuthn.enable");
@@ -66,7 +72,7 @@ test("admin pages are not indexed and the public page does not link to them", as
 test("admin API refuses a request without the Access token", async ({
   request,
 }) => {
-  const response = await request.get("/api/v1/admin/csrf");
+  const response = await request.get(`${API}/api/v1/admin/csrf`);
 
   expect(response.status()).toBe(403);
 });
@@ -352,19 +358,21 @@ test("project items go through every step and the published copy is public", asy
   await expect.poll(itemTitles).toEqual(["Notes", "Ledger app"]);
 
   // Nothing is public before Publish
-  const before = (await (await page.request.get("/api/v1/site")).json()) as PublicSite;
+  const before = (await (await page.request.get(`${API}/api/v1/site`)).json()) as PublicSite;
   expect(before.sections.map((s) => s.title)).not.toContain("Showcase");
 
   await page.getByRole("button", { name: "Publish", exact: true }).click();
   await expect(page.getByTestId("publish-state")).toContainText("The live site shows this draft.");
+  // The API asked Pages to rebuild the site (the development deployer only logs).
+  await expect(page.getByTestId("deploy-state")).toContainText("Last site build requested");
 
-  const response = await page.request.get("/api/v1/site");
+  const response = await page.request.get(`${API}/api/v1/site`);
   expect(response.headers()["cache-control"]).toContain("public");
   const site = (await response.json()) as PublicSite;
   const showcase = site.sections.find((s) => s.title === "Showcase");
   expect(showcase?.items.map((i) => i.data.title)).toEqual(["Notes", "Ledger app"]);
   const mediaId = showcase!.items[1].data.images[0].media;
-  const image = await page.request.get(site.media[mediaId].sources[0].url);
+  const image = await page.request.get(`${API}${site.media[mediaId].sources[0].url}`);
   expect(image.status()).toBe(200);
   expect(image.headers()["content-type"]).toBe("image/webp");
   expect((await image.body()).includes("SecretCam")).toBe(false);

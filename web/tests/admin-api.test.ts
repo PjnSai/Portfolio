@@ -37,7 +37,7 @@ describe("admin API client", () => {
     expect(header(calls[2], "X-CSRF-Token")).toBe("token-1");
     expect(calls[1].init.method).toBe("POST");
     expect(calls[2].init.method).toBe("PATCH");
-    expect(calls[1].init.credentials).toBe("same-origin");
+    expect(calls[1].init.credentials).toBe("include");
   });
 
   it("sends no CSRF token on reads", async () => {

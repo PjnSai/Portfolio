@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createClient, describeError, ApiError } from "@/lib/admin/api";
 import { checkUpload, MAX_UPLOAD_BYTES, mediaAltSchema } from "@/lib/admin/media";
-import { bodyLimit, MAX_BODY_BYTES } from "@/lib/api-proxy";
 
 describe("media uploads", () => {
   it("sends the form as multipart with the CSRF token and no JSON type", async () => {
@@ -44,15 +43,5 @@ describe("media uploads", () => {
     expect(checkUpload(file(10, "image/jpeg"))).toBeNull();
     expect(checkUpload(file(10, "image/svg+xml"))).toMatch(/JPEG, PNG or WebP/);
     expect(checkUpload(file(MAX_UPLOAD_BYTES + 1, "image/png"))).toMatch(/8 MB/);
-  });
-});
-
-describe("proxy body limit", () => {
-  it("is larger only for uploads to the media library", () => {
-    expect(bodyLimit("POST", ["admin", "media"])).toBeGreaterThan(MAX_UPLOAD_BYTES);
-    expect(bodyLimit("POST", ["admin", "sections"])).toBe(MAX_BODY_BYTES);
-    expect(bodyLimit("PATCH", ["admin", "media"])).toBe(MAX_BODY_BYTES);
-    expect(bodyLimit("POST", ["admin", "media", "x"])).toBe(MAX_BODY_BYTES);
-    expect(bodyLimit("POST", ["media"])).toBe(MAX_BODY_BYTES);
   });
 });

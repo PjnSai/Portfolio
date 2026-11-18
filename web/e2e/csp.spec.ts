@@ -1,43 +1,54 @@
+import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
-function nonceIn(policy: string | undefined): string {
-  return /'nonce-([^']+)'/.exec(policy ?? "")?.[1] ?? "";
+// The site is static: the policy comes from out/_headers, with the hashes of
+// each page's inline scripts instead of a per-request nonce.
+
+function hashesIn(policy: string | undefined): string[] {
+  return [...(policy ?? "").matchAll(/'(sha256-[^']+)'/g)].map((m) => m[1]);
 }
 
-test("each response carries a strict policy with its own nonce", async ({
+const sha = (text: string) => `sha256-${createHash("sha256").update(text).digest("base64")}`;
+
+test("public pages are static: no nonce, the same policy each time, cacheable", async ({
   request,
 }) => {
-  const first = (await request.get("/")).headers()["content-security-policy"];
-  const second = (await request.get("/")).headers()["content-security-policy"];
+  const first = await request.get("/");
+  const second = await request.get("/");
+  const policy = first.headers()["content-security-policy"];
 
-  expect(first).toContain("default-src 'self'");
-  expect(first).toContain("frame-ancestors 'none'");
-  expect(first).not.toContain("unsafe-inline");
-  expect(first).not.toContain("unsafe-eval");
-  expect(nonceIn(first)).not.toBe("");
-  expect(nonceIn(first)).not.toBe(nonceIn(second));
+  expect(policy).toContain("default-src 'self'");
+  expect(policy).toContain("frame-ancestors 'none'");
+  expect(policy).not.toContain("nonce-");
+  expect(policy).not.toContain("unsafe-inline");
+  expect(policy).not.toContain("unsafe-eval");
+  expect(second.headers()["content-security-policy"]).toBe(policy);
+  expect(first.headers()["cache-control"] ?? "").not.toContain("no-store");
+  expect(first.headers()["set-cookie"]).toBeUndefined();
+  expect(await first.text()).not.toContain("nonce=");
 });
 
-test("the page's own scripts carry the nonce and nothing is blocked", async ({
+test("every inline script on a page is listed in its policy and nothing is blocked", async ({
   page,
 }) => {
   const blocked: string[] = [];
   page.on("console", (message) => {
-    if (message.text().includes("Content Security Policy")) {
-      blocked.push(message.text());
-    }
+    if (message.text().includes("Content Security Policy")) blocked.push(message.text());
   });
 
-  const response = await page.goto("/");
-  await page.waitForLoadState("networkidle");
-  const nonce = nonceIn(response?.headers()["content-security-policy"]);
-  const nonces = await page.evaluate(() =>
-    Array.from(document.scripts, (script) => script.nonce),
-  );
+  for (const path of ["/", "/desk/sections"]) {
+    const response = await page.goto(path);
+    await page.waitForLoadState("networkidle");
+    const listed = hashesIn(response?.headers()["content-security-policy"]);
+    const inline = await page.evaluate(() =>
+      Array.from(document.scripts)
+        .filter((script) => !script.src && script.textContent)
+        .map((script) => script.textContent ?? ""),
+    );
 
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  expect(nonces.length).toBeGreaterThan(0);
-  expect(new Set(nonces)).toEqual(new Set([nonce]));
+    expect(inline.length).toBeGreaterThan(0);
+    for (const text of inline) expect(listed).toContain(sha(text));
+  }
   expect(blocked).toEqual([]);
 });
 
@@ -67,7 +78,7 @@ test("injected inline script does not run", async ({ page }) => {
   expect(result.directive).toContain("script-src");
 });
 
-for (const path of ["/", "/healthz", "/no-such-page"]) {
+for (const path of ["/", "/desk", "/no-such-page"]) {
   test(`${path} carries the other security headers`, async ({ request }) => {
     const headers = (await request.get(path)).headers();
 
@@ -75,7 +86,14 @@ for (const path of ["/", "/healthz", "/no-such-page"]) {
     expect(headers["x-frame-options"]).toBe("DENY");
     expect(headers["strict-transport-security"]).toContain("max-age=31536000");
     expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
-    expect(headers["content-security-policy"]).toContain("'nonce-");
+    expect(headers["cross-origin-resource-policy"]).toBe("same-origin");
+    expect(headers["permissions-policy"]).toContain("camera=()");
+    expect(headers["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(headers["content-security-policy"]).not.toContain(", ");
     expect(headers["x-powered-by"]).toBeUndefined();
   });
 }
+
+test("an unknown path is a real 404", async ({ request }) => {
+  expect((await request.get("/no-such-page")).status()).toBe(404);
+});

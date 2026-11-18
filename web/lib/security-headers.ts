@@ -1,30 +1,42 @@
-// The web service's security headers. This is the only place they are defined;
-// proxy.ts applies them to every response.
-
-/** 128 random bits, new for every request. */
-export function newNonce(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return btoa(String.fromCharCode(...bytes));
-}
+// The web app's security headers, for every page of the static export.
+// scripts/write-headers.ts puts them in out/_headers after each build, where
+// Cloudflare Pages (and scripts/serve-static.ts locally) apply them.
+// No imports: the build scripts load this file with Node directly.
 
 /**
- * Scripts and styles run only if they carry this request's nonce. There is no
- * 'unsafe-inline', and 'unsafe-eval' is allowed only by the development server,
- * which React needs for its debugging tools.
+ * Hashes of inline scripts written by hand, added to every page's policy.
+ * Empty for now; phase 3A-4 adds one here (format "sha256-<base64>").
  */
-export function contentSecurityPolicy(
-  nonce: string,
-  development = false,
-): string {
-  const script = development ? " 'unsafe-eval'" : "";
-  const style = development ? "'unsafe-inline'" : `'nonce-${nonce}'`;
+export const EXTRA_SCRIPT_HASHES: readonly string[] = [];
+
+export type PolicyInput = {
+  /** "sha256-<base64>" for each inline script on the page. */
+  scripts: readonly string[];
+  /** "sha256-<base64>" for each inline style element on the page. */
+  styles: readonly string[];
+  /** The API origin, or "" if there is none. */
+  api: string;
+  /** Admin pages call the API from the browser; public pages only show its images. */
+  admin: boolean;
+};
+
+const quoted = (hashes: readonly string[]) => hashes.map((h) => ` '${h}'`).join("");
+
+/**
+ * Scripts and styles run only from this site or if their hash is listed: no
+ * nonce, so pages can be static and cached, and no 'unsafe-inline' or 'unsafe-eval'.
+ */
+export function contentSecurityPolicy(input: PolicyInput): string {
+  const api = input.api ? ` ${input.api}` : "";
+  const scripts = [...new Set([...EXTRA_SCRIPT_HASHES, ...input.scripts])].sort();
+  const styles = [...new Set(input.styles)].sort();
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${script}`,
-    `style-src 'self' ${style}`,
-    "img-src 'self' data:",
+    `script-src 'self'${quoted(scripts)}`,
+    `style-src 'self'${quoted(styles)}`,
+    `img-src 'self' data:${api}`,
     "font-src 'self'",
-    "connect-src 'self'",
+    `connect-src 'self'${input.admin ? api : ""}`,
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",
@@ -44,26 +56,17 @@ export const STATIC_HEADERS: Readonly<Record<string, string>> = {
     "magnetometer=(), microphone=(), payment=(), usb=()",
 };
 
-export function securityHeaders(
-  nonce: string,
-  development = false,
-): Record<string, string> {
-  return {
-    "Content-Security-Policy": contentSecurityPolicy(nonce, development),
-    ...STATIC_HEADERS,
-  };
-}
-
-/** The admin pages and the admin API: never indexed, never cached. */
+/** The admin pages: never indexed, never cached. Cloudflare Access guards them. */
 export const ADMIN_PATH = "/desk";
 
 export function isPrivatePath(pathname: string): boolean {
-  return [ADMIN_PATH, "/api/v1/admin"].some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
+  return pathname === ADMIN_PATH || pathname.startsWith(`${ADMIN_PATH}/`);
 }
 
 export const PRIVATE_HEADERS: Readonly<Record<string, string>> = {
   "X-Robots-Tag": "noindex, nofollow",
   "Cache-Control": "no-store",
 };
+
+/** Built files under /_next/static have content hashes in their names. */
+export const ASSET_CACHE = "public, max-age=31536000, immutable";
