@@ -9,6 +9,8 @@ test("home page renders without JavaScript", async ({ browser }) => {
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "Pujan Shahi",
   );
+  // Read from the API at build time (api/tests/e2e_server.py publishes it).
+  await expect(page.getByRole("heading", { level: 2, name: "Seeded" })).toBeVisible();
   await context.close();
 });
 

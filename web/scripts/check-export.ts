@@ -3,6 +3,7 @@
 // which the free plan limits; the site must be plain files.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { measureRules } from "../lib/pages-headers.ts";
 
 const problems: string[] = [];
 
@@ -16,6 +17,11 @@ function walk(dir: string): string[] {
 
 for (const required of ["out/index.html", "out/404.html", "out/_headers"]) {
   if (!existsSync(required)) problems.push(`missing ${required}`);
+}
+
+// Pages ignores a _headers file past its limits, which would drop every header.
+if (existsSync("out/_headers")) {
+  problems.push(...measureRules(readFileSync("out/_headers", "utf8")).problems);
 }
 
 // Server output: a standalone server, middleware, or functions for Pages.

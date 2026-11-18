@@ -40,6 +40,10 @@ export async function loadSite(
   if (!Array.isArray(site.sections) || typeof site.media !== "object" || !site.media) {
     throw new Error("GET /api/v1/site did not return a site document.");
   }
+  // An empty answer is never published: it would replace the live site with a blank one.
+  if (site.sections.length === 0) {
+    throw new Error("GET /api/v1/site has no published sections.");
+  }
   return { settings: site.settings ?? {}, sections: site.sections, media: site.media };
 }
 

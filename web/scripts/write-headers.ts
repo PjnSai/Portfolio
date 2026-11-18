@@ -3,7 +3,13 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { apiOrigin } from "../lib/api-base.ts";
-import { buildRules, type Page, routeOf, writeRules } from "../lib/pages-headers.ts";
+import {
+  buildRules,
+  measureRules,
+  type Page,
+  routeOf,
+  writeRules,
+} from "../lib/pages-headers.ts";
 
 const OUT = "out";
 
@@ -27,6 +33,7 @@ for (const file of htmlFiles(OUT)) {
 }
 if (!notFound) throw new Error("out/404.html is missing.");
 
-const rules = buildRules(pages, notFound, apiOrigin(process.env.API_BASE_URL));
-writeFileSync(join(OUT, "_headers"), writeRules(rules));
-console.log(`_headers: ${rules.length} rules for ${pages.length + 1} pages`);
+const text = writeRules(buildRules(pages, notFound, apiOrigin(process.env.API_BASE_URL)));
+writeFileSync(join(OUT, "_headers"), text);
+const { rules, longest } = measureRules(text);
+console.log(`_headers: ${rules} rules for ${pages.length + 1} pages, longest line ${longest}`);

@@ -69,6 +69,8 @@ describe("loadSite", () => {
   it.each([
     ["an error status", async () => new Response("down", { status: 503 })],
     ["something else", async () => Response.json({ detail: "x" })],
+    ["no published sections", async () => Response.json({ settings: {}, sections: [], media: {} })],
+    ["a redirect it may not follow", async () => new Response(null, { status: 302 })],
     ["no answer", async () => Promise.reject(new TypeError("fetch failed"))],
   ])("fails the build on %s, so the last good build stays live", async (_, fetcher) => {
     await expect(

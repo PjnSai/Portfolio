@@ -2,8 +2,12 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   buildRules,
+  GROUP_AT,
+  groupPages,
   headersFor,
   MAX_LINE,
+  MAX_RULES,
+  measureRules,
   parseRules,
   routeOf,
   writeRules,
@@ -86,6 +90,50 @@ describe("_headers for a build", () => {
     const long = { route: "/long", html: scripts };
     expect(MAX_LINE).toBe(2000);
     expect(() => writeRules(buildRules([long], notFound, API))).toThrow(/2000/);
+  });
+});
+
+describe("many pages", () => {
+  const projects = Array.from({ length: 120 }, (_, i) => ({
+    route: `/projects/p${i}`,
+    html: `<script>self.p=${i % 5}</script>`,
+  }));
+  const pages = [home, desk, { route: "/projects", html: "<script>self.list=1</script>" }, ...projects];
+  const text = writeRules(buildRules(pages, notFound, API));
+  const rules = parseRules(text);
+
+  it("keeps one rule per page while they fit", () => {
+    expect(groupPages([home, desk], notFound).map(([path]) => path)).toEqual(["/", "/desk/media"]);
+  });
+
+  it("folds a route pattern into one rule holding its pages' hashes and the 404 page's", () => {
+    expect(rules.map((rule) => rule.path)).toContain("/projects/*");
+    expect(rules.some((rule) => rule.path === "/projects/p7")).toBe(false);
+    const policy = headersFor(rules, "/projects/p7").get("content-security-policy") ?? "";
+    expect(policy).toContain(sha("self.p=2"));
+    expect(policy).toContain(sha("self.p=3"));
+    expect(policy).toContain(sha("self.c=3"));
+    expect(policy).not.toContain(sha("self.a=1"));
+    expect(policy).not.toContain(`connect-src 'self' ${API}`);
+    expect(policy.match(/script-src/g)).toHaveLength(1);
+  });
+
+  it("keeps exact rules for pages outside the folded pattern", () => {
+    const policy = headersFor(rules, "/projects").get("content-security-policy") ?? "";
+    expect(policy).toContain(sha("self.list=1"));
+    expect(policy).not.toContain(sha("self.p=2"));
+    expect(headersFor(rules, "/desk/media").get("content-security-policy")).toContain(sha("self.b=2"));
+  });
+
+  it("stays within the limits Pages accepts", () => {
+    expect(measureRules(text).problems).toEqual([]);
+    expect(groupPages(pages, notFound).length).toBeLessThanOrEqual(GROUP_AT);
+  });
+
+  it("reports a file past either limit", () => {
+    const tooMany = Array.from({ length: MAX_RULES + 1 }, (_, i) => `/p${i}\n  X-Test: a`).join("\n");
+    expect(measureRules(tooMany).problems.join()).toMatch(/101 rules/);
+    expect(measureRules(`/*\n  X-Test: ${"a".repeat(MAX_LINE)}\n`).problems.join()).toMatch(/2000/);
   });
 });
 

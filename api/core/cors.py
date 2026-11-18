@@ -16,7 +16,8 @@ from django.utils.cache import patch_vary_headers
 from core import responses
 from core.guard import ADMIN_PREFIX
 
-METHODS = ("GET", "POST", "PATCH", "PUT", "DELETE")
+# Only what admin routes take (admin_route methods=) and web/lib/admin/api.ts sends.
+METHODS = ("GET", "POST", "PATCH")
 HEADERS = ("content-type", "x-csrf-token")
 MAX_AGE = "600"
 
@@ -52,8 +53,11 @@ class CorsMiddleware:
         if request.method == "OPTIONS":
             return self._preflight(request)
         response = self.get_response(request)
-        if _admin(request.path) and _from_site(request):
-            _allow(response)
+        if _admin(request.path):
+            # CORS headers depend on Origin, so a cache must key on it.
+            patch_vary_headers(response, ("Origin",))
+            if _from_site(request):
+                _allow(response)
         return response
 
     def _preflight(self, request):

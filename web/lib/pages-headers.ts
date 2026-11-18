@@ -34,13 +34,17 @@ function hashes(html: string, pattern: RegExp): string[] {
   return [...found];
 }
 
-export function policyFor(page: Page, api: string): string {
+function policyOf(pages: Page[], api: string, admin: boolean): string {
   return contentSecurityPolicy({
-    scripts: hashes(page.html, SCRIPT),
-    styles: hashes(page.html, STYLE),
+    scripts: [...new Set(pages.flatMap((page) => hashes(page.html, SCRIPT)))],
+    styles: [...new Set(pages.flatMap((page) => hashes(page.html, STYLE)))],
     api,
-    admin: isPrivatePath(page.route),
+    admin,
   });
+}
+
+export function policyFor(page: Page, api: string): string {
+  return policyOf([page], api, isPrivatePath(page.route));
 }
 
 /** The route Pages serves an exported HTML file at, or null for the 404 page. */
@@ -51,9 +55,51 @@ export function routeOf(file: string): string | null {
   return `/${path.replace(/\/index$/, "")}`;
 }
 
+/** Page rules above this many are folded into one rule per route pattern. */
+export const GROUP_AT = 90;
+
+/** "/projects/*" for "/projects/a" or "/projects/a/b"; null for "/" or "/projects". */
+function patternOf(route: string): string | null {
+  const parts = route.split("/").filter(Boolean);
+  return parts.length > 1 ? `/${parts[0]}/*` : null;
+}
+
+/**
+ * Which pages share a rule. Each page has its own rule, so its policy lists
+ * only its own hashes, until that would pass `limit` rules. Then the patterns
+ * with most pages are folded first, each into one rule holding the union of
+ * its pages' hashes and the 404 page's (Pages serves the 404 page for an
+ * unknown path under the pattern).
+ */
+export function groupPages(pages: Page[], notFound: Page, limit = GROUP_AT): [string, Page[]][] {
+  const byPattern = new Map<string, Page[]>();
+  for (const page of pages) {
+    const pattern = patternOf(page.route);
+    if (pattern) byPattern.set(pattern, [...(byPattern.get(pattern) ?? []), page]);
+  }
+  const largest = [...byPattern].sort(
+    (a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]),
+  );
+  const folded = new Set<string>();
+  let count = pages.length;
+  for (const [pattern, members] of largest) {
+    if (count <= limit || members.length < 2) break;
+    folded.add(pattern);
+    count -= members.length - 1;
+  }
+  const groups: [string, Page[]][] = [];
+  for (const page of pages) {
+    const pattern = patternOf(page.route);
+    if (!pattern || !folded.has(pattern)) groups.push([page.route, [page]]);
+  }
+  for (const pattern of folded) groups.push([pattern, [...byPattern.get(pattern)!, notFound]]);
+  return groups.sort((a, b) => a[0].localeCompare(b[0]));
+}
+
 /**
  * The rules for a build. Every response gets the static headers and the 404
- * page's policy; each page then swaps that policy for its own.
+ * page's policy; each page, or each folded pattern, then swaps that policy
+ * for its own.
  */
 export function buildRules(pages: Page[], notFound: Page, api: string): Rule[] {
   const rules: Rule[] = [
@@ -67,10 +113,10 @@ export function buildRules(pages: Page[], notFound: Page, api: string): Rule[] {
     },
     { path: "/_next/static/*", set: [["Cache-Control", ASSET_CACHE]], unset: [] },
   ];
-  for (const page of [...pages].sort((a, b) => a.route.localeCompare(b.route))) {
+  for (const [path, members] of groupPages(pages, notFound)) {
     rules.push({
-      path: page.route,
-      set: [["Content-Security-Policy", policyFor(page, api)]],
+      path,
+      set: [["Content-Security-Policy", policyOf(members, api, isPrivatePath(path))]],
       unset: ["Content-Security-Policy"],
     });
   }
@@ -115,6 +161,18 @@ export function parseRules(text: string): Rule[] {
     }
   }
   return rules;
+}
+
+/** Rule count and longest line of a _headers file, and what breaks Pages' limits. */
+export function measureRules(text: string): { rules: number; longest: number; problems: string[] } {
+  const rules = parseRules(text).length;
+  const longest = Math.max(0, ...text.split(/\r?\n/).map((line) => line.length));
+  const problems: string[] = [];
+  if (rules > MAX_RULES) problems.push(`_headers has ${rules} rules; Pages allows ${MAX_RULES}`);
+  if (longest > MAX_LINE) {
+    problems.push(`_headers has a line of ${longest} characters; Pages allows ${MAX_LINE}`);
+  }
+  return { rules, longest, problems };
 }
 
 function matches(pattern: string, path: string): boolean {

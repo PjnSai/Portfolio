@@ -89,7 +89,70 @@ def test_refusals_to_the_site_carry_cors_headers_so_the_page_can_read_them(api):
     assert response["Access-Control-Allow-Origin"] == ORIGIN
 
 
-def test_admin_responses_to_another_origin_carry_none(signed_in):
-    response = signed_in.get("/session", headers={"Origin": "https://evil.test"})
+def cors_headers(response):
+    return [
+        name
+        for name, _ in response.items()
+        if name.lower().startswith("access-control-")
+    ]
 
-    assert "Access-Control-Allow-Origin" not in response
+
+OTHER_ORIGINS = [
+    "https://evil.test",
+    "https://portfolio.test.evil.test",
+    "https://evil.portfolio.test",
+    "http://portfolio.test",
+    "https://portfolio.test:8443",
+    "https://PORTFOLIO.test",
+    "https://portfolio.test/",
+    "null",
+    "*",
+]
+
+
+@pytest.mark.parametrize("origin", OTHER_ORIGINS)
+def test_admin_responses_to_another_origin_carry_none(signed_in, origin):
+    response = signed_in.get("/session", headers={"Origin": origin})
+
+    assert cors_headers(response) == []
+    assert "Origin" in response["Vary"]
+
+
+@pytest.mark.parametrize("origin", OTHER_ORIGINS)
+def test_preflights_from_another_origin_carry_none(client, origin):
+    response = preflight(client, Origin=origin)
+
+    assert response.status_code == 403
+    assert cors_headers(response) == []
+
+
+def test_allowed_origin_is_the_site_origin_exactly_never_a_wildcard(signed_in):
+    for response in (
+        signed_in.get("/session", headers={"Sec-Fetch-Site": "same-site"}),
+        preflight(signed_in.client),
+    ):
+        assert response["Access-Control-Allow-Origin"] == ORIGIN
+        assert response["Access-Control-Allow-Origin"] != "*"
+        assert response["Access-Control-Allow-Credentials"] == "true"
+        assert "Origin" in response["Vary"]
+
+
+def test_preflight_allows_only_the_methods_and_headers_the_admin_sends(client):
+    response = preflight(client)
+
+    assert response["Access-Control-Allow-Methods"] == "GET, POST, PATCH"
+    assert response["Access-Control-Allow-Headers"] == "content-type, x-csrf-token"
+
+
+@pytest.mark.parametrize("method", ["PUT", "DELETE", "OPTIONS", "CONNECT"])
+def test_preflight_refuses_methods_the_admin_never_sends(client, method):
+    response = preflight(client, **{"Access-Control-Request-Method": method})
+
+    assert response.status_code == 403
+    assert cors_headers(response) == []
+
+
+def test_credentials_are_never_allowed_without_the_site_origin(signed_in):
+    response = signed_in.get("/session", headers={"Origin": None})
+
+    assert cors_headers(response) == []
