@@ -1,0 +1,168 @@
+{
+  "ratios": [
+    {
+      "one": "#000000",
+      "two": "#FFFFFF",
+      "ratio": 21.0
+    },
+    {
+      "one": "#FFFFFF",
+      "two": "#FFFFFF",
+      "ratio": 1.0
+    },
+    {
+      "one": "#777777",
+      "two": "#FFFFFF",
+      "ratio": 4.48
+    },
+    {
+      "one": "#767676",
+      "two": "#FFFFFF",
+      "ratio": 4.54
+    },
+    {
+      "one": "#FF5A1F",
+      "two": "#F3EBDD",
+      "ratio": 2.63
+    },
+    {
+      "one": "#17140F",
+      "two": "#FF5A1F",
+      "ratio": 5.89
+    },
+    {
+      "one": "#17140F",
+      "two": "#F3EBDD",
+      "ratio": 15.51
+    },
+    {
+      "one": "#2B57C9",
+      "two": "#FFFFFF",
+      "ratio": 6.35
+    },
+    {
+      "one": "#5E621C",
+      "two": "#FFFFFF",
+      "ratio": 6.48
+    },
+    {
+      "one": "#808080",
+      "two": "#000000",
+      "ratio": 5.32
+    },
+    {
+      "one": "#0A0B0C",
+      "two": "#0B0A0C",
+      "ratio": 1.0
+    }
+  ],
+  "palettes": [
+    {
+      "name": "original",
+      "light": {
+        "bg": "#F3EBDD",
+        "ink": "#17140F",
+        "surface": "#FBF6EE",
+        "primary": "#FF5A1F",
+        "on_primary": "#17140F",
+        "accent_1": "#2B57C9",
+        "on_accent_1": "#FFFFFF",
+        "accent_2": "#F2A6C6",
+        "on_accent_2": "#17140F",
+        "accent_3": "#F2B835",
+        "on_accent_3": "#17140F",
+        "accent_4": "#5E621C",
+        "on_accent_4": "#FFFFFF"
+      },
+      "dark": {
+        "bg": "#17140F",
+        "ink": "#F3EBDD",
+        "surface": "#24201A",
+        "primary": "#FF5A1F",
+        "on_primary": "#17140F",
+        "accent_1": "#6E93F0",
+        "on_accent_1": "#17140F",
+        "accent_2": "#F2A6C6",
+        "on_accent_2": "#17140F",
+        "accent_3": "#F2B835",
+        "on_accent_3": "#17140F",
+        "accent_4": "#A9AE4A",
+        "on_accent_4": "#17140F"
+      },
+      "failures": []
+    },
+    {
+      "name": "primary same as page",
+      "light": {
+        "bg": "#F3EBDD",
+        "ink": "#17140F",
+        "surface": "#FBF6EE",
+        "primary": "#F3EBDD",
+        "on_primary": "#17140F",
+        "accent_1": "#2B57C9",
+        "on_accent_1": "#FFFFFF",
+        "accent_2": "#F2A6C6",
+        "on_accent_2": "#17140F",
+        "accent_3": "#F2B835",
+        "on_accent_3": "#17140F",
+        "accent_4": "#5E621C",
+        "on_accent_4": "#FFFFFF"
+      },
+      "dark": {
+        "bg": "#17140F",
+        "ink": "#F3EBDD",
+        "surface": "#24201A",
+        "primary": "#FF5A1F",
+        "on_primary": "#17140F",
+        "accent_1": "#6E93F0",
+        "on_accent_1": "#17140F",
+        "accent_2": "#F2A6C6",
+        "on_accent_2": "#17140F",
+        "accent_3": "#F2B835",
+        "on_accent_3": "#17140F",
+        "accent_4": "#A9AE4A",
+        "on_accent_4": "#17140F"
+      },
+      "failures": []
+    },
+    {
+      "name": "several failing",
+      "light": {
+        "bg": "#FFFFFF",
+        "ink": "#777777",
+        "surface": "#FFFFFF",
+        "primary": "#FF5A1F",
+        "on_primary": "#17140F",
+        "accent_1": "#2B57C9",
+        "on_accent_1": "#FFFFFF",
+        "accent_2": "#F2A6C6",
+        "on_accent_2": "#F2A6C6",
+        "accent_3": "#F2B835",
+        "on_accent_3": "#17140F",
+        "accent_4": "#5E621C",
+        "on_accent_4": "#FFFFFF"
+      },
+      "dark": {
+        "bg": "#17140F",
+        "ink": "#F3EBDD",
+        "surface": "#24201A",
+        "primary": "#FF5A1F",
+        "on_primary": "#FFFFFF",
+        "accent_1": "#6E93F0",
+        "on_accent_1": "#17140F",
+        "accent_2": "#F2A6C6",
+        "on_accent_2": "#17140F",
+        "accent_3": "#F2B835",
+        "on_accent_3": "#17140F",
+        "accent_4": "#A9AE4A",
+        "on_accent_4": "#17140F"
+      },
+      "failures": [
+        "Light: ink on bg is 4.48:1; it needs at least 4.5:1.",
+        "Light: ink on surface is 4.48:1; it needs at least 4.5:1.",
+        "Light: on_accent_2 on accent_2 is 1.00:1; it needs at least 4.5:1.",
+        "Dark: on_primary on primary is 3.12:1; it needs at least 4.5:1."
+      ]
+    }
+  ]
+}

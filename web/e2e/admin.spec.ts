@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import AxeBuilder from "@axe-core/playwright";
 import {
   type BrowserContext,
   type CDPSession,
+  type Dialog,
   expect,
   type Page,
   type Response,
@@ -221,10 +223,11 @@ async function expectNothingInjected() {
 
 test("script payloads in every project field stay plain text", async () => {
   const dialogs: string[] = [];
-  page.on("dialog", (dialog) => {
+  const record = (dialog: Dialog) => {
     dialogs.push(dialog.message());
     void dialog.dismiss();
-  });
+  };
+  page.on("dialog", record);
   await page.goto("/desk/sections");
   await page.getByLabel("Type").selectOption("projects");
   await page.getByLabel("Title").fill("Work");
@@ -265,6 +268,7 @@ test("script payloads in every project field stay plain text", async () => {
   await page.reload();
   await expect(page.getByTestId("item-row").getByText(PAYLOAD)).toBeVisible();
   await expectNothingInjected();
+  page.off("dialog", record);
   expect(dialogs).toEqual([]);
 });
 
@@ -296,6 +300,169 @@ test("settings save with the palette choice in the draft", async () => {
 
   await expect(page.getByText("Settings saved.")).toBeVisible();
   await expect(page.getByText("Some fields need changing.")).toHaveCount(0);
+});
+
+// Palettes. Preset A is the default for new settings.
+const PRESET_A = "Ink and signal red";
+const CUSTOM = "Signal custom";
+let paletteEditor = "";
+
+function slot(name: string) {
+  return page.getByRole("group", { name: new RegExp(`^${name} `) });
+}
+
+function paletteRow(name: string) {
+  return page.getByTestId("palette-row").filter({ has: page.getByText(name, { exact: true }) });
+}
+
+test("a preset is duplicated, then edited by hex field and by keyboard on the picker", async () => {
+  const blocked: string[] = [];
+  page.on("console", (message) => {
+    if (message.text().includes("Content Security Policy")) blocked.push(message.text());
+  });
+  await page.goto("/desk/settings");
+  await expect(paletteRow(PRESET_A).getByText("Preset", { exact: true })).toBeVisible();
+  await expect(paletteRow(PRESET_A).getByRole("link", { name: /^Edit/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: `Duplicate to edit: ${PRESET_A}` }).click();
+
+  await expect(page).toHaveURL(/\/desk\/settings\/palette\?id=/);
+  const url = new URL(page.url());
+  paletteEditor = url.pathname + url.search;
+  await expect(page.getByRole("heading", { name: `Edit palette: ${PRESET_A} copy` })).toBeVisible();
+  await expect(page.getByText("Changes reach visitors only after you publish.")).toBeVisible();
+  await page.getByLabel("Palette name").fill(CUSTOM);
+
+  const primary = slot("Light primary fill");
+  await primary.getByLabel("Hex").fill("#b01e17");
+  await expect(primary.getByLabel("Red")).toHaveValue("176");
+  await expect(primary.getByLabel("Green")).toHaveValue("30");
+  await primary.getByLabel("Blue").fill("24");
+  await expect(primary.getByLabel("Hex")).toHaveValue("#B01E18");
+
+  const accent = slot("Light accent 4");
+  const before = await accent.getByLabel("Hex").inputValue();
+  const swatch = accent.getByRole("button", { name: "Colour picker for Light accent 4" });
+  await swatch.focus();
+  await page.keyboard.press("Enter");
+  await expect(swatch).toHaveAttribute("aria-expanded", "true");
+  await expect(accent.getByRole("slider", { name: "Color" })).toBeFocused();
+  // The picker's own style element ran under the CSP (it lays the picker out as flex).
+  expect(await accent.locator(".react-colorful").evaluate((e) => getComputedStyle(e).display)).toBe("flex");
+  for (let i = 0; i < 6; i++) await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Tab");
+  await expect(accent.getByRole("slider", { name: "Hue" })).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(accent.getByLabel("Hex")).not.toHaveValue(before);
+  await expect(page.getByTestId("save-state")).toHaveText("Unsaved changes");
+  await expect(page.getByTestId("contrast-light")).not.toContainText("Fail");
+
+  const axe = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
+
+  await page.keyboard.press("Escape");
+  await expect(swatch).toBeFocused();
+  await expect(swatch).toHaveAttribute("aria-expanded", "false");
+
+  const darker = await accent.getByLabel("Hex").inputValue();
+  await page.getByRole("button", { name: "Save palette" }).click();
+  await expect(page.getByText("Palette saved.")).toBeVisible();
+  await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
+
+  await page.reload();
+  await expect(slot("Light primary fill").getByLabel("Hex")).toHaveValue("#B01E18");
+  await expect(slot("Light accent 4").getByLabel("Hex")).toHaveValue(darker);
+  const variable = await page
+    .getByTestId("preview-light")
+    .evaluate((element) => (element as HTMLElement).style.getPropertyValue("--p-primary"));
+  expect(variable).toBe("#B01E18");
+  expect(blocked).toEqual([]);
+});
+
+test("the palette editor page has no colours in its built HTML", async ({ request }) => {
+  const html = await (await request.get("/desk/settings/palette")).text();
+
+  expect(html).not.toContain("--p-");
+  expect(html).not.toMatch(/style="[^"]*#[0-9A-Fa-f]{6}/);
+});
+
+test("a failing pair shows the error and blocks save; leaving asks first", async () => {
+  await page.goto(paletteEditor);
+  const text = slot("Light text on primary");
+
+  await text.getByLabel("Hex").fill("#B01E18");
+
+  const message = "Light: on_primary on primary is 1.00:1; it needs at least 4.5:1.";
+  await expect(text.getByText(message)).toBeVisible();
+  await expect(slot("Light primary fill").getByText(message)).toBeVisible();
+  await expect(text.getByLabel("Hex")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByTestId("contrast-light")).toContainText("Fail");
+  await page.getByRole("button", { name: "Save palette" }).click();
+  await expect(page.getByText(/^Nothing was saved\. 1 colour pair is too close/)).toBeVisible();
+
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("link", { name: "Back to settings" }).click();
+  await expect(page).toHaveURL(/\/desk\/settings\/palette/);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("link", { name: "Back to settings" }).click();
+  await expect(page.getByRole("heading", { name: "Site settings" })).toBeVisible();
+
+  await page.goto(paletteEditor);
+  await expect(slot("Light text on primary").getByLabel("Hex")).toHaveValue("#FFFFFF");
+});
+
+test("palette mode, default and enabled list are saved to the draft", async () => {
+  await page.goto("/desk/settings");
+  await expect(page.getByRole("radio", { name: `Default: ${PRESET_A}` })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: `Enabled for visitors: ${PRESET_A}` })).toBeDisabled();
+  await expect(page.getByText("Visitors start on the default and can choose")).toBeVisible();
+
+  await page.getByRole("radio", { name: /Visitor picks/ }).check();
+  await page.getByRole("checkbox", { name: "Enabled for visitors: Original" }).check();
+  await page.getByRole("radio", { name: `Default: ${CUSTOM}` }).check();
+  await expect(page.getByRole("checkbox", { name: `Enabled for visitors: ${CUSTOM}` })).toBeChecked();
+  await expect(page.getByText("Unsaved changes to the palette choice.")).toBeVisible();
+  await page.getByRole("button", { name: "Save palette choice" }).click();
+  await expect(page.getByText("Palette choice saved.")).toBeVisible();
+  await expect(page.getByTestId("publish-state")).not.toContainText("The live site shows this draft.");
+
+  await page.reload();
+  await expect(page.getByRole("radio", { name: /Visitor picks/ })).toBeChecked();
+  await expect(page.getByRole("radio", { name: `Default: ${CUSTOM}` })).toBeChecked();
+  for (const name of [PRESET_A, "Original", CUSTOM]) {
+    await expect(page.getByRole("checkbox", { name: `Enabled for visitors: ${name}` })).toBeChecked();
+  }
+  await expect(
+    page.getByRole("checkbox", { name: "Enabled for visitors: Forest green and ink" }),
+  ).not.toBeChecked();
+});
+
+test("a custom palette goes to the trash and comes back", async () => {
+  await page.goto("/desk/settings");
+  await page.getByRole("button", { name: `Delete: ${CUSTOM}` }).click();
+  await expect(page.getByText("This palette is the default")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete: Original" })).toHaveCount(0);
+
+  await page.getByRole("radio", { name: `Default: ${PRESET_A}` }).check();
+  await page.getByRole("button", { name: "Save palette choice" }).click();
+  await expect(page.getByText("Palette choice saved.")).toBeVisible();
+  await page.getByRole("button", { name: `Delete: ${CUSTOM}` }).click();
+
+  await expect(page.getByText(`“${CUSTOM}” moved to the trash.`)).toBeVisible();
+  await expect(paletteRow(CUSTOM)).toHaveCount(0);
+  await page.getByRole("button", { name: `Restore ${CUSTOM}` }).click();
+  await expect(page.getByText(`“${CUSTOM}” is back.`)).toBeVisible();
+  await expect(paletteRow(CUSTOM)).toHaveCount(1);
+  await expect(page.getByRole("checkbox", { name: `Enabled for visitors: ${CUSTOM}` })).not.toBeChecked();
+
+  await page.getByRole("button", { name: `Delete: ${CUSTOM}` }).click();
+  await expect(paletteRow(CUSTOM)).toHaveCount(0);
+  await page.goto("/desk/trash");
+  await expect(page.getByTestId("trash-row").filter({ hasText: CUSTOM })).toContainText("Palette");
+  await page.getByRole("button", { name: `Restore ${CUSTOM}` }).click();
+  await expect(page.getByText(`“${CUSTOM}” is back.`)).toBeVisible();
 });
 
 const CAMERA_JPEG = resolve(__dirname, "fixtures/camera.jpg");
@@ -411,7 +578,7 @@ test("project items go through every step and the published copy is public", asy
 
 test("the admin fits a phone screen", async () => {
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ["/desk/sections", "/desk/settings", "/desk/trash", "/desk/audit"]) {
+  for (const path of ["/desk/sections", "/desk/settings", "/desk/trash", "/desk/audit", paletteEditor]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     const width = await page.evaluate(

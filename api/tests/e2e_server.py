@@ -106,9 +106,15 @@ def main():
     fresh_database()
     django.setup()
 
+    from django.conf import settings
     from django.core.management import call_command
 
     from core import access, cache
+
+    # The browser suite is one client doing many sittings' work in about 30
+    # seconds, near the per-minute cap of 300. The cap stays on, set higher
+    # here only; tests/test_guard.py checks the cap itself.
+    settings.ADMIN_REQUESTS_PER_MINUTE = 1200
 
     call_command("migrate", verbosity=0)
     cache.client().flushdb()

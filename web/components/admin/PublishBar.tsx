@@ -44,7 +44,7 @@ export function PublishBar({
   }
 
   return (
-    <div className="mb-8 rounded-lg border-2 border-ink p-4">
+    <div id="publish" className="mb-8 scroll-mt-4 rounded-lg border-2 border-ink p-4">
       <div className="flex flex-wrap items-center gap-4">
         <p className="grow text-sm" data-testid="publish-state">
           {unpublished ? "The draft has changes that are not live yet." : "The live site shows this draft."}{" "}

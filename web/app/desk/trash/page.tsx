@@ -9,7 +9,7 @@ import { shortDate } from "@/lib/admin/time";
 import { useLoaded } from "@/lib/admin/use-loaded";
 
 type Entry = {
-  entity: "section" | "item" | "media";
+  entity: "section" | "item" | "media" | "palette";
   id: string;
   label: string;
   type: string;
@@ -17,8 +17,8 @@ type Entry = {
   purge_after: string;
 };
 
-const ENTITY_LABEL = { section: "Section", item: "Item", media: "Image" } as const;
-const RESTORE_PATH = { section: "sections", item: "items", media: "media" } as const;
+const ENTITY_LABEL = { section: "Section", item: "Item", media: "Image", palette: "Palette" } as const;
+const RESTORE_PATH = { section: "sections", item: "items", media: "media", palette: "palettes" } as const;
 
 export default function Trash() {
   const { vital, refreshPending } = useAdmin();
@@ -77,7 +77,7 @@ export default function Trash() {
                 <p className="font-bold">{entry.label}</p>
                 <p className="font-mono text-xs uppercase tracking-wide text-muted">
                   {ENTITY_LABEL[entry.entity]} ·{" "}
-                  {entry.entity === "media" ? "" : `${typeLabel(entry.type)} · `}goes{" "}
+                  {entry.entity === "section" || entry.entity === "item" ? `${typeLabel(entry.type)} · ` : ""}goes{" "}
                   {shortDate(entry.purge_after)}
                 </p>
               </div>
@@ -96,7 +96,7 @@ export default function Trash() {
                 >
                   Restore
                 </Button>
-                {entry.entity !== "media" && (
+                {(entry.entity === "section" || entry.entity === "item") && (
                   <Button
                     variant="danger"
                     aria-label={`Delete ${entry.label} for good`}

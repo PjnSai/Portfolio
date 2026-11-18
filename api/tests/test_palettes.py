@@ -2,7 +2,9 @@
 rules, the custom cap, the choice of palettes and what the public site gets."""
 
 import copy
+import json
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from django.test import Client
@@ -14,7 +16,14 @@ from core.models import AuditLog, Palette, SiteSettings
 
 pytestmark = pytest.mark.django_db
 
-ORIGINAL = theme.DEFAULT_PALETTE
+# Preset E. Preset A is the default for new settings.
+ORIGINAL = "b399fb8f-5de4-462d-98f5-a81bf8046a6f"
+DEFAULT = theme.DEFAULT_PALETTE
+
+
+VECTORS = json.loads(
+    (Path(__file__).parent / "contrast_vectors.json").read_text(encoding="utf-8")
+)
 
 
 def preset(palette_id=ORIGINAL):
@@ -87,6 +96,11 @@ def test_the_original_preset_uses_the_spec_colours():
         "#F2B835",
         "#5E621C",
     ]
+
+
+def test_the_original_light_primary_is_the_spec_orange():
+    assert preset().light["primary"] == "#FF5A1F"
+    assert preset().dark["primary"] == "#FF5A1F"
 
 
 def test_a_preset_cannot_be_edited(signed_in):
@@ -243,6 +257,43 @@ def test_each_failing_pair_is_refused_and_named(signed_in, mode, front, back, mi
     assert message in errors[mode]
 
 
+def test_primary_is_a_fill_with_no_contrast_rule_against_the_page():
+    assert ("primary", "bg") not in [(f, b) for f, b, _ in theme.PAIRS]
+    assert ("on_primary", "primary", 4.5) in theme.PAIRS
+
+
+@pytest.mark.parametrize("mode", theme.MODES)
+def test_a_primary_the_same_as_the_page_is_accepted(signed_in, mode):
+    data = body()
+    data[mode]["primary"] = data[mode]["bg"]
+    data[mode]["on_primary"] = data[mode]["ink"]
+
+    response = create(signed_in, data)
+
+    assert response.status_code == 201, response.content
+
+
+@pytest.mark.parametrize("mode", theme.MODES)
+def test_text_on_the_primary_still_needs_4_5(signed_in, mode):
+    data = body()
+    data[mode]["primary"] = "#FF5A1F"
+    data[mode]["on_primary"] = "#FFFFFF"
+
+    response = create(signed_in, data)
+
+    assert response.status_code == 400
+    assert any("on_primary on primary" in m for m in response.json()["errors"][mode])
+
+
+def test_shared_contrast_vectors_match():
+    """The same file is checked by web/tests/contrast.test.ts."""
+    for case in VECTORS["ratios"]:
+        assert round(theme.contrast(case["one"], case["two"]), 2) == case["ratio"]
+    for case in VECTORS["palettes"]:
+        found = [m for mode in theme.MODES for m in theme.failures(mode, case[mode])]
+        assert found == case["failures"], case["name"]
+
+
 def test_a_pair_just_under_the_line_is_refused(signed_in):
     data = body(light={"ink": "#777777", "bg": "#FFFFFF", "surface": "#FFFFFF"})
 
@@ -389,12 +440,13 @@ def use(api, mode, default, enabled):
     return response
 
 
-def test_the_settings_start_fixed_on_the_original():
+def test_the_settings_start_fixed_on_preset_a():
     draft = content.site_settings().draft
 
+    assert DEFAULT == "0c63ed98-cf1f-4c4d-945f-8725c81ab5b4"
     assert draft["palette_mode"] == "fixed"
-    assert draft["default_palette_id"] == ORIGINAL
-    assert draft["enabled_palette_ids"] == [ORIGINAL]
+    assert draft["default_palette_id"] == DEFAULT
+    assert draft["enabled_palette_ids"] == [DEFAULT]
 
 
 @pytest.mark.parametrize("mode", ["fixed", "rotate", "pick"])
@@ -417,7 +469,7 @@ def test_each_mode_can_be_chosen_and_is_audited(signed_in, mode):
         {"palette_mode": "random"},
         {"palette_mode": None},
         {"enabled_palette_ids": []},
-        {"default_palette_id": "0c63ed98-cf1f-4c4d-945f-8725c81ab5b4"},
+        {"default_palette_id": DEFAULT},
         {"default_palette_id": "not-an-id"},
         {"enabled_palette_ids": [ORIGINAL, ORIGINAL]},
         {"enabled_palette_ids": [ORIGINAL, "00000000-0000-4000-8000-000000000000"]},
@@ -457,9 +509,7 @@ def test_a_trashed_palette_cannot_be_enabled(signed_in):
 
 def test_the_settings_edit_checks_the_same_rules(signed_in):
     response = signed_in.patch("/settings", {"enabled_palette_ids": []})
-    other = signed_in.patch(
-        "/settings", {"default_palette_id": "0c63ed98-cf1f-4c4d-945f-8725c81ab5b4"}
-    )
+    other = signed_in.patch("/settings", {"default_palette_id": ORIGINAL})
 
     assert response.status_code == 400
     assert other.status_code == 400
@@ -482,7 +532,7 @@ def test_the_list_shows_presets_first_and_the_choice(signed_in):
     kinds = [p["kind"] for p in listed["palettes"]]
     assert kinds == ["preset"] * 5 + ["custom"]
     assert listed["palettes"][4]["id"] == ORIGINAL
-    assert listed["default_palette_id"] == ORIGINAL
+    assert listed["default_palette_id"] == DEFAULT
     assert listed["max_custom"] == 12
 
 

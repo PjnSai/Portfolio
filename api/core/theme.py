@@ -14,14 +14,14 @@ SLOTS = (
     *(f"on_accent_{n}" for n in ACCENTS),
 )
 
-# (foreground, background, minimum ratio). 4.5:1 for text, 3:1 for the primary
-# colour as an interface part against the page.
+# (foreground, background, minimum ratio), all text at 4.5:1. The primary is a
+# decorative fill with no rule against the page: no control may rely on a
+# primary fill alone, so each carries an ink border or an ink label.
 PAIRS = (
     ("ink", "bg", 4.5),
     ("ink", "surface", 4.5),
     ("on_primary", "primary", 4.5),
     *((f"on_accent_{n}", f"accent_{n}", 4.5) for n in ACCENTS),
-    ("primary", "bg", 3.0),
 )
 
 
@@ -53,5 +53,5 @@ def failures(mode, colours):
     return problems
 
 
-# Preset E, made by migration 0009 with this fixed id so new settings can name it.
-DEFAULT_PALETTE = "b399fb8f-5de4-462d-98f5-a81bf8046a6f"
+# Preset A, made by migration 0010 with this fixed id so new settings can name it.
+DEFAULT_PALETTE = "0c63ed98-cf1f-4c4d-945f-8725c81ab5b4"
