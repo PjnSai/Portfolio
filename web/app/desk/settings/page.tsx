@@ -4,22 +4,19 @@ import { useCallback, useState } from "react";
 import { useAdmin } from "@/components/admin/AdminApp";
 import { ContentForm, type SaveResult } from "@/components/admin/ContentForm";
 import { privacyWarnings, PublishBar, type Warning } from "@/components/admin/PublishBar";
-import { ThemeEditor } from "@/components/admin/ThemeEditor";
 import { Button, FieldErrors, INPUT, Label, Notice, PageTitle } from "@/components/admin/ui";
 import { api, ApiError, describeError } from "@/lib/admin/api";
 import { type ItemData, SETTINGS_FIELDS } from "@/lib/admin/content-types";
-import type { Theme } from "@/lib/admin/contrast";
 import { issuesByField, SEO_PAGES, settingsSchema } from "@/lib/admin/schemas";
 import { useLoaded } from "@/lib/admin/use-loaded";
 
 type Seo = Record<string, { title?: string; description?: string }>;
 
 type Settings = {
-  draft: ItemData & { theme: Theme; seo?: Seo };
+  draft: ItemData & { seo?: Seo };
   published_at: string | null;
   unpublished_changes: boolean;
   privacy_warnings: Warning[];
-  theme_presets: Record<string, Theme>;
 };
 
 const PAGE_NAMES: Record<string, string> = {
@@ -109,17 +106,6 @@ export default function SettingsPage() {
         <SeoForm key={key} draft={data.draft} onSave={(seo) => save({ seo }, "Search details saved.")} />
       </section>
 
-      <section aria-labelledby="theme">
-        <h2 id="theme" className="mb-4 text-2xl font-extrabold">
-          Theme colours
-        </h2>
-        <ThemeEditor
-          key={key}
-          theme={data.draft.theme}
-          presets={data.theme_presets}
-          onSave={(theme) => save({ theme }, "Theme saved.")}
-        />
-      </section>
     </>
   );
 }

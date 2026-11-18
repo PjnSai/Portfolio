@@ -3,6 +3,7 @@
 // checks everything again and its answer wins.
 
 import { z } from "zod";
+import { PALETTE_MODES, type Slot, SLOTS } from "@/lib/palettes";
 import { failures, HEX } from "./contrast";
 
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
@@ -144,24 +145,32 @@ export const ITEM_SCHEMAS: Record<string, z.ZodType> = {
   links: z.strictObject({ label: line(60), url: httpsUrl }),
 };
 
-const colour = z.string().regex(HEX, "Use a colour like #1a2b3c.");
-const tokens = z.strictObject({
-  background: colour,
-  ink: colour,
-  accent: colour,
-  on_accent: colour,
-});
+const colour = z.string().regex(HEX, "Use a colour like #1A2B3C.");
+const slots = z.strictObject(
+  Object.fromEntries(SLOTS.map((slot) => [slot, colour])) as Record<Slot, typeof colour>,
+);
 
-export const themeSchema = z
-  .strictObject({ light: tokens, dark: tokens })
-  .superRefine((theme, context) => {
-    for (const failure of failures(theme)) {
-      context.addIssue({
-        code: "custom",
-        message: `${failure.mode === "light" ? "Light" : "Dark"} theme: ${failure.use} is ${failure.ratio.toFixed(2)}:1; it needs at least ${failure.minimum}:1.`,
-      });
+export const paletteSchema = z
+  .strictObject({ name: line(60), light: slots, dark: slots })
+  .superRefine((palette, context) => {
+    for (const failure of failures(palette)) {
+      context.addIssue({ code: "custom", message: failure.message, path: [failure.mode] });
     }
   });
+
+const paletteChoice = {
+  palette_mode: z.enum(PALETTE_MODES),
+  default_palette_id: z.uuid(),
+  enabled_palette_ids: z.array(z.uuid()).min(1).max(17),
+};
+
+function defaultIsEnabled(choice: { default_palette_id: string; enabled_palette_ids: string[] }) {
+  return choice.enabled_palette_ids.includes(choice.default_palette_id);
+}
+
+const DEFAULT_ENABLED = { message: "The default must be one of the enabled.", path: ["default_palette_id"] };
+
+export const paletteChoiceSchema = z.strictObject(paletteChoice).refine(defaultIsEnabled, DEFAULT_ENABLED);
 
 const pageSeo = z.strictObject({ title: line(70, false), description: line(160, false) });
 
@@ -175,8 +184,8 @@ export const settingsSchema = z.strictObject({
     .strictObject(Object.fromEntries(SEO_PAGES.map((page) => [page, pageSeo.optional()])))
     .optional(),
   social_image: imageSlot.nullable().optional(),
-  theme: themeSchema,
-});
+  ...paletteChoice,
+}).refine(defaultIsEnabled, DEFAULT_ENABLED);
 
 /** zod issues as messages per top-level field, naming the row for lists. */
 export function issuesByField(error: z.ZodError): Record<string, string[]> {

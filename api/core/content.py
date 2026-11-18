@@ -15,7 +15,15 @@ from django.db.models import Max
 from django.utils import timezone
 
 from core import audit, media, pages, privacy, serializers, theme
-from core.models import Media, Owner, Revision, Section, SectionItem, SiteSettings
+from core.models import (
+    Media,
+    Owner,
+    Palette,
+    Revision,
+    Section,
+    SectionItem,
+    SiteSettings,
+)
 
 PAGE_SIZE = pages.PAGE_SIZE
 SECTION_TYPES = serializers.SECTION_TYPES
@@ -25,13 +33,15 @@ TRASH_DAYS = 30
 ONE_OF_A_KIND = {"hero", "contact"}
 MAX_SECTIONS = 40
 MAX_ITEMS = 200
+MAX_CUSTOM_PALETTES = 12
 REVISION = "section"
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 LABEL_KEYS = ("title", "name", "label", "organisation", "institution", "alt")
 
 
 class Refused(Exception):
-    """The request is valid but not possible in the current state."""
+    """The request is valid but not possible in the current state. The first
+    argument, if any, is a short code the admin can explain."""
 
 
 def live_sections():
@@ -40,6 +50,10 @@ def live_sections():
 
 def live_items(section):
     return section.items.filter(trashed_at=None).order_by("position", "created_at")
+
+
+def custom_palettes():
+    return Palette.objects.filter(trashed_at=None, kind=Palette.Kind.CUSTOM)
 
 
 def holds_items(section):
@@ -229,6 +243,11 @@ def restore(target):
         entity = "section"
     elif isinstance(target, Media):
         entity = "media"
+    elif isinstance(target, Palette):
+        Owner.objects.select_for_update().get()
+        if custom_palettes().count() >= MAX_CUSTOM_PALETTES:
+            raise Refused("palette_limit")
+        entity = "palette"
     else:
         if target.section.trashed_at is not None:
             raise Refused
@@ -301,6 +320,16 @@ def trashed():
             }
             for item in Media.objects.exclude(trashed_at=None)
         ]
+        + [
+            {
+                "entity": "palette",
+                "id": str(palette.id),
+                "label": palette.name,
+                "type": "palette",
+                "trashed_at": palette.trashed_at,
+            }
+            for palette in Palette.objects.exclude(trashed_at=None)
+        ]
     )
     entries.sort(key=lambda entry: entry["trashed_at"], reverse=True)
     return entries
@@ -333,14 +362,25 @@ def purge_trash():
             # Files first: if storage fails, the row stays and the next run retries.
             media.delete_files(item)
             item.delete()
+        palettes = (
+            Palette.objects.filter(trashed_at__lt=cutoff, kind=Palette.Kind.CUSTOM)
+            .delete()[1]
+            .get("core.Palette", 0)
+        )
         audit.record(
             "trash_purged",
             actor="system",
             sections=sections,
             items=items,
             media=len(old_media),
+            palettes=palettes,
         )
-    return {"sections": sections, "items": items, "media": len(old_media)}
+    return {
+        "sections": sections,
+        "items": items,
+        "media": len(old_media),
+        "palettes": palettes,
+    }
 
 
 # What the public site shows
@@ -367,12 +407,14 @@ def public_site():
         section.published
         for section in live_sections().filter(visible=True).exclude(published={})
     ]
-    settings_copy = row.published if row else {}
+    settings_copy = dict(row.published) if row else {}
+    palettes = settings_copy.pop("palettes", [])
     ids = _media_ids([settings_copy, shown], set())
     used = Media.objects.filter(id__in=ids, trashed_at=None)
     return {
         "settings": settings_copy,
         "sections": shown,
+        "palettes": palettes,
         "media": {
             str(item.id): {
                 "width": item.width,
@@ -398,8 +440,11 @@ DEFAULT_SETTINGS = {
     "contact_form": True,
     "showcase_layout": "ring",
     "layout_switcher": False,
-    "theme": theme.DEFAULT,
+    "palette_mode": "fixed",
+    "default_palette_id": theme.DEFAULT_PALETTE,
+    "enabled_palette_ids": [theme.DEFAULT_PALETTE],
 }
+PALETTE_KEYS = ("palette_mode", "default_palette_id", "enabled_palette_ids")
 
 
 def site_settings():
@@ -413,13 +458,46 @@ def site_settings():
         )
 
 
+def palette_copy(palette):
+    """A palette as visitors get it."""
+    return {
+        "id": str(palette.id),
+        "name": palette.name,
+        "light": palette.light,
+        "dark": palette.dark,
+    }
+
+
+def settings_state(row):
+    """What Publish puts live: the draft settings and a copy of each enabled
+    palette, so later palette edits wait for the next publish."""
+    ids = row.draft.get("enabled_palette_ids", [])
+    found = {
+        str(palette.id): palette
+        for palette in Palette.objects.filter(id__in=ids, trashed_at=None)
+    }
+    return {
+        **row.draft,
+        "palettes": [palette_copy(found[i]) for i in ids if i in found],
+    }
+
+
+def settings_warnings(row):
+    """Contact details in the settings or palette names Publish would put live.
+    Palette ids are left out: a run of digits in one can look like a phone."""
+    state = settings_state(row)
+    text = {key: value for key, value in state.items() if key not in PALETTE_KEYS}
+    text["palettes"] = [palette["name"] for palette in text.pop("palettes")]
+    return privacy.scan(text)
+
+
 def settings_unpublished(row):
     latest = (
         Revision.objects.filter(entity=SETTINGS, entity_id=row.id)
         .order_by("-version")
         .first()
     )
-    return latest is None or latest.data != row.draft
+    return latest is None or latest.data != settings_state(row)
 
 
 def edit_settings(row, draft):
@@ -437,10 +515,14 @@ def publish_settings(row):
             )["highest"]
             or 0
         ) + 1
+        state = settings_state(row)
+        default = row.draft.get("default_palette_id")
+        if not any(palette["id"] == default for palette in state["palettes"]):
+            raise Refused("palette_missing")
         Revision.objects.create(
-            entity=SETTINGS, entity_id=row.id, version=version, data=row.draft
+            entity=SETTINGS, entity_id=row.id, version=version, data=state
         )
-        row.published = row.draft
+        row.published = state
         row.published_at = timezone.now()
         row.save(update_fields=["published", "published_at", "updated_at"])
         audit.record("settings_published", version=version)

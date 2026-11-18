@@ -1,28 +1,19 @@
-// WCAG contrast for the theme editor, the same sums as api/core/theme.py.
+// WCAG contrast for palettes, the same sums as api/core/theme.py.
 // The API has the final say; this only lets the editor warn as you type.
 
-export type Tokens = { background: string; ink: string; accent: string; on_accent: string };
-export type Theme = { light: Tokens; dark: Tokens };
-export type Mode = keyof Theme;
+import { MODES, type PaletteColours, type PaletteMode, type Slot } from "@/lib/palettes";
 
-export const MODES: Mode[] = ["light", "dark"];
-export const TOKEN_NAMES: [keyof Tokens, string][] = [
-  ["background", "Background"],
-  ["ink", "Text"],
-  ["accent", "Accent"],
-  ["on_accent", "Text on accent"],
+export type Pair = { front: Slot; back: Slot; minimum: number };
+
+const ACCENTS = [1, 2, 3, 4] as const;
+
+export const PAIRS: Pair[] = [
+  { front: "ink", back: "bg", minimum: 4.5 },
+  { front: "ink", back: "surface", minimum: 4.5 },
+  { front: "on_primary", back: "primary", minimum: 4.5 },
+  ...ACCENTS.map((n) => ({ front: `on_accent_${n}` as Slot, back: `accent_${n}` as Slot, minimum: 4.5 })),
+  { front: "primary", back: "bg", minimum: 3 },
 ];
-
-export const PAIRS: { front: keyof Tokens; back: keyof Tokens; minimum: number; use: string }[] = [
-  { front: "ink", back: "background", minimum: 4.5, use: "Text on the background" },
-  { front: "on_accent", back: "accent", minimum: 4.5, use: "Text on the accent colour" },
-  { front: "accent", back: "background", minimum: 3, use: "The accent colour against the background" },
-];
-
-export const DEFAULT_THEME: Theme = {
-  light: { background: "#f5efe3", ink: "#161412", accent: "#e2531b", on_accent: "#161412" },
-  dark: { background: "#161412", ink: "#f5efe3", accent: "#f06a35", on_accent: "#161412" },
-};
 
 export const HEX = /^#[0-9a-fA-F]{6}$/;
 
@@ -41,27 +32,24 @@ export function contrast(one: string, two: string): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-export type Failure = {
-  mode: Mode;
-  front: keyof Tokens;
-  back: keyof Tokens;
-  ratio: number;
-  minimum: number;
-  use: string;
-};
+export type Failure = Pair & { mode: PaletteMode; ratio: number; message: string };
 
-/** Every pair below its minimum. Colours that are not #rrggbb are skipped here
- * and refused by the schema instead. */
-export function failures(theme: Theme): Failure[] {
+/** Every pair below its minimum, worded as the API words it. Colours that are
+ * not #RRGGBB are skipped here and refused by the schema instead. */
+export function failures(palette: PaletteColours): Failure[] {
   const found: Failure[] = [];
   for (const mode of MODES) {
-    const colours = theme[mode];
+    const colours = palette[mode];
     for (const pair of PAIRS) {
       const front = colours[pair.front];
       const back = colours[pair.back];
-      if (!HEX.test(front) || !HEX.test(back)) continue;
+      if (!HEX.test(front ?? "") || !HEX.test(back ?? "")) continue;
       const ratio = contrast(front, back);
-      if (ratio < pair.minimum) found.push({ mode, ratio, ...pair });
+      if (ratio < pair.minimum) {
+        const name = mode === "light" ? "Light" : "Dark";
+        const message = `${name}: ${pair.front} on ${pair.back} is ${ratio.toFixed(2)}:1; it needs at least ${pair.minimum}:1.`;
+        found.push({ ...pair, mode, ratio, message });
+      }
     }
   }
   return found;

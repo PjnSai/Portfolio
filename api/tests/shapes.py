@@ -4,8 +4,8 @@ import copy
 
 from rest_framework import serializers as drf
 
+from core import content
 from core import serializers as s
-from core import theme
 
 MONTH = "2024-09"
 URL = "https://example.test/page"
@@ -26,11 +26,17 @@ def kind_of(field):
 
 def sample(shape, fill=lambda field: "Plain text"):
     """A valid body for shape, with every free-text field set by fill(field)."""
-    if shape is s.Theme:
-        return copy.deepcopy(theme.DEFAULT)
     body = {}
     for name, field in shape().fields.items():
         body[name] = _value(field, fill)
+    if issubclass(shape, s.PaletteChoice):
+        # Ids must name real palettes; the defaults name the Original preset.
+        body.update(
+            {
+                key: copy.deepcopy(content.DEFAULT_SETTINGS[key])
+                for key in content.PALETTE_KEYS
+            }
+        )
     return body
 
 
@@ -59,8 +65,6 @@ def _value(field, fill):
 
 def text_paths(shape, prefix=()):
     """(path, field) for every free-text field, list items at index 0."""
-    if shape is s.Theme:
-        return
     for name, field in shape().fields.items():
         yield from _paths(field, (*prefix, name))
 
@@ -78,8 +82,6 @@ def _paths(field, path):
 
 def list_paths(shape, prefix=()):
     """(path, field) for every list with a length cap."""
-    if shape is s.Theme:
-        return
     for name, field in shape().fields.items():
         path = (*prefix, name)
         if isinstance(field, (drf.ListSerializer, drf.ListField)):

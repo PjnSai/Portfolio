@@ -219,7 +219,8 @@ def test_an_image_slot_may_not_name_trashed_media(signed_in):
         {"contact_form": "yes"},
         {"seo": {"blog": {"title": "x"}}},
         {"theme": {"light": {"background": "#fff"}}},
-        {"theme": {"preset": "x"}},
+        {"palette_mode": "random"},
+        {"enabled_palette_ids": []},
         {"css": "body{}"},
     ],
 )

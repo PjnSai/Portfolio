@@ -143,7 +143,8 @@ def test_settings_start_from_defaults(signed_in):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["draft"]["theme"] == theme.DEFAULT
+    assert body["draft"]["palette_mode"] == "fixed"
+    assert body["draft"]["enabled_palette_ids"] == [theme.DEFAULT_PALETTE]
     assert body["draft"]["contact_form"] is True
     assert body["published_at"] is None
     assert body["unpublished_changes"] is True
@@ -193,10 +194,3 @@ def test_a_photo_can_be_cleared(signed_in):
 
     assert response.status_code == 200, response.content
     assert response.json()["draft"]["photo"] is None
-
-
-def test_settings_offer_the_theme_presets(signed_in):
-    presets = signed_in.get("/settings").json()["theme_presets"]
-
-    assert presets["orange"] == theme.DEFAULT
-    assert all(theme.failures(tokens) == [] for tokens in presets.values())

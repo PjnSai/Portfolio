@@ -288,21 +288,14 @@ test("publishing text with contact details asks first", async () => {
   await expect(page.getByTestId("publish-state")).toContainText("The live site shows this draft.");
 });
 
-test("the theme editor blocks colours that fail contrast", async () => {
+test("settings save with the palette choice in the draft", async () => {
   await page.goto("/desk/settings");
-  const save = page.getByRole("button", { name: "Save theme" });
+  await expect(page.getByRole("heading", { name: "Theme colours" })).toHaveCount(0);
 
-  await page.getByLabel("Light theme Text", { exact: true }).fill("#bbbbbb");
-  await expect(page.getByTestId("contrast-failures")).toContainText(
-    "Light theme: Text on the background is",
-  );
-  await expect(save).toBeDisabled();
+  await page.getByRole("button", { name: "Save settings" }).click();
 
-  await page.getByRole("button", { name: "Blue" }).click();
-  await expect(page.getByTestId("contrast-failures")).toHaveCount(0);
-  await save.click();
-  await expect(page.getByText("Theme saved.")).toBeVisible();
-  await expect(page.getByLabel("Light theme Accent", { exact: true })).toHaveValue("#2a55c7");
+  await expect(page.getByText("Settings saved.")).toBeVisible();
+  await expect(page.getByText("Some fields need changing.")).toHaveCount(0);
 });
 
 const CAMERA_JPEG = resolve(__dirname, "fixtures/camera.jpg");

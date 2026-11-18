@@ -14,6 +14,7 @@ TABLES = {
     "cv_files",
     "messages",
     "revisions",
+    "palettes",
     "audit_log",
     "admin_owner",
     "admin_credentials",

@@ -9,17 +9,25 @@
 // a placeholder home page, so /desk is built and the owner can publish.
 
 import { apiOrigin } from "./api-base";
+import type { PaletteChoice, SitePalette } from "./palettes";
 
 export type Source = { width: number; height: number; url: string };
 export type SiteMedia = { width: number; height: number; sources: Source[] };
 export type SiteSection = { type?: string; title: string; [field: string]: unknown };
+export type SiteSettings = Partial<PaletteChoice> & {
+  title?: string;
+  description?: string;
+  [field: string]: unknown;
+};
 export type PublicSite = {
-  settings: { title?: string; description?: string; [field: string]: unknown };
+  settings: SiteSettings;
   sections: SiteSection[];
+  /** Only the palettes visitors may use, as last published; empty before that. */
+  palettes: SitePalette[];
   media: Record<string, SiteMedia>;
 };
 
-export const EMPTY_SITE: PublicSite = { settings: {}, sections: [], media: {} };
+export const EMPTY_SITE: PublicSite = { settings: {}, sections: [], palettes: [], media: {} };
 
 const TIMEOUT_MS = 15_000;
 
@@ -42,7 +50,8 @@ export async function loadSite(
   if (!Array.isArray(site.sections) || typeof site.media !== "object" || !site.media) {
     throw new Error("GET /api/v1/site did not return a site document.");
   }
-  return { settings: site.settings ?? {}, sections: site.sections, media: site.media };
+  const palettes = Array.isArray(site.palettes) ? site.palettes : [];
+  return { settings: site.settings ?? {}, sections: site.sections, palettes, media: site.media };
 }
 
 /** An image's sources as a srcset, with the API origin in front of each path. */
