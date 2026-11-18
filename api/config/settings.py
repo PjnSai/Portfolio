@@ -50,6 +50,7 @@ MIDDLEWARE = [
     "core.headers.SecurityHeadersMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "core.cors.CorsMiddleware",
     "core.guard.GuardMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
 ]

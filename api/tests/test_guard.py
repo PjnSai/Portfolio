@@ -25,8 +25,8 @@ def test_request_with_everything_in_order_passes(api):
         {"Origin": "null"},
         {"Sec-Fetch-Site": None},
         {"Sec-Fetch-Site": "cross-site"},
-        {"Sec-Fetch-Site": "same-site"},
         {"Sec-Fetch-Site": "none"},
+        {"Sec-Fetch-Site": "same-site", "Origin": "https://other.portfolio.test"},
     ],
 )
 def test_state_changing_request_from_elsewhere_is_refused(api, headers):
@@ -36,11 +36,41 @@ def test_state_changing_request_from_elsewhere_is_refused(api, headers):
     assert response.json() == FORBIDDEN
 
 
-@pytest.mark.parametrize("site", ["cross-site", "same-site"])
+def test_the_site_may_write_from_its_own_origin_on_a_sibling_host(api):
+    # The site and the API are on hosts of one domain, so the browser says
+    # same-site; the Origin must still be exactly the site's.
+    assert (
+        api.post("/login/options", headers={"Sec-Fetch-Site": "same-site"}).status_code
+        == 200
+    )
+
+
+@pytest.mark.parametrize("site", ["cross-site", "none"])
 def test_cross_site_read_of_admin_is_refused(signed_in, site):
     response = signed_in.get("/session", headers={"Sec-Fetch-Site": site})
 
     assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "origin", ["https://evil.test", "https://other.portfolio.test", "null"]
+)
+def test_admin_read_from_another_origin_is_refused(signed_in, origin):
+    response = signed_in.get(
+        "/session", headers={"Sec-Fetch-Site": "same-site", "Origin": origin}
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.parametrize("origin", ["https://portfolio.test", None])
+def test_admin_read_from_the_site_is_allowed(signed_in, origin):
+    # An image tag sends no Origin; a fetch from the site sends the site's.
+    response = signed_in.get(
+        "/session", headers={"Sec-Fetch-Site": "same-site", "Origin": origin}
+    )
+
+    assert response.status_code == 200
 
 
 def bad_tokens(key, make):

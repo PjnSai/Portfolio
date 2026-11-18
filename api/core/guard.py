@@ -1,7 +1,9 @@
 """Request guard. Runs before any view.
 
-1. State-changing requests must come from this site: exact Origin match and
-   Sec-Fetch-Site: same-origin.
+1. State-changing requests must come from the site: exact Origin match and
+   Sec-Fetch-Site same-origin or same-site (the site and the API are hosts of
+   one domain). Admin reads may also come from the site, or from no browser
+   page at all, but never from another origin.
 2. Everything under /api/v1/admin/ needs a valid Cloudflare Access token, checked
    on every request and before the URL is resolved, so unknown paths look the
    same as known ones.
@@ -34,15 +36,20 @@ def _is_admin(path):
     return path == ADMIN_PREFIX or path.startswith(ADMIN_PREFIX + "/")
 
 
+FROM_SITE = ("same-origin", "same-site")
+
+
 def _same_origin(request, admin):
     site = request.headers.get("Sec-Fetch-Site")
+    origin = request.headers.get("Origin")
     if request.method in SAFE_METHODS:
-        # Browsers that send the header must say same-origin for admin reads.
-        return not admin or site in (None, "same-origin")
-    origin = settings.SITE_ORIGIN
-    if not origin or site != "same-origin":
+        if not admin:
+            return True
+        # An image tag sends no Origin; a fetch from the site sends its own.
+        return site in (None, *FROM_SITE) and origin in (None, settings.SITE_ORIGIN)
+    if not settings.SITE_ORIGIN or site not in FROM_SITE:
         return False
-    return request.headers.get("Origin") == origin
+    return origin == settings.SITE_ORIGIN
 
 
 def _body_refusal(request):

@@ -10,7 +10,8 @@ HEADERS = {
         "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; "
         "form-action 'none'"
     ),
-    "Cross-Origin-Resource-Policy": "same-origin",
+    # The site, on another host of the same domain, shows the API's images.
+    "Cross-Origin-Resource-Policy": "same-site",
     "Permissions-Policy": (
         "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
         "magnetometer=(), microphone=(), payment=(), usb=()"
