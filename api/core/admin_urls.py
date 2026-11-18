@@ -60,4 +60,5 @@ urlpatterns = [
     path("media/<uuid:media_id>/file", media.media_file),
     path("cache", media.cache_status),
     path("cache/purge", media.cache_purge),
+    path("deploy", media.site_deploy),
 ]
