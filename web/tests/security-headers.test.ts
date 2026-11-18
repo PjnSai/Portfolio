@@ -1,5 +1,9 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import {
+  ADMIN_STYLE_HASHES,
   contentSecurityPolicy,
   EXTRA_SCRIPT_HASHES,
   isPrivatePath,
@@ -26,7 +30,9 @@ describe("Content-Security-Policy", () => {
     const policy = directives(publicPolicy);
     expect(policy.get("script-src")).toEqual(["'self'", `'${HASH}'`]);
     expect(policy.get("style-src")).toEqual(["'self'"]);
-    expect(directives(adminPolicy).get("style-src")).toEqual(["'self'", `'${HASH}'`]);
+    expect(directives(adminPolicy).get("style-src")).toEqual(
+      ["'self'", ...[HASH, ...ADMIN_STYLE_HASHES].sort().map((h) => `'${h}'`)],
+    );
     expect(publicPolicy).not.toContain("nonce-");
   });
 
@@ -85,5 +91,20 @@ describe("admin pages", () => {
 
   it.each(["/", "/desktop", "/projects/desk"])("%s is public", (path) => {
     expect(isPrivatePath(path)).toBe(false);
+  });
+});
+
+describe("colour picker style", () => {
+  it("is the one react-colorful adds, allowed on admin pages only", () => {
+    const file = createRequire(import.meta.url).resolve("react-colorful");
+    const source = readFileSync(file, "utf8");
+    const literal = /innerHTML='((?:[^'\\]|\\.)*)'/.exec(source);
+    expect(literal).not.toBeNull();
+    const css = literal![1].replace(/\\(.)/g, "$1");
+    const hash = `sha256-${createHash("sha256").update(css, "utf8").digest("base64")}`;
+
+    expect(ADMIN_STYLE_HASHES).toEqual([hash]);
+    expect(adminPolicy).toContain(`'${hash}'`);
+    expect(publicPolicy).not.toContain(hash);
   });
 });

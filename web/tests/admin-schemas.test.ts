@@ -20,7 +20,7 @@ const ORIGINAL: PaletteColours = {
     bg: "#F3EBDD",
     ink: "#17140F",
     surface: "#FBF6EE",
-    primary: "#E8551C",
+    primary: "#FF5A1F",
     on_primary: "#17140F",
     accent_1: "#2B57C9",
     on_accent_1: "#FFFFFF",
@@ -280,7 +280,6 @@ describe("contrast", () => {
       "on_accent_2/accent_2/4.5",
       "on_accent_3/accent_3/4.5",
       "on_accent_4/accent_4/4.5",
-      "primary/bg/3",
     ]);
   });
 

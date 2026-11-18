@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { useAdmin } from "@/components/admin/AdminApp";
 import { ContentForm, type SaveResult } from "@/components/admin/ContentForm";
+import { PaletteList } from "@/components/admin/palettes/PaletteList";
 import { privacyWarnings, PublishBar, type Warning } from "@/components/admin/PublishBar";
 import { Button, FieldErrors, INPUT, Label, Notice, PageTitle } from "@/components/admin/ui";
 import { api, ApiError, describeError } from "@/lib/admin/api";
@@ -104,6 +105,16 @@ export default function SettingsPage() {
           Search and sharing
         </h2>
         <SeoForm key={key} draft={data.draft} onSave={(seo) => save({ seo }, "Search details saved.")} />
+      </section>
+
+      <section id="palettes" aria-labelledby="palettes-title" className="mb-12 scroll-mt-4">
+        <h2 id="palettes-title" className="mb-2 text-2xl font-extrabold">
+          Colour palettes
+        </h2>
+        <p className="mb-4 text-sm text-muted">
+          Changes here reach visitors only after you publish the settings above.
+        </p>
+        <PaletteList onChanged={reload} />
       </section>
 
     </>

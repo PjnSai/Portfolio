@@ -102,3 +102,23 @@ body {
 .prose hr {
   border-color: var(--line);
 }
+
+/* Palette editor colour picker (react-colorful). */
+.colour-picker .react-colorful {
+  width: 100%;
+  max-width: 20rem;
+}
+.colour-picker .react-colorful__interactive:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--paper);
+}
+@media (pointer: coarse) {
+  .colour-picker .react-colorful__pointer {
+    width: 44px;
+    height: 44px;
+  }
+  .colour-picker .react-colorful__hue {
+    height: 44px;
+  }
+}

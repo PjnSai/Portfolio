@@ -9,6 +9,16 @@
  */
 export const EXTRA_SCRIPT_HASHES: readonly string[] = [];
 
+/**
+ * The colour picker in the palette editor (react-colorful) adds one fixed
+ * <style> element when it first renders. Its hash is allowed on admin pages
+ * only; tests/security-headers.test.ts recomputes it from the installed package,
+ * so an upgrade that changes the CSS fails the tests until this is updated.
+ */
+export const ADMIN_STYLE_HASHES: readonly string[] = [
+  "sha256-I2px+fnpbN4E5+Djrj7aoTIyq9yyREkuVl19f4Sye9A=",
+];
+
 export type PolicyInput = {
   /** "sha256-<base64>" for each inline script on the page. */
   scripts: readonly string[];
@@ -29,7 +39,7 @@ const quoted = (hashes: readonly string[]) => hashes.map((h) => ` '${h}'`).join(
 export function contentSecurityPolicy(input: PolicyInput): string {
   const api = input.api ? ` ${input.api}` : "";
   const scripts = [...new Set([...EXTRA_SCRIPT_HASHES, ...input.scripts])].sort();
-  const styles = [...new Set(input.styles)].sort();
+  const styles = [...new Set([...(input.admin ? ADMIN_STYLE_HASHES : []), ...input.styles])].sort();
   return [
     "default-src 'self'",
     `script-src 'self'${quoted(scripts)}`,

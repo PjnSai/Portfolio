@@ -1,4 +1,5 @@
-"""Migration 0010 moves the phase 2B theme into palettes and drops it."""
+"""Migration 0010 moves the phase 2B theme into palettes and drops it; 0011 makes
+preset A the default and puts preset E's light primary back to the spec orange."""
 
 import pytest
 from django.db import connection
@@ -8,7 +9,9 @@ pytestmark = pytest.mark.django_db
 
 BEFORE = [("core", "0008_site_deploy_status")]
 AFTER = [("core", "0010_palette_data")]
+LATEST = [("core", "0011_default_palette_a")]
 ORIGINAL = "b399fb8f-5de4-462d-98f5-a81bf8046a6f"
+PRESET_A = "0c63ed98-cf1f-4c4d-945f-8725c81ab5b4"
 
 OLD_DEFAULT = {
     "light": {
@@ -51,7 +54,7 @@ def old_settings():
         )
 
     yield make
-    migrate(AFTER)
+    migrate(LATEST)
 
 
 def after():
@@ -105,3 +108,45 @@ def test_a_live_theme_that_differs_from_the_draft_is_kept_for_the_site(old_setti
     assert row.draft["default_palette_id"] == ORIGINAL
     assert row.published["default_palette_id"] == str(live.id)
     assert row.published["palettes"][0]["light"]["primary"] == "#2A55C7"
+
+
+def test_preset_a_becomes_the_draft_default_and_is_enabled(old_settings):
+    old_settings(BLUE, BLUE)
+    row, Palette = after()
+    custom = str(Palette.objects.get(kind="custom").id)
+
+    apps = migrate(LATEST)
+
+    row = apps.get_model("core", "SiteSettings").objects.get()
+    assert row.draft["default_palette_id"] == PRESET_A
+    assert row.draft["enabled_palette_ids"] == [PRESET_A, custom]
+    assert row.published["default_palette_id"] == custom
+    original = apps.get_model("core", "Palette").objects.get(id=ORIGINAL)
+    assert original.light["primary"] == "#FF5A1F"
+    assert original.kind == "preset"
+
+
+def test_preset_a_is_not_listed_twice(old_settings):
+    old_settings(OLD_DEFAULT)
+    after()
+    model = migrate(AFTER).get_model("core", "SiteSettings")
+    row = model.objects.get()
+    row.draft = {**row.draft, "enabled_palette_ids": [ORIGINAL, PRESET_A]}
+    row.save()
+
+    row = migrate(LATEST).get_model("core", "SiteSettings").objects.get()
+
+    assert row.draft["enabled_palette_ids"] == [PRESET_A, ORIGINAL]
+
+
+def test_0011_can_be_undone(old_settings):
+    old_settings(OLD_DEFAULT)
+    after()
+    migrate(LATEST)
+
+    apps = migrate(AFTER)
+
+    row = apps.get_model("core", "SiteSettings").objects.get()
+    assert row.draft["default_palette_id"] == ORIGINAL
+    original = apps.get_model("core", "Palette").objects.get(id=ORIGINAL)
+    assert original.light["primary"] == "#E8551C"

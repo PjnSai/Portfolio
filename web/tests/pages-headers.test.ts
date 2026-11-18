@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { ADMIN_STYLE_HASHES } from "@/lib/security-headers";
 import {
   buildRules,
   GROUP_AT,
@@ -57,7 +58,10 @@ describe("_headers for a build", () => {
     const policy = served("/desk/media").get("content-security-policy") ?? "";
 
     expect(policy).toContain(`script-src 'self' '${sha("self.b=2")}'`);
-    expect(policy).toContain(`style-src 'self' '${sha("p{}")}'`);
+    const styles = /style-src ([^;]*)/.exec(policy)?.[1].split(" ") ?? [];
+    expect(styles).toEqual(
+      ["'self'", ...[sha("p{}"), ...ADMIN_STYLE_HASHES].sort().map((h) => `'${h}'`)],
+    );
     expect(policy).toContain(`connect-src 'self' ${API}`);
   });
 
