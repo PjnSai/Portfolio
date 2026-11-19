@@ -73,6 +73,23 @@ def _item(data):
     return {"id": str(uuid.uuid4()), "data": data}
 
 
+# Project slugs as Publish stores them. "Seeded project 3" was first published
+# under another title, so its address is not made from its title now.
+RENAMED = {"Seeded project 3": "first-seeded-project"}
+
+
+def _project_items(items):
+    from core import slugs
+
+    taken = set(RENAMED.values())
+    found = []
+    for data in items:
+        slug = RENAMED.get(data["title"]) or slugs.unique(data["title"], taken)
+        taken.add(slug)
+        found.append({**_item(data), "slug": slug})
+    return found
+
+
 # Six more projects, so /projects has a second page (six to a page).
 EXTRA_PROJECTS = [
     {
@@ -128,7 +145,11 @@ SEEDED = [
             {
                 "title": "Log parser",
                 "summary": "Seeded project two.",
-                "body": "",
+                # Deep and uneven headings, for the outline test.
+                "body": (
+                    "## Approach\n\nSeeded.\n\n#### Parsing\n\nSeeded.\n\n"
+                    "###### Edge cases\n\nSeeded.\n\n## Outcome\n\nSeeded."
+                ),
                 "status": "in_progress",
                 "colour": "yellow",
                 "tags": ["Python"],
@@ -198,7 +219,13 @@ def seed_published_site():
             type=kind,
             position=position,
             draft=draft,
-            published={"type": kind, **draft, "items": [_item(i) for i in items]},
+            published={
+                "type": kind,
+                **draft,
+                "items": _project_items(items)
+                if kind == "projects"
+                else [_item(i) for i in items],
+            },
             published_at=now,
         )
     # Live: visitors pick from presets A, B and E. The draft stays at the

@@ -51,7 +51,7 @@ export default async function CaseStudy({ params }: PageProps<"/projects/[slug]"
             {data.created ? ` / ${monthLabel(data.created)}` : ""}
           </p>
           <h1 tabIndex={-1}>{data.title}</h1>
-          {data.summary ? <Markdown source={data.summary} /> : null}
+          {data.summary ? <Markdown source={data.summary} headingLevel={2} /> : null}
           <Tags tags={data.tags} label="Built with" />
         </div>
       </header>

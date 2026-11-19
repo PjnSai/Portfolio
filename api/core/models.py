@@ -84,6 +84,9 @@ class SectionItem(Timestamped):
     draft = models.JSONField(default=dict)
     published = models.JSONField(default=dict)
     trashed_at = models.DateTimeField(null=True, blank=True)
+    # A project's address under /projects/, set when it is first published and
+    # kept after (core.slugs). Null for other items and unpublished projects.
+    slug = models.CharField(max_length=80, null=True, blank=True, unique=True)
 
     class Meta:
         db_table = "section_items"

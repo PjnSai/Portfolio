@@ -10,6 +10,7 @@ pytestmark = pytest.mark.django_db
 BEFORE = [("core", "0008_site_deploy_status")]
 AFTER = [("core", "0010_palette_data")]
 LATEST = [("core", "0011_default_palette_a")]
+NEWEST = [("core", "0012_project_slugs")]
 ORIGINAL = "b399fb8f-5de4-462d-98f5-a81bf8046a6f"
 PRESET_A = "0c63ed98-cf1f-4c4d-945f-8725c81ab5b4"
 
@@ -54,7 +55,7 @@ def old_settings():
         )
 
     yield make
-    migrate(LATEST)
+    migrate(NEWEST)
 
 
 def after():

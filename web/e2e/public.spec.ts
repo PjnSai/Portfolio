@@ -232,7 +232,30 @@ test("/projects lists the first six projects and links to each case study", asyn
   await expect(page.getByRole("heading", { level: 3, name: "Problem" })).toBeVisible();
 });
 
-for (const path of ["/", "/projects", "/projects/task-board"]) {
+test("a project keeps the address it was first published under", async ({ page, request }) => {
+  await page.goto("/projects");
+  await page.getByRole("link", { name: "Seeded project 3" }).click();
+  await expect(page).toHaveURL(/\/projects\/first-seeded-project$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Seeded project 3");
+  expect((await request.get("/projects/seeded-project-3")).status()).toBe(404);
+});
+
+test("a case study with deep headings never skips a level", async ({ page }) => {
+  await page.goto("/projects/log-parser");
+  const levels = await page
+    .locator("main")
+    .evaluate((main) => Array.from(main.querySelectorAll("h1, h2, h3, h4, h5, h6"), (h) => Number(h.tagName[1])));
+  expect(levels[0]).toBe(1);
+  for (let i = 1; i < levels.length; i += 1) expect(levels[i], `heading ${i}`).toBeLessThanOrEqual(levels[i - 1] + 1);
+  await expect(page.getByRole("heading", { level: 3, name: "Approach" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 4, name: "Parsing" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 5, name: "Edge cases" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "Outcome" })).toBeVisible();
+  const order = await new AxeBuilder({ page }).withRules(["heading-order", "page-has-heading-one"]).analyze();
+  expect(order.violations.map((v) => v.id)).toEqual([]);
+});
+
+for (const path of ["/", "/projects", "/projects/task-board", "/projects/log-parser"]) {
   for (const scheme of ["light", "dark"] as const) {
     test(`axe finds nothing on ${path} (${scheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });

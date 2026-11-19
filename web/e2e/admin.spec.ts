@@ -481,7 +481,7 @@ function itemTitles() {
 }
 
 type PublicSite = {
-  sections: Array<{ title: string; items: Array<{ data: { title: string; images: Array<{ media: string }> } }> }>;
+  sections: Array<{ title: string; items: Array<{ slug?: string; data: { title: string; images: Array<{ media: string }> } }> }>;
   media: Record<string, { sources: Array<{ url: string }> }>;
 };
 
@@ -583,6 +583,26 @@ test("project items go through every step and the published copy is public", asy
   expect(image.status()).toBe(200);
   expect(image.headers()["content-type"]).toBe("image/webp");
   expect((await image.body()).includes("SecretCam")).toBe(false);
+  expect(showcase?.items.map((i) => i.slug)).toEqual(["notes", "ledger-app"]);
+
+  // Renaming a published project keeps its address.
+  const ledger = page.getByTestId("item-row").filter({ hasText: "Ledger app" });
+  await expect(ledger.getByTestId("item-address")).toHaveText(/\/projects\/ledger-app/);
+  await ledger.getByRole("button", { name: "Edit", exact: true }).click();
+  await ledger.locator("form").getByLabel("Title").fill("General ledger");
+  await ledger.locator("form").getByRole("button", { name: "Save item" }).click();
+  await expect(page.getByText("Item saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect(page.getByTestId("publish-state")).toContainText("The live site shows this draft.");
+  const renamed = (await (await page.request.get(`${API}/api/v1/site`)).json()) as PublicSite;
+  const items = renamed.sections.find((s) => s.title === "Showcase")?.items ?? [];
+  expect(items.map((i) => [i.data.title, i.slug])).toEqual([
+    ["Notes", "notes"],
+    ["General ledger", "ledger-app"],
+  ]);
+  await expect(
+    page.getByTestId("item-row").filter({ hasText: "General ledger" }).getByTestId("item-address"),
+  ).toHaveText(/\/projects\/ledger-app/);
 });
 
 test("the admin fits a phone screen", async () => {

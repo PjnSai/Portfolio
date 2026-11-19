@@ -14,7 +14,7 @@ from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from core import audit, media, pages, privacy, serializers, theme
+from core import audit, media, pages, privacy, serializers, slugs, theme
 from core.models import (
     Media,
     Owner,
@@ -112,8 +112,29 @@ def publish_warnings(section):
     return found
 
 
+def _give_slugs(section, shown):
+    """Store a slug for each shown project that has none yet. One that has a
+    slug keeps it, whatever its title is now."""
+    if section.type != "projects":
+        return {}
+    rows = {str(item.id): item for item in section.items.all()}
+    taken = set(SectionItem.objects.exclude(slug=None).values_list("slug", flat=True))
+    found = {}
+    for entry in shown:
+        item = rows[entry["id"]]
+        if item.slug is None:
+            item.slug = slugs.unique(entry["data"].get("title", ""), taken)
+            item.save(update_fields=["slug", "updated_at"])
+            taken.add(item.slug)
+        found[entry["id"]] = item.slug
+    return found
+
+
 def publish(section):
     with transaction.atomic():
+        # The owner row lock makes publishes take turns, so two cannot pick
+        # the same new slug.
+        Owner.objects.select_for_update().get()
         section = Section.objects.select_for_update().get(id=section.id)
         state = draft_state(section)
         version = (
@@ -126,10 +147,18 @@ def publish(section):
             entity=REVISION, entity_id=section.id, version=version, data=state
         )
         shown = [entry for entry in state["items"] if entry["visible"]]
+        given = _give_slugs(section, shown)
         section.published = {
             "type": section.type,
             **state["section"],
-            "items": [{"id": e["id"], "data": e["data"]} for e in shown],
+            "items": [
+                {
+                    "id": e["id"],
+                    **({"slug": given[e["id"]]} if e["id"] in given else {}),
+                    "data": e["data"],
+                }
+                for e in shown
+            ],
         }
         section.published_at = timezone.now()
         section.save(update_fields=["published", "published_at", "updated_at"])

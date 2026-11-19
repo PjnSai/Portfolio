@@ -4,6 +4,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseRules, measureRules } from "../lib/pages-headers.ts";
+import { INITIAL_JS_BUDGET_KB, initialJsBytes } from "../lib/js-budget.ts";
 import { BOOT_SCRIPT } from "../lib/public/boot-script.ts";
 import { EXTRA_SCRIPT_HASHES } from "../lib/security-headers.ts";
 
@@ -44,6 +45,23 @@ if (existsSync("out/_headers")) {
     }
   }
 }
+
+// SPEC 4.6: initial JavaScript on each public page, gzipped.
+const budget = INITIAL_JS_BUDGET_KB * 1000;
+let homeBytes = 0;
+for (const file of htmlFiles) {
+  const route = file.replace(/\\/g, "/").replace(/^out\//, "");
+  if (route.startsWith("desk")) continue;
+  const bytes = initialJsBytes(readFileSync(file, "utf8"), (src) => {
+    const path = join("out", src.split("?")[0]);
+    return existsSync(path) ? readFileSync(path) : Buffer.alloc(0);
+  });
+  if (route === "index.html") homeBytes = bytes;
+  if (bytes > budget) {
+    problems.push(`initial JS ${(bytes / 1000).toFixed(1)} kB over ${INITIAL_JS_BUDGET_KB} kB: ${file}`);
+  }
+}
+console.log(`Home initial JS: ${(homeBytes / 1000).toFixed(1)} kB gzipped of ${INITIAL_JS_BUDGET_KB} kB.`);
 
 // Server output: a standalone server, middleware, or functions for Pages.
 for (const path of [".next/standalone", "out/_worker.js", "functions", "out/functions"]) {

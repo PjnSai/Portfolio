@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pageCount, pageHref, pageInfo, pageParams, parsePage } from "@/lib/public/pagination";
+import { listRoutes, pageCount, pageHref, pageInfo, pageParams, parsePage } from "@/lib/public/pagination";
 
 describe("page counts", () => {
   it.each([
@@ -76,5 +76,23 @@ describe("pages built", () => {
   it("with one page, builds page 2 to say it is out of range", () => {
     expect(pageParams(6)).toEqual([{ n: "2" }]);
     expect(pageInfo(6, 2).outOfRange).toBe(true);
+  });
+});
+
+describe("the page built past the end", () => {
+  it.each([0, 1, 6])("with %i projects is built but never listed or linked", (total) => {
+    expect(pageParams(total)).toEqual([{ n: "2" }]);
+    expect(listRoutes(total)).toEqual(["/projects"]);
+    const first = pageInfo(total, 1);
+    expect(first.next).toBeUndefined();
+    expect(first.links.map((link) => link.href)).toEqual(["/projects"]);
+    const stub = pageInfo(total, 2);
+    expect(stub.outOfRange).toBe(true);
+    expect(stub.prev).toBeUndefined();
+    expect(stub.next).toBeUndefined();
+  });
+
+  it("with seven projects page 2 is real and listed", () => {
+    expect(listRoutes(7)).toEqual(["/projects", "/projects/page/2"]);
   });
 });

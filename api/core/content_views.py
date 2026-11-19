@@ -62,6 +62,7 @@ def _item(item):
         "visible": item.visible,
         "position": item.position,
         "label": content.item_label(item),
+        "slug": item.slug,
         "data": item.draft,
     }
 

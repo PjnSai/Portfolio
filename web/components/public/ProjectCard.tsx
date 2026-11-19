@@ -38,7 +38,7 @@ export function ProjectCard({ project, site, level = 3, detail = false }: Props)
         <Heading className="card__title">
           <a href={`/projects/${project.slug}`}>{data.title}</a>
         </Heading>
-        {data.summary ? <Markdown source={data.summary} /> : null}
+        {data.summary ? <Markdown source={data.summary} headingLevel={level + 1} /> : null}
         <Tags tags={data.tags} label={`Built with, ${data.title}`} />
         {fields.length > 0 || links.length > 0 ? (
           <div className="card__more">
