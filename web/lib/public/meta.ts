@@ -7,6 +7,7 @@ import { safeHref } from "../markdown";
 import { absoluteUrl, firstText, trimText } from "../seo";
 import type { PublicSite } from "../site";
 import type { PageModel, ProjectEntry } from "./content";
+import { FOOTER_PAGES } from "./footer-pages";
 import { pageHref, pageInfo } from "./pagination";
 
 /** The one preview image: a flat card with the site's name (public/og-default.png). */
@@ -138,4 +139,17 @@ export function listMetadata(site: PublicSite, model: PageModel, page: number): 
     }),
     pagination: { previous: info.prev && absoluteUrl(info.prev), next: info.next && absoluteUrl(info.next) },
   };
+}
+
+/** A footer page: the owner's SEO words if set, otherwise the page's own. */
+export function footerMetadata(site: PublicSite, model: PageModel, route: string): Metadata {
+  const page = FOOTER_PAGES.find((entry) => entry.route === route);
+  if (!page) throw new Error(`Not a footer page: ${route}`);
+  const owner = ownerSeo(site, page.key);
+  return pageMetadata({
+    path: page.route,
+    title: owner.title || `${page.label} | ${model.name}`,
+    description: owner.description || page.description,
+    siteName: model.name,
+  });
 }

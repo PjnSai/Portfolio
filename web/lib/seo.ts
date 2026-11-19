@@ -133,3 +133,22 @@ export const BLOCKED_AGENTS: readonly string[] = [
   "MJ12bot",
   "DotBot",
 ];
+
+export const REPOSITORY = "https://github.com/PjnSai/Portfolio";
+/** GitHub's private vulnerability report form for the repository. */
+export const REPORT_URL = `${REPOSITORY}/security/advisories/new`;
+/** RFC 9116 asks for an expiry under a year away; each build moves it on. */
+const SECURITY_TXT_DAYS = 180;
+
+/** /.well-known/security.txt (RFC 9116). */
+export function securityTxt(origin: string, now: Date = new Date()): string {
+  const expires = new Date(now.getTime() + SECURITY_TXT_DAYS * 24 * 60 * 60 * 1000);
+  return [
+    `Contact: ${REPORT_URL}`,
+    `Expires: ${expires.toISOString().replace(/\.\d{3}Z$/, "Z")}`,
+    "Preferred-Languages: en",
+    `Canonical: ${origin}/.well-known/security.txt`,
+    `Policy: ${origin}/security`,
+    "",
+  ].join("\n");
+}

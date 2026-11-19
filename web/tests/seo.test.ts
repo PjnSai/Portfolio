@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { pageModel } from "@/lib/public/content";
-import { homeMetadata, listMetadata, personData, projectMetadata } from "@/lib/public/meta";
+import { FOOTER_PAGES } from "@/lib/public/footer-pages";
+import { footerMetadata, homeMetadata, listMetadata, personData, projectMetadata } from "@/lib/public/meta";
 import { listRoutes } from "@/lib/public/pagination";
 import {
   absoluteUrl,
@@ -10,6 +11,7 @@ import {
   jsonLd,
   LOCAL_SITE_ORIGIN,
   plainText,
+  securityTxt,
   siteOrigin,
   sitemapRoutes,
   trimText,
@@ -205,5 +207,41 @@ describe("page metadata", () => {
       jobTitle: "Software developer",
       sameAs: ["https://github.test/o"],
     });
+  });
+});
+
+describe("security.txt", () => {
+  it("names the private report form, the policy page and an expiry under a year away", () => {
+    const text = securityTxt("https://pujan.test", new Date("2026-11-19T12:00:00Z"));
+    expect(text).toBe(
+      [
+        "Contact: https://github.com/PjnSai/Portfolio/security/advisories/new",
+        "Expires: 2027-05-18T12:00:00Z",
+        "Preferred-Languages: en",
+        "Canonical: https://pujan.test/.well-known/security.txt",
+        "Policy: https://pujan.test/security",
+        "",
+      ].join("\n"),
+    );
+  });
+});
+
+describe("footer pages", () => {
+  it("each has its own title, description and canonical", () => {
+    const model = pageModel(SITE);
+    const seen = new Set<string>();
+    for (const page of FOOTER_PAGES) {
+      const meta = footerMetadata(SITE, model, page.route);
+      expect(meta.alternates?.canonical).toBe(`http://localhost:3000${page.route}`);
+      expect(meta.description).toBe(page.description);
+      seen.add(JSON.stringify(meta.title));
+    }
+    expect(seen.size).toBe(FOOTER_PAGES.length);
+    expect(FOOTER_PAGES.map((page) => page.route)).toEqual([
+      "/privacy",
+      "/accessibility",
+      "/security",
+      "/how-this-site-is-built",
+    ]);
   });
 });

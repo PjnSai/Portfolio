@@ -1544,3 +1544,52 @@ main > section:not(.strip),
     animation-play-state: running !important;
   }
 }
+
+/* Footer pages: plain reading text at a comfortable measure. */
+
+.doc__lead {
+  max-width: 60ch;
+  margin-top: var(--s-3);
+  font-size: var(--t-h3);
+  line-height: 1.35;
+}
+.doc__body {
+  max-width: 68ch;
+  margin-top: var(--s-6);
+  line-height: 1.6;
+}
+.doc__body h2 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--t-h3);
+  line-height: 1.15;
+  margin: var(--s-6) 0 var(--s-2);
+}
+.doc__body h2:first-child {
+  margin-top: 0;
+}
+.doc__body p + p,
+.doc__body ul,
+.doc__body ol {
+  margin-top: var(--s-2);
+}
+.doc__body ul,
+.doc__body ol {
+  padding-left: var(--s-3);
+}
+.doc__body li + li {
+  margin-top: var(--s-1);
+}
+.doc__body a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.doc__body code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+.doc__date {
+  margin-top: var(--s-6);
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+}

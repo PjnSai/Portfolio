@@ -38,6 +38,9 @@ const indexed = {
   "out/projects.html": page("", seoHead("/projects")),
   "out/sitemap.xml": sitemap("/", "/projects"),
   "out/robots.txt": ROBOTS,
+  "out/.well-known/security.txt": `Contact: https://report.test
+Expires: ${new Date(Date.now() + 864e5).toISOString()}
+`,
 };
 
 let dir = "";
@@ -117,6 +120,11 @@ describe("check:export", () => {
     ["no JSON-LD Person on home", { "out/index.html": page("", seoHead("/")) }, /home has not exactly one JSON-LD Person/],
     ["a 404 page open to search", { "out/404.html": page("", "<title>T</title>") }, /404 page open to search/],
     ["robots.txt without the sitemap", { "out/robots.txt": "User-Agent: *" }, /robots.txt does not name the sitemap/],
+    [
+      "an expired security.txt",
+      { "out/.well-known/security.txt": "Contact: https://report.test\nExpires: 2020-01-01T00:00:00Z\n" },
+      /security\.txt is missing, has no contact or has expired/,
+    ],
   ])("fails with %s", (_, files, message) => {
     const run = exportWith({ ...indexed, ...files });
     expect(run.status).toBe(1);

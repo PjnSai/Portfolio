@@ -105,6 +105,17 @@ if (indexable.size > 0) {
   if (!robots.includes(`Sitemap: ${origin}/sitemap.xml`)) problems.push("robots.txt does not name the sitemap");
 }
 
+// RFC 9116: a contact and an expiry still in the future.
+if (indexable.size > 0) {
+  const securityTxt = existsSync("out/.well-known/security.txt")
+    ? readFileSync("out/.well-known/security.txt", "utf8")
+    : "";
+  const expires = Date.parse(/^Expires: (.+)$/m.exec(securityTxt)?.[1] ?? "");
+  if (!/^Contact: https:\/\//m.test(securityTxt) || !(expires > Date.now())) {
+    problems.push("out/.well-known/security.txt is missing, has no contact or has expired");
+  }
+}
+
 // SPEC 4.6: initial JavaScript on each public page, gzipped.
 const budget = INITIAL_JS_BUDGET_KB * 1000;
 let homeBytes = 0;

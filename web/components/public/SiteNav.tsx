@@ -1,5 +1,6 @@
 import { DisplayMenu, type PaletteOption } from "@/components/public/DisplayMenu";
 import type { PageSection } from "@/lib/public/content";
+import { FOOTER_PAGES } from "@/lib/public/footer-pages";
 
 type Props = {
   name: string;
@@ -84,16 +85,23 @@ export function Footer({ name, hasProjects }: { name: string; hasProjects: boole
         <p>
           © {new Date().getFullYear()} {name}
         </p>
-        <ul className="footer__links">
-          {hasProjects ? (
+        <nav aria-label="Footer">
+          <ul className="footer__links">
+            {hasProjects ? (
+              <li>
+                <a href="/projects">All projects</a>
+              </li>
+            ) : null}
+            {FOOTER_PAGES.map((page) => (
+              <li key={page.route}>
+                <a href={page.route}>{page.label}</a>
+              </li>
+            ))}
             <li>
-              <a href="/projects">All projects</a>
+              <a href="#top">Back to top</a>
             </li>
-          ) : null}
-          <li>
-            <a href="#top">Back to top</a>
-          </li>
-        </ul>
+          </ul>
+        </nav>
       </div>
     </footer>
   );
