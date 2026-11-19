@@ -212,3 +212,45 @@ test("axe finds nothing on the public pages", async ({ page: own, browser }) => 
     expect(found, path).toEqual([]);
   }
 });
+
+test("the section pager works in its mode for this width", async ({ page }) => {
+  const { js, width, motion } = combo();
+  await open(page, "/");
+  const pager = page.getByRole("navigation", { name: "Sections" });
+  const links = pager.getByRole("link");
+  const next = pager.getByRole("button", { name: /Next section|Back to top/ });
+  await expect(pager).toBeVisible();
+  await expect(links).toHaveCount(6);
+  if (width < 1000) {
+    for (const link of await links.all()) {
+      const box = (await link.boundingBox())!;
+      expect(Math.min(box.width, box.height), "dot target").toBeGreaterThanOrEqual(44);
+    }
+    await expect(pager.locator(".pager__label").first()).toHaveCSS("position", "absolute");
+  } else if (width >= 1280) {
+    for (const label of await pager.locator(".pager__label").all()) await expect(label).not.toHaveCSS("position", "absolute");
+  }
+  if (!js) {
+    await expect(next).toBeHidden();
+    await pager.getByRole("link", { name: "Go to Projects" }).click();
+    await expect(page).toHaveURL(/\/#projects$/);
+    return;
+  }
+  await expect(next).toHaveAccessibleName("Next section");
+  await next.click();
+  await expect(page.getByRole("heading", { level: 2, name: "About me" })).toBeFocused();
+  if (motion === "reduce") {
+    const first = await page.evaluate(() => Math.round(window.scrollY));
+    await page.waitForTimeout(250);
+    expect(await page.evaluate(() => Math.round(window.scrollY)), "no smooth scroll").toBe(first);
+  }
+  for (const heading of ["Selected work", "Work history", "Study", "Toolkit", "Contact me"]) {
+    await next.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { level: 2, name: heading })).toBeFocused();
+  }
+  await expect(next).toHaveAccessibleName("Back to top");
+  await next.click();
+  await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
+  await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBe(0);
+});
