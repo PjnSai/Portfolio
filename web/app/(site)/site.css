@@ -442,45 +442,99 @@ main:focus {
   }
 }
 
-/* Section pager, wide screens only */
+/* Section pager: one nav, styled per width. Under 1000 px a dot rail on the
+   right edge; from 1000 px a numbered panel with labels on hover, focus and
+   the current section; from 1280 px every label shows. Its colours are only
+   ink and bg, a pair every palette must pass at 4.5:1. */
 
+.site {
+  /* Width of the panel from 1000 px; the page keeps this much room for it. */
+  --pager-room: 152px;
+  /* Width of the rail under 1000 px. */
+  --rail: 44px;
+}
 .pager {
+  position: fixed;
+  z-index: 10;
+}
+.pager ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pager a,
+.pager__next {
+  color: var(--c-ink);
+  text-decoration: none;
+}
+.pager__next {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-1);
+  font: inherit;
+  background: var(--c-bg);
+  border: 1.5px solid var(--c-ink);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pager__next[hidden] {
   display: none;
 }
-@media (min-width: 1000px) {
+.pager__next[data-direction="up"] .pager__arrow {
+  transform: rotate(180deg);
+}
+/* Out of the way while the menu, the Theme panel or a project sheet is open. */
+.site:has(.nav[data-open="true"], .display__panel:not([hidden]), dialog[open]) .pager {
+  visibility: hidden;
+}
+
+@media (max-width: 999.98px) {
   .pager {
-    display: block;
-    position: fixed;
-    right: max(var(--s-2), env(safe-area-inset-right));
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 10;
-  }
-  .pager ol {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 4px;
-    justify-items: end;
-  }
-  .pager a {
-    display: inline-flex;
-    align-items: center;
-    flex-direction: row-reverse;
+    right: env(safe-area-inset-right);
+    top: calc(var(--nav-offset) + var(--s-1));
+    bottom: env(safe-area-inset-bottom);
+    width: var(--rail);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     gap: var(--s-1);
-    min-height: 32px;
-    padding: 0 var(--s-1);
-    font-family: var(--font-mono);
-    font-size: var(--t-small);
-    text-decoration: none;
-    color: var(--c-ink);
+    /* Only the plate takes clicks; the strip above and below it does not. */
+    pointer-events: none;
+  }
+  .pager ol,
+  .pager__next {
+    pointer-events: auto;
     background: var(--c-bg);
     border: 1.5px solid var(--c-ink);
-    border-radius: 4px;
   }
-  /* Labels stay in the accessible name; they show on hover, focus and when current. */
-  .pager a:not(:hover, :focus-visible, [aria-current]) .pager__label {
+  .pager ol {
+    border-right: 0;
+    border-radius: var(--radius-control) 0 0 var(--radius-control);
+  }
+  /* The dot is small; the target is the full 44 by 44 px. */
+  .pager a {
+    display: grid;
+    place-items: center;
+    width: var(--rail);
+    height: 44px;
+  }
+  .pager a::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--c-ink);
+  }
+  /* The current section: larger and square, so it does not rely on colour. */
+  .pager a[aria-current]::before {
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+  }
+  .pager__num,
+  .pager__label,
+  .pager__next-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -488,9 +542,94 @@ main:focus {
     clip-path: inset(50%);
     white-space: nowrap;
   }
+  .pager__next {
+    width: var(--rail);
+    height: 44px;
+    border-right: 0;
+    border-radius: var(--radius-control) 0 0 var(--radius-control);
+  }
+  /* Room for the rail, so it never covers content or controls. */
+  .site:has(.pager) :is(main .wrap, .footer .wrap),
+  .site:has(.pager) .strip {
+    padding-right: calc(var(--rail) + env(safe-area-inset-right) + var(--s-1));
+  }
+}
+/* Too short for the rail and the nav together: the nav links still work. */
+@media (max-width: 999.98px) and (max-height: 499.98px) {
+  .pager {
+    display: none;
+  }
+}
+
+@media (min-width: 1000px) {
+  .pager {
+    right: max(var(--s-2), env(safe-area-inset-right));
+    top: 50%;
+    transform: translateY(-50%);
+    width: var(--pager-room);
+    display: grid;
+    gap: var(--s-1);
+    justify-items: end;
+  }
+  .pager ol {
+    display: grid;
+    gap: 4px;
+    justify-items: end;
+    max-width: 100%;
+  }
+  .pager a,
+  .pager__next {
+    display: inline-flex;
+    align-items: center;
+    flex-direction: row-reverse;
+    gap: var(--s-1);
+    max-width: 100%;
+    min-height: 32px;
+    padding: 0 var(--s-1);
+    font-family: var(--font-mono);
+    font-size: var(--t-small);
+    background: var(--c-bg);
+    border: 1.5px solid var(--c-ink);
+    border-radius: 4px;
+  }
+  .pager__next {
+    flex-direction: row;
+  }
+  .pager__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .pager a[aria-current] {
     background: var(--c-ink);
     color: var(--c-bg);
+  }
+  .site:has(.pager) .strip {
+    padding-right: calc(var(--s-2) + var(--pager-room) + var(--s-1));
+  }
+}
+/* Compact: labels stay in the accessible name; they show on hover, focus
+   and for the current section. The Next section label is always hidden. */
+@media (min-width: 1000px) and (max-width: 1279.98px) {
+  .pager a:not(:hover, :focus-visible, [aria-current]) .pager__label,
+  .pager__next-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .site:has(.pager) main .wrap {
+    padding-right: calc(var(--s-2) + var(--pager-room) + var(--s-1));
+  }
+}
+/* Wide: every label shows; the page keeps room for the whole panel. 100vw
+   counts the scroll bar, hence the extra 16 px. */
+@media (min-width: 1280px) {
+  .site:has(.pager) main .wrap {
+    padding-right: max(var(--gutter), calc((1280px - 100vw) / 2 + var(--s-2) + var(--pager-room) + 24px));
   }
 }
 
@@ -1147,14 +1286,19 @@ main > section:not(.strip),
     background: Highlight;
     color: HighlightText;
   }
-}
-
-/* Room for the pager on the right edge, so it never covers content. */
-@media (min-width: 1000px) {
-  .site main .wrap {
-    padding-right: calc(var(--gutter) + 48px);
+  .pager ol,
+  .pager a,
+  .pager__next {
+    border-color: CanvasText;
+  }
+  .pager a::before {
+    background: CanvasText;
+  }
+  .pager a[aria-current]::before {
+    background: Highlight;
   }
 }
+
 
 /* Name, Get in touch and Menu on one row on a phone. */
 @media (max-width: 759.98px) {

@@ -85,6 +85,19 @@ def test_five_presets_exist_and_every_one_passes_in_both_modes():
             assert theme.failures(mode, colours) == [], found.name
 
 
+def test_the_section_pager_colours_meet_3_to_1_in_every_preset_and_mode():
+    # The pager's rail, panel and Next section button use only ink and bg
+    # (web/app/(site)/site.css), so this pair is the whole of its contrast.
+    assert ("ink", "bg", 4.5) in theme.PAIRS
+    for found in Palette.objects.filter(kind="preset"):
+        for mode in theme.MODES:
+            colours = getattr(found, mode)
+            assert theme.contrast(colours["ink"], colours["bg"]) >= 3, (
+                found.name,
+                mode,
+            )
+
+
 def test_the_original_preset_uses_the_spec_colours():
     light = preset().light
 

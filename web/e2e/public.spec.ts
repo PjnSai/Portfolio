@@ -120,10 +120,12 @@ test.describe("desktop", () => {
 });
 
 for (const width of [760, 999]) {
-  test(`no section pager at ${width} px`, async ({ page }) => {
+  test(`the section pager is a dot rail at ${width} px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
-    await expect(pager(page)).toBeHidden();
+    await expect(pager(page)).toBeVisible();
+    await expect(pager(page)).toHaveAttribute("class", "pager");
+    expect((await pager(page).getByRole("link").first().boundingBox())?.width).toBe(44);
   });
 }
 
@@ -171,9 +173,9 @@ test.describe("phone", () => {
     await expect(burger(page)).toHaveAttribute("aria-expanded", "false");
   });
 
-  test("no pager and the hero stacks with the photo below the text", async ({ page }) => {
+  test("a dot rail, and the hero stacks with the photo below the text", async ({ page }) => {
     await page.goto("/");
-    await expect(pager(page)).toBeHidden();
+    await expect(pager(page).getByRole("link", { name: "Go to Projects" })).toBeVisible();
     const name = await page.locator("h1").boundingBox();
     const photo = await page.locator(".portrait").boundingBox();
     expect(photo!.y).toBeGreaterThan(name!.y + name!.height);
