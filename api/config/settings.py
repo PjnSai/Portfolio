@@ -100,6 +100,9 @@ CSRF_FAILURE_VIEW = "core.responses.csrf_failure"
 BOOTSTRAP_TOKEN_SHA256 = os.environ.get("BOOTSTRAP_TOKEN_SHA256", "")
 
 ADMIN_REQUESTS_PER_MINUTE = 300
+# Per client, for GET /api/v1/site and the public images together. The edge
+# serves nearly all of these; this catches what gets past it.
+PUBLIC_REQUESTS_PER_MINUTE = 120
 LOGIN_MAX_FAILURES = 5
 LOGIN_GLOBAL_MAX_FAILURES = 20
 

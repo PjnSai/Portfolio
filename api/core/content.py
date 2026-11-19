@@ -410,7 +410,8 @@ def public_site():
     settings_copy = dict(row.published) if row else {}
     palettes = settings_copy.pop("palettes", [])
     ids = _media_ids([settings_copy, shown], set())
-    used = Media.objects.filter(id__in=ids, trashed_at=None)
+    # Ordered, so the same content gives the same bytes and ETag.
+    used = Media.objects.filter(id__in=ids, trashed_at=None).order_by("id")
     return {
         "settings": settings_copy,
         "sections": shown,

@@ -15,13 +15,20 @@ describe("paletteCss", () => {
   it("writes each palette under its data-palette selector, light then dark", () => {
     const css = paletteCss([palette(E)]);
     expect(css).toContain(`[data-palette="${E}"]{--c-bg:#F3EBDD;`);
-    expect(css).toContain(`@media (prefers-color-scheme: dark){[data-palette="${E}"]{--c-bg:#17140F;`);
+    expect(css).toContain(
+      `@media (prefers-color-scheme: dark){:root:not([data-theme=light])[data-palette="${E}"],` +
+        `:root:not([data-theme=light]) [data-palette="${E}"]{--c-bg:#17140F;`,
+    );
+    expect(css).toContain(
+      `:root[data-theme=dark][data-palette="${E}"],:root[data-theme=dark] [data-palette="${E}"]{--c-bg:#17140F;`,
+    );
   });
 
   it("always has the preset A fallback on :root, light and dark", () => {
     const css = paletteCss([]);
     expect(css).toContain(":root{--c-bg:#F4F2EE;");
-    expect(css).toContain("@media (prefers-color-scheme: dark){:root{--c-bg:#121212;");
+    expect(css).toContain("@media (prefers-color-scheme: dark){:root:not([data-theme=light]){--c-bg:#121212;");
+    expect(css).toContain(":root[data-theme=dark]{--c-bg:#121212;");
   });
 
   it("names every slot as a token", () => {

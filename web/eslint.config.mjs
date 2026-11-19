@@ -8,7 +8,7 @@ const eslintConfig = defineConfig([
   // Public pages link with plain <a>: each page is a full static document, so
   // the nav script runs once per page and nothing is prefetched.
   {
-    files: ["app/(site)/**", "components/public/**"],
+    files: ["app/(site)/**", "app/not-found.tsx", "components/public/**"],
     rules: { "@next/next/no-html-link-for-pages": "off" },
   },
   // Override default ignores of eslint-config-next.

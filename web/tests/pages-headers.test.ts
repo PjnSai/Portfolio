@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { ADMIN_STYLE_HASHES } from "@/lib/security-headers";
+import {
+  ADMIN_STYLE_HASHES,
+  ASSET_CACHE,
+  EXTRA_SCRIPT_HASHES,
+  PAGE_CACHE,
+} from "@/lib/security-headers";
 import {
   buildRules,
   GROUP_AT,
@@ -57,7 +62,10 @@ describe("_headers for a build", () => {
   it("hashes inline styles too, and lets admin pages call the API", () => {
     const policy = served("/desk/media").get("content-security-policy") ?? "";
 
-    expect(policy).toContain(`script-src 'self' '${sha("self.b=2")}'`);
+    const scripts = /script-src ([^;]*)/.exec(policy)?.[1].split(" ") ?? [];
+    expect(scripts).toEqual(
+      ["'self'", ...[sha("self.b=2"), ...EXTRA_SCRIPT_HASHES].sort().map((h) => `'${h}'`)],
+    );
     const styles = /style-src ([^;]*)/.exec(policy)?.[1].split(" ") ?? [];
     expect(styles).toEqual(
       ["'self'", ...[sha("p{}"), ...ADMIN_STYLE_HASHES].sort().map((h) => `'${h}'`)],
@@ -79,11 +87,17 @@ describe("_headers for a build", () => {
       expect(served(path).get("x-robots-tag")).toBe("noindex, nofollow");
       expect(served(path).get("cache-control")).toBe("no-store");
     }
-    expect(served("/").get("cache-control")).toBeNull();
+  });
+
+  it("lets public pages, and the palettes written into them, be cached but checked each time", () => {
+    for (const path of ["/", "/projects", "/projects/a", "/missing"]) {
+      expect(served(path).get("cache-control")).toBe(PAGE_CACHE);
+    }
+    expect(PAGE_CACHE).toBe("public, max-age=0, must-revalidate");
   });
 
   it("lets built assets be cached for good", () => {
-    expect(served("/_next/static/chunks/a.js").get("cache-control")).toContain("immutable");
+    expect(served("/_next/static/chunks/a.js").get("cache-control")).toBe(ASSET_CACHE);
   });
 
   it("refuses more rules or longer lines than Pages accepts", () => {

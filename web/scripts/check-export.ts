@@ -3,7 +3,9 @@
 // which the free plan limits; the site must be plain files.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { measureRules } from "../lib/pages-headers.ts";
+import { parseRules, measureRules } from "../lib/pages-headers.ts";
+import { BOOT_SCRIPT } from "../lib/public/boot-script.ts";
+import { EXTRA_SCRIPT_HASHES } from "../lib/security-headers.ts";
 
 const problems: string[] = [];
 
@@ -22,6 +24,25 @@ for (const required of ["out/index.html", "out/404.html", "out/_headers"]) {
 // Pages ignores a _headers file past its limits, which would drop every header.
 if (existsSync("out/_headers")) {
   problems.push(...measureRules(readFileSync("out/_headers", "utf8")).problems);
+}
+
+// Every page carries the boot script exactly as written, and every policy
+// allows it by hash; no page has a style attribute (the policy allows none).
+const htmlFiles = walk("out").filter((file) => file.endsWith(".html") && !/[\\/]_next[\\/]/.test(file));
+for (const file of htmlFiles) {
+  const text = readFileSync(file, "utf8");
+  if (!text.includes(`<script>${BOOT_SCRIPT}</script>`)) problems.push(`boot script missing or changed: ${file}`);
+  if (/<[^>]+\sstyle=/.test(text)) problems.push(`style attribute: ${file}`);
+}
+if (existsSync("out/_headers")) {
+  for (const rule of parseRules(readFileSync("out/_headers", "utf8"))) {
+    for (const [name, value] of rule.set) {
+      if (name !== "Content-Security-Policy") continue;
+      for (const hash of EXTRA_SCRIPT_HASHES) {
+        if (!value.includes(`'${hash}'`)) problems.push(`policy for ${rule.path} lacks ${hash}`);
+      }
+    }
+  }
 }
 
 // Server output: a standalone server, middleware, or functions for Pages.

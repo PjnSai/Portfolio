@@ -10,6 +10,7 @@ import {
   ASSET_CACHE,
   contentSecurityPolicy,
   isPrivatePath,
+  PAGE_CACHE,
   PRIVATE_HEADERS,
   STATIC_HEADERS,
 } from "./security-headers.ts";
@@ -107,11 +108,16 @@ export function buildRules(pages: Page[], notFound: Page, api: string): Rule[] {
       path: "/*",
       set: [
         ...Object.entries(STATIC_HEADERS),
+        ["Cache-Control", PAGE_CACHE],
         ["Content-Security-Policy", policyFor(notFound, api)],
       ],
       unset: [],
     },
-    { path: "/_next/static/*", set: [["Cache-Control", ASSET_CACHE]], unset: [] },
+    {
+      path: "/_next/static/*",
+      set: [["Cache-Control", ASSET_CACHE]],
+      unset: ["Cache-Control"],
+    },
   ];
   for (const [path, members] of groupPages(pages, notFound)) {
     rules.push({
@@ -121,7 +127,7 @@ export function buildRules(pages: Page[], notFound: Page, api: string): Rule[] {
     });
   }
   for (const path of [ADMIN_PATH, `${ADMIN_PATH}/*`]) {
-    rules.push({ path, set: Object.entries(PRIVATE_HEADERS), unset: [] });
+    rules.push({ path, set: Object.entries(PRIVATE_HEADERS), unset: ["Cache-Control"] });
   }
   return rules;
 }
