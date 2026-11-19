@@ -57,12 +57,21 @@ async function signIn() {
   await expect(page.getByRole("navigation", { name: "Admin" })).toBeVisible();
 }
 
-// api/tests/e2e_server.py publishes one section so the site build has content.
-const SEEDED_SECTION = "Seeded";
+// api/tests/e2e_server.py publishes these so the site build has content.
+const SEEDED_SECTIONS = [
+  "Seeded",
+  "About me",
+  "Selected work",
+  "Work history",
+  "Study",
+  "Toolkit",
+  "Contact me",
+  "Elsewhere",
+];
 
 async function rowTitles() {
   const titles = await page.getByTestId("section-row").getByRole("link").allTextContents();
-  return titles.filter((title) => title !== SEEDED_SECTION);
+  return titles.filter((title) => !SEEDED_SECTIONS.includes(title));
 }
 
 test("admin pages are not indexed and the public page does not link to them", async ({
@@ -232,7 +241,7 @@ test("script payloads in every project field stay plain text", async () => {
   await page.getByLabel("Type").selectOption("projects");
   await page.getByLabel("Title").fill("Work");
   await page.getByRole("button", { name: "Add section" }).click();
-  await page.getByRole("link", { name: "Work" }).click();
+  await page.getByRole("link", { name: "Work", exact: true }).click();
 
   const form = page.locator("form").filter({ has: page.getByRole("button", { name: "Add item" }) });
   await form.getByLabel("Title").fill(PAYLOAD);

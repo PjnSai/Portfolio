@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
+import { Hero, SectionBlock, SkillsStrip } from "@/components/public/Sections";
+import { SectionPager } from "@/components/public/SiteNav";
+import { pageModel } from "@/lib/public/content";
 import { loadSite } from "@/lib/site";
 
-// Built from the published site at build time. The design comes in phase 3A.
+// Built from the published site at build time.
 // With nothing published the home page is a placeholder and stays out of search.
 export async function generateMetadata(): Promise<Metadata> {
   const site = await loadSite();
@@ -12,20 +15,21 @@ export default async function Home() {
   const site = await loadSite();
   if (site.sections.length === 0) {
     return (
-      <main>
+      <div className="wrap placeholder-page">
         <h1>{site.settings.title || "Portfolio"}</h1>
         <p>Site coming soon</p>
-      </main>
+      </div>
     );
   }
+  const model = pageModel(site);
   return (
-    <main>
-      <h1>Pujan Shahi</h1>
-      {site.sections.map((section, index) => (
-        <section key={index}>
-          <h2>{section.title}</h2>
-        </section>
+    <>
+      <Hero site={site} model={model} />
+      <SkillsStrip site={site} />
+      {model.sections.map((entry) => (
+        <SectionBlock key={entry.anchor} entry={entry} site={site} model={model} />
       ))}
-    </main>
+      <SectionPager sections={model.sections} />
+    </>
   );
 }
