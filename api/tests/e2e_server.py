@@ -12,6 +12,7 @@ import os
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -29,7 +30,6 @@ BOOTSTRAP_TOKEN = "e2e-bootstrap-token"
 TEAM = "team.cloudflareaccess.test"
 AUDIENCE = "e2e-audience"
 EMAIL = "owner@portfolio.test"
-SEEDED_SECTION = "Seeded"
 
 os.environ.update(
     {
@@ -69,20 +69,115 @@ def fresh_database():
         connection.execute(sql.SQL("CREATE DATABASE {}").format(quoted))
 
 
-def seed_published_section():
-    # The site build refuses a site with nothing published (web/lib/site.ts).
+def _item(data):
+    return {"id": str(uuid.uuid4()), "data": data}
+
+
+# One published section of each kind the public pages render, so the browser
+# tests cover the layout. Education is published empty to show its placeholder.
+SEEDED = [
+    (
+        "hero",
+        "Seeded",
+        {
+            "name": "Pujan Shahi",
+            "role": "Software developer",
+            "body": "Seeded summary for the browser tests.",
+            "availability": "Seeded availability line",
+        },
+        [],
+    ),
+    ("about", "About me", {"body": "Seeded about text.", "location": "London"}, []),
+    (
+        "projects",
+        "Selected work",
+        {"body": ""},
+        [
+            {
+                "title": "Task board",
+                "summary": "Seeded project one.",
+                "body": "# Problem\n\nSeeded.",
+                "status": "live",
+                "created": "2025-06",
+                "category": "Web",
+                "colour": "blue",
+                "tags": ["TypeScript", "Postgres"],
+                "links": [],
+                "fields": [{"label": "What I built", "value": "Seeded value"}],
+                "images": [],
+            },
+            {
+                "title": "Log parser",
+                "summary": "Seeded project two.",
+                "body": "",
+                "status": "in_progress",
+                "colour": "yellow",
+                "tags": ["Python"],
+                "links": [],
+                "fields": [],
+                "images": [],
+            },
+        ],
+    ),
+    (
+        "experience",
+        "Work history",
+        {"body": ""},
+        [
+            {
+                "organisation": "Seeded employer",
+                "role": "Seeded role",
+                "start": "2024-01",
+                "summary": "Seeded summary.",
+                "tags": ["Django"],
+            },
+        ],
+    ),
+    ("education", "Study", {"body": ""}, []),
+    (
+        "skills",
+        "Toolkit",
+        {"body": ""},
+        [
+            {"name": "Languages", "skills": ["Python", "TypeScript", "SQL"]},
+            {"name": "Security practice", "skills": ["Threat modelling", "OWASP ASVS"]},
+        ],
+    ),
+    ("contact", "Contact me", {"body": "Seeded contact text."}, []),
+    (
+        "links",
+        "Elsewhere",
+        {"body": ""},
+        [
+            {"label": "GitHub", "url": "https://github.test/seeded"},
+        ],
+    ),
+]
+SEEDED_TITLES = [title for _, title, _, _ in SEEDED]
+
+
+def seed_published_site():
+    # The site build needs published content (web/lib/site.ts) and the layout
+    # tests need one section of each kind, plus the published palettes.
     from django.utils import timezone
 
-    from core.models import Section
+    from core.content import DEFAULT_SETTINGS, settings_state
+    from core.models import Section, SiteSettings
 
-    copy = {"title": SEEDED_SECTION, "body": ""}
-    Section.objects.create(
-        type="text",
-        position=0,
-        draft=copy,
-        published={"type": "text", **copy, "items": []},
-        published_at=timezone.now(),
-    )
+    now = timezone.now()
+    for position, (kind, title, fields, items) in enumerate(SEEDED):
+        draft = {"title": title, **fields}
+        Section.objects.create(
+            type=kind,
+            position=position,
+            draft=draft,
+            published={"type": kind, **draft, "items": [_item(i) for i in items]},
+            published_at=now,
+        )
+    row = SiteSettings.objects.create(draft=dict(DEFAULT_SETTINGS))
+    row.published = settings_state(row)
+    row.published_at = now
+    row.save(update_fields=["published", "published_at"])
 
 
 def access_token(key):
@@ -118,7 +213,7 @@ def main():
 
     call_command("migrate", verbosity=0)
     cache.client().flushdb()
-    seed_published_section()
+    seed_published_site()
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     access.fetch_signing_key = lambda token: key.public_key()
