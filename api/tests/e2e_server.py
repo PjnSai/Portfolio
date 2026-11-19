@@ -73,6 +73,25 @@ def _item(data):
     return {"id": str(uuid.uuid4()), "data": data}
 
 
+# Six more projects, so /projects has a second page (six to a page).
+EXTRA_PROJECTS = [
+    {
+        "title": f"Seeded project {n}",
+        "summary": f"Seeded project {n}.",
+        "body": "",
+        "status": "local",
+        "colour": colour,
+        "tags": ["Python"],
+        "links": [],
+        "fields": [],
+        "images": [],
+    }
+    for n, colour in zip(
+        range(3, 9), ["pink", "olive", "orange", "blue", "ink", "yellow"], strict=True
+    )
+]
+
+
 # One published section of each kind the public pages render, so the browser
 # tests cover the layout. Education is published empty to show its placeholder.
 SEEDED = [
@@ -117,6 +136,7 @@ SEEDED = [
                 "fields": [],
                 "images": [],
             },
+            *EXTRA_PROJECTS,
         ],
     ),
     (
@@ -183,7 +203,13 @@ def seed_published_site():
         )
     # Live: visitors pick from presets A, B and E. The draft stays at the
     # defaults, which the admin tests start from.
-    live = {**DEFAULT_SETTINGS, "palette_mode": "pick", "enabled_palette_ids": PICKS}
+    # The layout switcher is on so the browser tests can try all four layouts.
+    live = {
+        **DEFAULT_SETTINGS,
+        "palette_mode": "pick",
+        "enabled_palette_ids": PICKS,
+        "layout_switcher": True,
+    }
     row = SiteSettings.objects.create(draft=live)
     row.published = settings_state(row)
     row.published_at = now

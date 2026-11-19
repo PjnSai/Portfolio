@@ -194,3 +194,28 @@ def test_a_photo_can_be_cleared(signed_in):
 
     assert response.status_code == 200, response.content
     assert response.json()["draft"]["photo"] is None
+
+
+def test_new_settings_start_on_the_ring_layout(signed_in):
+    assert signed_in.get("/settings").json()["draft"]["showcase_layout"] == "ring"
+
+
+@pytest.mark.parametrize("layout", ["ring", "vertical", "stack", "train"])
+def test_each_showcase_layout_reaches_the_public_site(signed_in, client, layout):
+    signed_in.patch("/settings", {"showcase_layout": layout})
+
+    before = client.get("/api/v1/site").json()["settings"].get("showcase_layout")
+    signed_in.post("/settings/publish")
+    after = client.get("/api/v1/site").json()["settings"]["showcase_layout"]
+
+    assert before is None
+    assert after == layout
+
+
+@pytest.mark.parametrize("value", ["Ring", "carousel", "", None, 3, ["ring"]])
+def test_unknown_showcase_layout_is_refused(signed_in, value):
+    response = signed_in.patch("/settings", {"showcase_layout": value})
+
+    assert response.status_code == 400
+    assert "showcase_layout" in response.json()["errors"]
+    assert SiteSettings.objects.get().draft["showcase_layout"] == "ring"

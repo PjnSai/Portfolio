@@ -54,6 +54,11 @@ describe("pageModel", () => {
     expect(model.projects.map((p) => p.slug)).toEqual(["task-board", "task-board-2"]);
   });
 
+  it("never gives a project the slug the list pages use", () => {
+    const paged = pageModel({ ...SITE, sections: [{ type: "projects", title: "W", items: [project("Page")] }] });
+    expect(paged.projects[0].slug).toBe("page-2");
+  });
+
   it("counts only what is published and leaves zero counts out", () => {
     expect(statsFor(SITE, model)).toEqual([
       { value: 2, label: "Projects" },

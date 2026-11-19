@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { HomeEnhancer } from "@/components/public/HomeEnhancer";
 import { Hero, SectionBlock, SkillsStrip } from "@/components/public/Sections";
 import { SectionPager } from "@/components/public/SiteNav";
 import { pageModel } from "@/lib/public/content";
@@ -30,6 +31,7 @@ export default async function Home() {
         <SectionBlock key={entry.anchor} entry={entry} site={site} model={model} />
       ))}
       <SectionPager sections={model.sections} />
+      <HomeEnhancer />
     </>
   );
 }

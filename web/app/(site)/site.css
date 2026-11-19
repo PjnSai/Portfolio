@@ -471,9 +471,15 @@ main:focus {
 
 /* Sections */
 
-main > section,
+/* The skills strip is a named region too, but not a place to stop. */
+main > section:not(.strip),
 .footer {
   scroll-snap-align: start;
+}
+/* The hero's snap point is the top of the page, under the sticky nav, so a
+   re-snap after the script changes the layout does not move the page. */
+.hero {
+  scroll-margin-top: calc(var(--nav-height) + var(--s-1));
 }
 
 .section {
@@ -674,19 +680,28 @@ main > section,
 
 /* Skills strip: one static band, clipped at the edge. */
 .strip {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   background: var(--c-ink);
   color: var(--c-bg);
   border-block: var(--line) solid var(--c-ink);
+  padding: var(--s-2) var(--gutter);
+  --fg: var(--c-bg);
+  --ground: var(--c-ink);
+}
+.strip__view {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
-  padding-block: var(--s-2);
 }
 .strip__list {
   display: flex;
-  gap: var(--s-4);
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-4);
   list-style: none;
   margin: 0;
-  padding: 0 var(--gutter);
-  white-space: nowrap;
+  padding: 0;
   font-family: var(--font-display);
   font-weight: 700;
   font-size: clamp(1.125rem, 1rem + 0.8vw, 1.5rem);
@@ -696,6 +711,48 @@ main > section,
   margin-right: var(--s-4);
   font-family: var(--font-mono);
   font-weight: 400;
+}
+.strip__toggle {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--s-2);
+  border: var(--line) solid var(--c-bg);
+  border-radius: var(--radius-control);
+  background: var(--c-ink);
+  color: var(--c-bg);
+  font: 600 var(--t-small) / 1 var(--font-mono);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.strip__toggle[hidden] {
+  display: none;
+}
+/* Moving only once the script has added the pause button and the copy. */
+.strip[data-state] .strip__track {
+  display: flex;
+  width: max-content;
+  animation: strip var(--strip-time, 40s) linear infinite;
+  animation-play-state: paused;
+}
+.strip[data-state] .strip__list {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  padding-right: var(--s-4);
+}
+.strip[data-state] .strip__list li:first-child::before {
+  content: "/";
+  margin-right: var(--s-4);
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+.strip[data-state="playing"]:not(:hover, :focus-within) .strip__track {
+  animation-play-state: running;
+}
+@keyframes strip {
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 /* Project cards */
@@ -1094,4 +1151,396 @@ main > section,
   font-size: var(--t-h2);
   line-height: 1;
   margin: 0 0 var(--s-3);
+}
+
+/* Section enter transitions (lib/public/motion.ts). A section is only ever
+   pending if the script marked it, and only hidden under no-preference. */
+
+@media (prefers-reduced-motion: no-preference) {
+  .section[data-reveal="pending"] {
+    opacity: 0;
+    transform: perspective(1600px) translateY(48px) rotateX(-8deg);
+    transform-origin: 50% 0;
+  }
+  .section[data-reveal="in"] {
+    transform-origin: 50% 0;
+    transition:
+      opacity 450ms ease-out,
+      transform 550ms ease-out;
+  }
+  @view-transition {
+    navigation: auto;
+  }
+  ::view-transition-group(root) {
+    animation-duration: 250ms;
+    animation-timing-function: ease-out;
+  }
+}
+@media print {
+  .section[data-reveal] {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Project showcase. Without the script it is the .cards grid. */
+
+.showcase {
+  --card-w: min(360px, 78vw);
+  --move: 500ms;
+  position: relative;
+}
+.showcase [hidden] {
+  display: none !important;
+}
+.showcase__switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+  margin: 0 0 var(--s-3);
+  padding: 0;
+  border: 0;
+}
+.showcase__switch legend {
+  float: left;
+  margin-right: var(--s-2);
+}
+.showcase__switch label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 44px;
+  padding: 0 var(--s-2);
+  border: var(--line) solid var(--fg);
+  border-radius: var(--radius-control);
+  font-weight: 600;
+  cursor: pointer;
+}
+.showcase__switch label:has(input:checked) {
+  background: var(--fg);
+  color: var(--ground);
+}
+.showcase__switch input {
+  accent-color: currentColor;
+}
+
+.showcase__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+.showcase__controls .btn {
+  cursor: pointer;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+}
+.showcase__count {
+  margin: 0;
+  min-width: 7ch;
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  text-align: center;
+}
+.showcase__dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.showcase__dot {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: var(--line) solid var(--fg);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.showcase__dot[aria-current] {
+  background: var(--fg);
+}
+
+/* Carousel: phones, touch screens and reduced motion. Nothing moves but the
+   visitor's own scrolling. */
+.showcase[data-mode="flat"] .showcase__deck {
+  display: flex;
+  gap: var(--s-3);
+  position: relative;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  padding-block: var(--s-1) var(--s-2);
+}
+.showcase[data-mode="flat"] .showcase__slot {
+  flex: 0 0 min(85%, 400px);
+  scroll-snap-align: start;
+}
+
+/* The four 3D layouts. Every card sits in one grid cell and the script
+   writes data-offset (-3 to 3, 0 is the front card); --o carries it. */
+.showcase[data-mode="3d"] {
+  overflow: clip;
+  overflow-clip-margin: var(--s-3);
+}
+.showcase[data-mode="3d"] .showcase__deck {
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  /* Perspective without preserve-3d: cards are drawn in z-index order, so a
+     side card never cuts through the front one. */
+  perspective: 1600px;
+  padding-block: var(--s-4);
+}
+.showcase[data-mode="3d"] .showcase__slot {
+  grid-area: 1 / 1;
+  width: var(--card-w);
+  /* A card shows at once, so it can take focus, and hides after its fade. */
+  transition-property: transform, opacity, visibility;
+  transition-duration: var(--move), 300ms, 0s;
+  transition-timing-function: ease-out;
+  cursor: pointer;
+}
+.showcase[data-mode="3d"] .showcase__slot .card__more {
+  display: none;
+}
+.showcase[data-mode="3d"] .card {
+  height: 100%;
+}
+.showcase__slot[data-offset="-3"] {
+  --o: -3;
+}
+.showcase__slot[data-offset="-2"] {
+  --o: -2;
+}
+.showcase__slot[data-offset="-1"] {
+  --o: -1;
+}
+.showcase__slot[data-offset="0"] {
+  --o: 0;
+  z-index: 3;
+}
+.showcase__slot[data-offset="1"] {
+  --o: 1;
+}
+.showcase__slot[data-offset="2"] {
+  --o: 2;
+}
+.showcase__slot[data-offset="3"] {
+  --o: 3;
+}
+.showcase__slot[data-offset="-1"],
+.showcase__slot[data-offset="1"] {
+  z-index: 2;
+}
+.showcase__slot[data-offset="-2"],
+.showcase__slot[data-offset="2"] {
+  z-index: 1;
+}
+.showcase__slot[data-offset="-3"],
+.showcase__slot[data-offset="3"] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition-delay: 0s, 0s, 300ms;
+}
+/* 760 to 1000 px: one side card each way. */
+@media (max-width: 999.98px) {
+  .showcase__slot[data-offset="-2"],
+  .showcase__slot[data-offset="2"] {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition-delay: 0s, 0s, 300ms;
+  }
+}
+
+/* Ring: a horizontal ring turning about its centre. */
+.showcase[data-mode="3d"][data-layout="ring"] {
+  --card-w: min(360px, 34vw);
+  --r: calc(var(--card-w) * 1.4);
+}
+.showcase[data-mode="3d"][data-layout="ring"] .showcase__slot {
+  transform: translateZ(calc(var(--r) * -1)) rotateY(calc(var(--o) * 38deg)) translateZ(var(--r));
+}
+
+/* Vertical: the same ring turning top to bottom; one card each way. */
+.showcase[data-layout="vertical"] {
+  --r: 320px;
+}
+.showcase[data-mode="3d"][data-layout="vertical"] .showcase__deck {
+  padding-block: 200px;
+}
+.showcase[data-mode="3d"][data-layout="vertical"] .showcase__slot {
+  transform: translateZ(calc(var(--r) * -1)) rotateX(calc(var(--o) * -34deg)) translateZ(var(--r));
+}
+.showcase[data-layout="vertical"] .showcase__slot:is([data-offset="-2"], [data-offset="2"]) {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition-delay: 0s, 0s, 300ms;
+}
+
+/* Stack: cards in depth; the front one steps away and the next comes forward. */
+.showcase[data-mode="3d"][data-layout="stack"] .showcase__deck {
+  padding-top: 88px;
+}
+.showcase[data-mode="3d"][data-layout="stack"] .showcase__slot {
+  transform: translate3d(0, calc(var(--o) * -28px), calc(var(--o) * -110px));
+}
+.showcase[data-mode="3d"][data-layout="stack"] .showcase__slot[data-offset^="-"] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition-delay: 0s, 0s, 300ms;
+  transform: translate3d(0, 64px, 160px);
+}
+
+/* Train: a flat row on a rail; the front card is lifted off the line. */
+.showcase[data-layout="train"] {
+  --card-w: min(300px, 60vw);
+}
+.showcase[data-mode="3d"][data-layout="train"] .showcase__deck {
+  perspective: none;
+  border-bottom: var(--line) solid var(--fg);
+  padding-block: var(--s-6) var(--s-2);
+}
+.showcase[data-mode="3d"][data-layout="train"] .showcase__slot {
+  transform: translateX(calc(var(--o) * (var(--card-w) + var(--s-3))));
+}
+.showcase[data-mode="3d"][data-layout="train"] .showcase__slot[data-offset="0"] {
+  transform: translateY(calc(var(--s-4) * -1));
+}
+
+/* Hover lifts a card: the card, not its slot, so the two transforms add up. */
+@media (hover: hover) {
+  .showcase[data-mode="3d"] .showcase__slot:hover > .card {
+    transform: translateY(-8px);
+  }
+}
+
+/* Detail sheet: the front card, enlarged in its own colour. */
+.sheet {
+  width: min(880px, calc(100vw - 2 * var(--gutter)));
+  max-height: calc(100dvh - 2 * var(--s-4));
+  padding: 0;
+  border: var(--line) solid var(--c-ink);
+  border-radius: var(--radius-card);
+  overflow: auto;
+}
+.sheet::backdrop {
+  background: var(--c-ink);
+  opacity: 0.7;
+}
+.sheet__inner {
+  padding: var(--s-3);
+}
+.sheet__bar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 var(--s-2);
+}
+.sheet__bar .btn {
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+.sheet .sheet__card {
+  border: 0;
+  transform: none;
+}
+.sheet__card .card__more {
+  margin-top: var(--s-3);
+}
+.sheet__case {
+  margin-top: var(--s-3);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sheet[open] {
+    transition:
+      opacity 250ms ease-out,
+      transform 250ms ease-out;
+  }
+  @starting-style {
+    .sheet[open] {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+}
+
+/* Reduced motion: nothing slides. */
+@media (prefers-reduced-motion: reduce) {
+  .showcase__slot,
+  .showcase__slot > .card {
+    transition: none;
+  }
+}
+
+/* Pages of the plain project list. */
+.pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-6);
+  font-weight: 600;
+}
+.pages__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pages a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--s-2);
+  border: var(--line) solid var(--fg);
+  border-radius: var(--radius-control);
+  text-decoration: none;
+}
+.pages a[aria-current="page"] {
+  background: var(--fg);
+  color: var(--ground);
+}
+.pages__missing {
+  margin-top: var(--s-4);
+}
+
+@media (forced-colors: active) {
+  .showcase__dot,
+  .showcase__switch label,
+  .strip__toggle,
+  .sheet,
+  .pages a {
+    border-color: CanvasText;
+  }
+  .showcase__dot[aria-current],
+  .pages a[aria-current="page"] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+}
+
+/* The global reduced-motion reset stops every animation. The skills strip
+   starts paused there, and moves only if the visitor presses Play. */
+@media (prefers-reduced-motion: reduce) {
+  .strip[data-state] .strip__track {
+    animation: strip var(--strip-time, 40s) linear infinite paused !important;
+  }
+  .strip[data-state="playing"]:not(:hover, :focus-within) .strip__track {
+    animation-play-state: running !important;
+  }
 }

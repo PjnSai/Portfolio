@@ -7,6 +7,7 @@ public_cap: public reads fail static, so it lets the request through.
 
 import hashlib
 import hmac
+import ipaddress
 import logging
 import math
 import time
@@ -34,10 +35,17 @@ def client_key(request):
     # Admin requests reach this point only with a valid Cloudflare Access token,
     # so Cloudflare's client address header can be used here. For public reads
     # it is trusted only as far as the edge is: the edge limit comes first.
-    address = request.headers.get("Cf-Connecting-Ip") or request.META.get(
-        "REMOTE_ADDR", ""
-    )
-    return keyed(f"ip:{address}")
+    # A value that is not an address is ignored, so a client cannot pick a
+    # fresh key per request by sending any string it likes.
+    return keyed(f"ip:{client_address(request)}")
+
+
+def client_address(request):
+    header = request.headers.get("Cf-Connecting-Ip", "").strip()
+    try:
+        return str(ipaddress.ip_address(header))
+    except ValueError:
+        return request.META.get("REMOTE_ADDR", "")
 
 
 def _increment(name, seconds):

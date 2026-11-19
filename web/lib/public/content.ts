@@ -160,7 +160,11 @@ export function pageModel(site: PublicSite): PageModel {
   const projectItems = rest
     .filter((section) => section.type === "projects")
     .flatMap((section) => itemsOf<Project>(section));
-  const slugs = uniqueSlugs(projectItems.map((item) => item.data.title));
+  // /projects/page/ holds the list pages, so no project may be called "page".
+  const slugs = uniqueSlugs(
+    projectItems.map((item) => item.data.title),
+    ["page"],
+  );
   const projects = projectItems.map((item, index) => ({ ...item, slug: slugs[index] }));
 
   const about = rest.find((section) => section.type === "about");

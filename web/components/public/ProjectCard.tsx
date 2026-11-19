@@ -1,20 +1,24 @@
 import { accentFor, monthLabel, STATUS_LABELS, type ProjectEntry } from "@/lib/public/content";
-import { Markdown } from "@/lib/markdown";
+import { Markdown, safeHref } from "@/lib/markdown";
 import type { PublicSite } from "@/lib/site";
-import { Picture, Tags } from "./bits";
+import { Button, Picture, Tags } from "./bits";
 
 type Props = {
   project: ProjectEntry;
   site: PublicSite;
   /** h3 under a section heading on the home page, h2 on /projects. */
   level?: 2 | 3;
+  /** The label/value fields and links too, for the showcase's detail sheet. */
+  detail?: boolean;
 };
 
-export function ProjectCard({ project, site, level = 3 }: Props) {
+export function ProjectCard({ project, site, level = 3, detail = false }: Props) {
   const data = project.data;
   const Heading = level === 2 ? "h2" : "h3";
   const image = data.images[0];
   const when = data.created ? monthLabel(data.created) : "";
+  const links = detail ? data.links.filter((link) => safeHref(link.url)) : [];
+  const fields = detail ? data.fields : [];
   return (
     <article className="card" data-accent={accentFor(data.colour)} id={`project-${project.slug}`}>
       <div className="card__media">
@@ -36,6 +40,31 @@ export function ProjectCard({ project, site, level = 3 }: Props) {
         </Heading>
         {data.summary ? <Markdown source={data.summary} /> : null}
         <Tags tags={data.tags} label={`Built with, ${data.title}`} />
+        {fields.length > 0 || links.length > 0 ? (
+          <div className="card__more">
+            {fields.length > 0 ? (
+              <dl className="facts">
+                {fields.map((field) => (
+                  <div key={field.label}>
+                    <dt>{field.label}</dt>
+                    <dd>{field.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+            {links.length > 0 ? (
+              <ul className="link-list">
+                {links.map((link) => (
+                  <li key={link.url}>
+                    <Button href={link.url} variant="outline" external>
+                      {link.label}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </article>
   );

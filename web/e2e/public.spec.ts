@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 
 // The site is built from the sections api/tests/e2e_server.py publishes:
-// a hero, About me, Selected work (two projects), Work history, Study (empty),
+// a hero, About me, Selected work (eight projects), Work history, Study (empty),
 // Toolkit, Contact me and Elsewhere (folded into Contact me).
 
 const PRESET_A = "0c63ed98-cf1f-4c4d-945f-8725c81ab5b4";
@@ -31,7 +31,7 @@ test("the published default palette is on <html> and its slots are tokens", asyn
 });
 
 test("prerendered pages carry no style attributes (the policy allows none)", async ({ request }) => {
-  for (const path of ["/", "/projects", "/projects/task-board"]) {
+  for (const path of ["/", "/projects", "/projects/page/2", "/projects/task-board"]) {
     expect(await (await request.get(path)).text(), path).not.toMatch(/\sstyle=/);
   }
 });
@@ -204,7 +204,7 @@ test("scroll snapping is off when the viewport is under 500 px tall", async ({ p
 for (const width of [320, 360, 390, 768, 1024, 1280, 1920]) {
   test(`no horizontal scroll at ${width} px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    for (const path of ["/", "/projects", "/projects/task-board"]) {
+    for (const path of ["/", "/projects", "/projects/page/2", "/projects/task-board"]) {
       await page.goto(path);
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -214,10 +214,17 @@ for (const width of [320, 360, 390, 768, 1024, 1280, 1920]) {
   });
 }
 
-test("/projects lists every project and links to each case study", async ({ page }) => {
+test("/projects lists the first six projects and links to each case study", async ({ page }) => {
   await page.goto("/projects");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Projects");
-  await expect(page.getByRole("heading", { level: 2 })).toHaveText(["Task board", "Log parser"]);
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText([
+    "Task board",
+    "Log parser",
+    "Seeded project 3",
+    "Seeded project 4",
+    "Seeded project 5",
+    "Seeded project 6",
+  ]);
   await page.getByRole("link", { name: "Task board" }).click();
   await expect(page).toHaveURL(/\/projects\/task-board$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Task board");
