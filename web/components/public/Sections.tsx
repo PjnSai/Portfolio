@@ -14,7 +14,7 @@ import {
 import { Markdown, safeHref } from "@/lib/markdown";
 import type { PublicSite, SiteSection } from "@/lib/site";
 import { Button, Picture, Placeholder, SectionHeader, StatTiles, Tags } from "./bits";
-import { ProjectCard } from "./ProjectCard";
+import { Showcase } from "./Showcase";
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 
@@ -61,7 +61,8 @@ export function Hero({ site, model }: { site: PublicSite; model: PageModel }) {
   );
 }
 
-/** Every skill in one band under the hero. Static for now; the full list is in the Skills section. */
+/** Every skill in one band under the hero. A static wrapping list without
+    JavaScript; lib/public/marquee.ts makes it move, with a pause button. */
 export function SkillsStrip({ site }: { site: PublicSite }) {
   const skills = site.sections
     .filter((section) => section.type === "skills")
@@ -69,13 +70,22 @@ export function SkillsStrip({ site }: { site: PublicSite }) {
     .flatMap((group) => group.data.skills);
   if (skills.length === 0) return null;
   return (
-    <div className="strip" aria-hidden="true">
-      <ul className="strip__list">
-        {skills.map((skill, index) => (
-          <li key={`${skill}-${index}`}>{skill}</li>
-        ))}
-      </ul>
-    </div>
+    <section className="strip" aria-label="Skills strip" data-marquee>
+      <button type="button" className="strip__toggle" data-marquee-toggle hidden>
+        <span data-marquee-word>Pause</span>
+        <span className="visually-hidden"> the skills strip</span>
+      </button>
+      <div className="strip__view">
+        <div className="strip__track" data-marquee-track>
+          <ul className="strip__list" aria-label="Skills">
+            {skills.map((skill, index) => (
+              <li key={`${skill}-${index}`}>{skill}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <p className="visually-hidden" aria-live="polite" data-marquee-status />
+    </section>
   );
 }
 
@@ -158,13 +168,7 @@ function Content({ entry, site, model }: { entry: PageSection; site: PublicSite;
           {projects.length === 0 ? (
             <Empty type="projects" />
           ) : (
-            <ul className="cards">
-              {projects.map((project) => (
-                <li key={project.id}>
-                  <ProjectCard project={project} site={site} />
-                </li>
-              ))}
-            </ul>
+            <Showcase projects={projects} site={site} />
           )}
           {projects.length > 0 ? (
             <p className="section__more">
