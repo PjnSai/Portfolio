@@ -1,13 +1,25 @@
 """Media library routes for the admin, the public image route, the public site
 document and the cache purge status."""
 
+import hashlib
 import logging
 
 from django.http import HttpResponse, JsonResponse
+from django.utils.cache import get_conditional_response
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
-from core import content, deploy, media, pages, purge, responses, serializers, storage
+from core import (
+    content,
+    deploy,
+    media,
+    pages,
+    purge,
+    ratelimit,
+    responses,
+    serializers,
+    storage,
+)
 from core.authz import Level, admin_route
 from core.models import Media
 
@@ -15,10 +27,13 @@ log = logging.getLogger(__name__)
 
 POST = ("POST",)
 STORAGE_ERRORS = (OSError, storage.NotConfigured)
-# Published content is purged from the edge on every change, so the edge may
-# keep it until then; browsers check again after a minute. If the API cannot
-# answer, the edge may serve the last good copy for a week (fail static).
-SITE_CACHE = "public, max-age=60, s-maxage=31536000, stale-if-error=604800"
+# Published content is purged from the edge on every change. If a purge fails,
+# the edge copy is still at most two minutes old (the rebuild debounce), and
+# browsers check again after a minute; the ETag makes a check cheap. If the API
+# cannot answer, the edge may serve the last good copy for a week (fail static).
+SITE_CACHE = (
+    "public, max-age=60, s-maxage=120, stale-while-revalidate=60, stale-if-error=604800"
+)
 FILE_CACHE = "public, max-age=31536000, immutable"
 
 
@@ -177,6 +192,9 @@ def cache_purge(request):
 def public_file(request, name):
     """A published image. Anything else, including a valid name for an image
     that is not on the site, is a plain 404."""
+    wait = ratelimit.public_cap(request)
+    if wait:
+        return responses.too_many_requests(wait)
     item = media.find_variant(name)
     if item is None or not content.is_published_media(item):
         return responses.not_found()
@@ -188,4 +206,11 @@ def public_file(request, name):
 def public_site(request):
     if request.GET:
         return responses.bad_request()
-    return JsonResponse(content.public_site(), headers={"Cache-Control": SITE_CACHE})
+    wait = ratelimit.public_cap(request)
+    if wait:
+        return responses.too_many_requests(wait)
+    response = JsonResponse(
+        content.public_site(), headers={"Cache-Control": SITE_CACHE}
+    )
+    response["ETag"] = f'"{hashlib.sha256(response.content).hexdigest()[:32]}"'
+    return get_conditional_response(request, etag=response["ETag"], response=response)

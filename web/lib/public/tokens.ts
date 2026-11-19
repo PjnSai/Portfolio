@@ -2,7 +2,7 @@
 // build time. The API only stores #RRGGBB and UUID ids, but this is checked
 // again here: anything else is left out, so no CSS can ride in on a value.
 
-import { SLOTS, type SitePalette, type Slots } from "../palettes";
+import { PALETTE_MODES, type PaletteUse, SLOTS, type SitePalette, type Slots } from "../palettes";
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -74,22 +74,39 @@ export function defaultPalette(
   return palettes.find((palette) => palette.id === wanted) ?? palettes[0];
 }
 
+/** The published mode; anything unknown is treated as fixed. */
+export function paletteMode(value: unknown): PaletteUse {
+  return PALETTE_MODES.find((mode) => mode === value) ?? "fixed";
+}
+
 function declarations(slots: Slots): string {
   return SLOTS.map((slot) => `${tokenName(slot)}:${slots[slot].toUpperCase()}`).join(";");
 }
 
-const dark = (rule: string) => `@media (prefers-color-scheme: dark){${rule}}`;
+/**
+ * Selectors for the dark values of `base`: on <html> itself and on anything
+ * inside it that names a palette (the picker's swatches). Dark applies when
+ * the visitor chose dark, or follows the system unless they chose light.
+ */
+function darkRules(base: string, slots: Slots): string[] {
+  const body = `{${declarations(slots)}}`;
+  const system = ":root:not([data-theme=light])";
+  const chosen = ":root[data-theme=dark]";
+  const on = (root: string) => (base === ":root" ? root : `${root}${base},${root} ${base}`);
+  return [`@media (prefers-color-scheme: dark){${on(system)}${body}}`, `${on(chosen)}${body}`];
+}
 
-/** CSS for the fallback on :root and each palette under [data-palette="<id>"]. */
+/**
+ * CSS for the fallback on :root and each palette under [data-palette="<id>"],
+ * light first, then dark. data-theme on <html> (set by the inline script) is
+ * "light", "dark" or "system"; with no script the system setting decides.
+ */
 export function paletteCss(palettes: readonly unknown[]): string {
-  const rules = [
-    `:root{${declarations(FALLBACK.light)}}`,
-    dark(`:root{${declarations(FALLBACK.dark)}}`),
-  ];
+  const rules = [`:root{${declarations(FALLBACK.light)}}`, ...darkRules(":root", FALLBACK.dark)];
   for (const palette of validPalettes(palettes)) {
     const selector = `[data-palette="${palette.id}"]`;
     rules.push(`${selector}{${declarations(palette.light)}}`);
-    rules.push(dark(`${selector}{${declarations(palette.dark)}}`));
+    rules.push(...darkRules(selector, palette.dark));
   }
   return rules.join("\n");
 }

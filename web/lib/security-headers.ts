@@ -4,10 +4,13 @@
 // No imports: the build scripts load this file with Node directly.
 
 /**
- * Hashes of inline scripts written by hand, added to every page's policy.
- * Empty for now; phase 3A-4 adds one here (format "sha256-<base64>").
+ * Hashes of inline scripts written by hand, added to every page's policy:
+ * the palette and theme script in lib/public/boot-script.ts.
+ * tests/boot-script.test.ts recomputes it from the script's text.
  */
-export const EXTRA_SCRIPT_HASHES: readonly string[] = [];
+export const EXTRA_SCRIPT_HASHES: readonly string[] = [
+  "sha256-4mLuqMWTL7L4q9+q5xr5g0KSN1PwsgT/s/BhM/C6L1I=",
+];
 
 /**
  * The colour picker in the palette editor (react-colorful) adds one fixed
@@ -77,6 +80,13 @@ export const PRIVATE_HEADERS: Readonly<Record<string, string>> = {
   "X-Robots-Tag": "noindex, nofollow",
   "Cache-Control": "no-store",
 };
+
+/**
+ * Public pages, with the published palettes written into them: any cache may
+ * keep a copy but must check it first (Pages answers with an ETag), so a new
+ * build after Publish is seen on the next page load.
+ */
+export const PAGE_CACHE = "public, max-age=0, must-revalidate";
 
 /** Built files under /_next/static have content hashes in their names. */
 export const ASSET_CACHE = "public, max-age=31536000, immutable";

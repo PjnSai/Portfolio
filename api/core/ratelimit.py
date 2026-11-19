@@ -1,7 +1,8 @@
 """Rate limits. Counters live in Redis; cool-downs are rows in rate_limit_blocks.
 
 Addresses are only ever handled as a keyed hash. If Redis or the database is
-down these functions raise, and the request guard answers 503.
+down these functions raise, and the request guard answers 503, except
+public_cap: public reads fail static, so it lets the request through.
 """
 
 import hashlib
@@ -11,6 +12,7 @@ import math
 import time
 from datetime import timedelta
 
+import redis
 from django.conf import settings
 from django.utils import timezone
 
@@ -30,7 +32,8 @@ def keyed(value):
 
 def client_key(request):
     # Admin requests reach this point only with a valid Cloudflare Access token,
-    # so Cloudflare's client address header can be used here.
+    # so Cloudflare's client address header can be used here. For public reads
+    # it is trusted only as far as the edge is: the edge limit comes first.
     address = request.headers.get("Cf-Connecting-Ip") or request.META.get(
         "REMOTE_ADDR", ""
     )
@@ -50,6 +53,20 @@ def request_cap(request):
     now = time.time()
     count = _increment(f"requests:{client_key(request)}:{int(now // 60)}", 60)
     if count > settings.ADMIN_REQUESTS_PER_MINUTE:
+        return 60 - int(now % 60)
+    return None
+
+
+def public_cap(request):
+    """Seconds to wait if this client is over the public per-minute cap, else
+    None. With Redis down there is no count, and the read goes ahead."""
+    now = time.time()
+    try:
+        count = _increment(f"public:{client_key(request)}:{int(now // 60)}", 60)
+    except redis.RedisError as error:
+        log.warning("public rate limit skipped: %s", type(error).__name__)
+        return None
+    if count > settings.PUBLIC_REQUESTS_PER_MINUTE:
         return 60 - int(now % 60)
     return None
 

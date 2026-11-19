@@ -156,6 +156,13 @@ SEEDED = [
 SEEDED_TITLES = [title for _, title, _, _ in SEEDED]
 
 
+PICKS = [
+    "0c63ed98-cf1f-4c4d-945f-8725c81ab5b4",
+    "bf7b0ec6-833c-4f4c-be66-03ce086e298a",
+    "b399fb8f-5de4-462d-98f5-a81bf8046a6f",
+]
+
+
 def seed_published_site():
     # The site build needs published content (web/lib/site.ts) and the layout
     # tests need one section of each kind, plus the published palettes.
@@ -174,10 +181,14 @@ def seed_published_site():
             published={"type": kind, **draft, "items": [_item(i) for i in items]},
             published_at=now,
         )
-    row = SiteSettings.objects.create(draft=dict(DEFAULT_SETTINGS))
+    # Live: visitors pick from presets A, B and E. The draft stays at the
+    # defaults, which the admin tests start from.
+    live = {**DEFAULT_SETTINGS, "palette_mode": "pick", "enabled_palette_ids": PICKS}
+    row = SiteSettings.objects.create(draft=live)
     row.published = settings_state(row)
     row.published_at = now
-    row.save(update_fields=["published", "published_at"])
+    row.draft = dict(DEFAULT_SETTINGS)
+    row.save(update_fields=["draft", "published", "published_at"])
 
 
 def access_token(key):
@@ -210,6 +221,8 @@ def main():
     # seconds, near the per-minute cap of 300. The cap stays on, set higher
     # here only; tests/test_guard.py checks the cap itself.
     settings.ADMIN_REQUESTS_PER_MINUTE = 1200
+    # Every page load fetches the images from the API directly, with no edge.
+    settings.PUBLIC_REQUESTS_PER_MINUTE = 5000
 
     call_command("migrate", verbosity=0)
     cache.client().flushdb()

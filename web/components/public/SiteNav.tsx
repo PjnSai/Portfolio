@@ -1,11 +1,18 @@
+import { DisplayMenu, type PaletteOption } from "@/components/public/DisplayMenu";
 import type { PageSection } from "@/lib/public/content";
 
-type Props = { name: string; sections: readonly PageSection[]; contact?: string };
+type Props = {
+  name: string;
+  sections: readonly PageSection[];
+  contact?: string;
+  palettes?: readonly PaletteOption[];
+  defaultId?: string;
+};
 
 // Links are real fragments on the home page ("/#projects"), so they work with no
 // JavaScript, from any page, and from a shared URL. NavEnhancer adds the burger
 // menu and the current-section marker when JavaScript runs.
-export function SiteNav({ name, sections, contact }: Props) {
+export function SiteNav({ name, sections, contact, palettes = [], defaultId }: Props) {
   return (
     <header className="nav" data-nav>
       <div className="nav__inner wrap">
@@ -40,6 +47,7 @@ export function SiteNav({ name, sections, contact }: Props) {
             Get in touch
           </a>
         ) : null}
+        <DisplayMenu palettes={palettes} defaultId={defaultId} />
       </div>
     </header>
   );

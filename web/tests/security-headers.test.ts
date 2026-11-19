@@ -28,7 +28,9 @@ const adminPolicy = contentSecurityPolicy({ scripts: [], styles: [HASH], api: AP
 describe("Content-Security-Policy", () => {
   it("lets scripts and styles run only from the site or by hash, with no nonce", () => {
     const policy = directives(publicPolicy);
-    expect(policy.get("script-src")).toEqual(["'self'", `'${HASH}'`]);
+    expect(policy.get("script-src")).toEqual(
+      ["'self'", ...[HASH, ...EXTRA_SCRIPT_HASHES].sort().map((h) => `'${h}'`)],
+    );
     expect(policy.get("style-src")).toEqual(["'self'"]);
     expect(directives(adminPolicy).get("style-src")).toEqual(
       ["'self'", ...[HASH, ...ADMIN_STYLE_HASHES].sort().map((h) => `'${h}'`)],
@@ -65,8 +67,9 @@ describe("Content-Security-Policy", () => {
     expect(policy).not.toMatch(/https?:/);
   });
 
-  it("keeps a place for hand-written script hashes, empty until phase 3A-4", () => {
-    expect(EXTRA_SCRIPT_HASHES).toEqual([]);
+  it("lists hand-written script hashes as SHA-256 only (tests/boot-script.test.ts checks the value)", () => {
+    expect(EXTRA_SCRIPT_HASHES.length).toBeGreaterThan(0);
+    for (const hash of EXTRA_SCRIPT_HASHES) expect(hash).toMatch(/^sha256-[A-Za-z0-9+/]{43}=$/);
   });
 });
 
