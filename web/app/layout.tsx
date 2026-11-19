@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import { fontVariables } from "@/lib/fonts";
 import { BOOT_SCRIPT } from "@/lib/public/boot-script";
 import { defaultPalette, paletteCss, paletteMode, validPalettes } from "@/lib/public/tokens";
+import { siteOrigin } from "@/lib/seo";
 import { loadSite } from "@/lib/site";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteOrigin()),
   title: "Pujan Shahi",
 };
 

@@ -22,7 +22,9 @@ export const MAX_LINE = 2000;
 export type Rule = { path: string; set: [string, string][]; unset: string[] };
 export type Page = { route: string; html: string };
 
-const SCRIPT = /<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi;
+// Inline scripts the browser runs. A JSON-LD block is data, which the policy
+// does not cover, so it needs no hash.
+const SCRIPT = /<script(?![^>]*\ssrc=)(?![^>]*\stype="application\/ld\+json")[^>]*>([\s\S]*?)<\/script>/gi;
 const STYLE = /<style[^>]*>([\s\S]*?)<\/style>/gi;
 
 function hashes(html: string, pattern: RegExp): string[] {

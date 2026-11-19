@@ -59,6 +59,17 @@ describe("_headers for a build", () => {
     expect(policy).not.toContain(", ");
   });
 
+  it("lists no hash for a JSON-LD block, which the browser never runs", () => {
+    const data = '{"@type":"Person"}';
+    const page = { route: "/", html: `<script type="application/ld+json">${data}</script><script>self.a=1</script>` };
+    const policy = headersFor(parseRules(writeRules(buildRules([page], notFound, API))), "/").get(
+      "content-security-policy",
+    );
+    expect(policy).toContain(sha("self.a=1"));
+    expect(policy).not.toContain(sha(data));
+    expect(policy).not.toContain("unsafe-inline");
+  });
+
   it("hashes inline styles too, and lets admin pages call the API", () => {
     const policy = served("/desk/media").get("content-security-policy") ?? "";
 

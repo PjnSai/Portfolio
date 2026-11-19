@@ -287,3 +287,53 @@ for (const viewport of [PHONE, DESKTOP]) {
     });
   }
 }
+
+test.describe("search engines", () => {
+  const ORIGIN = "http://localhost:3100";
+
+  test("the sitemap lists the pages open to search and nothing else", async ({ request }) => {
+    const response = await request.get("/sitemap.xml");
+    expect(response.status()).toBe(200);
+    const locs = [...(await response.text()).matchAll(/<loc>([^<]*)<\/loc>/g)].map((m) => m[1]);
+    expect(locs).toEqual(
+      expect.arrayContaining([`${ORIGIN}/`, `${ORIGIN}/projects`, `${ORIGIN}/projects/page/2`, `${ORIGIN}/projects/first-seeded-project`]),
+    );
+    expect(locs.every((loc) => loc.startsWith(`${ORIGIN}/`))).toBe(true);
+    expect(locs.some((loc) => /\/desk|404|\/projects\/page\/3|seeded-project-3$/.test(loc))).toBe(false);
+  });
+
+  test("robots.txt names the sitemap and turns away AI crawlers only", async ({ request }) => {
+    const text = await (await request.get("/robots.txt")).text();
+    expect(text).toContain(`Sitemap: ${ORIGIN}/sitemap.xml`);
+    expect(text).toMatch(/User-Agent: GPTBot[\s\S]*Disallow: \//);
+    expect(text).toMatch(/User-Agent: \*\nAllow: \//);
+  });
+
+  for (const path of ["/", "/projects", "/projects/page/2", "/projects/task-board"]) {
+    test(`${path} has one absolute canonical on this site and preview tags`, async ({ page }) => {
+      await page.goto(path);
+      const canonical = page.locator('link[rel="canonical"]');
+      await expect(canonical).toHaveCount(1);
+      // Next writes the home address without its final slash; both name the same URL.
+      const url = path === "/" ? new RegExp(`^${ORIGIN}/?$`) : `${ORIGIN}${path}`;
+      await expect(canonical).toHaveAttribute("href", url);
+      await expect(page.locator('meta[name="description"]')).toHaveCount(1);
+      await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", url);
+      await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", `${ORIGIN}/og-default.png`);
+      await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+    });
+  }
+
+  test("the preview image is served", async ({ request }) => {
+    const response = await request.get("/og-default.png");
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toBe("image/png");
+  });
+
+  test("/desk stays out of search and is never stored", async ({ request }) => {
+    const response = await request.get("/desk");
+    expect(response.headers()["x-robots-tag"]).toContain("noindex");
+    expect(response.headers()["cache-control"]).toContain("no-store");
+    expect(await response.text()).not.toContain('rel="canonical"');
+  });
+});

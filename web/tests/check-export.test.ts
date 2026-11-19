@@ -8,7 +8,37 @@ import { afterEach, describe, expect, it } from "vitest";
 import { BOOT_SCRIPT } from "@/lib/public/boot-script";
 
 const SCRIPT = fileURLToPath(new URL("../scripts/check-export.ts", import.meta.url));
-const page = (body: string) => `<!DOCTYPE html><html><head><script>${BOOT_SCRIPT}</script></head><body>${body}</body></html>`;
+const HIDDEN = '<title>T</title><meta name="robots" content="noindex, nofollow"/>';
+const page = (body: string, head = HIDDEN) =>
+  `<!DOCTYPE html><html><head><script>${BOOT_SCRIPT}</script>${head}</head><body>${body}</body></html>`;
+
+const ORIGIN = "http://localhost:3000";
+/** The head tags of a page open to search, as Next writes them. */
+function seoHead(route: string, { canonical = `${ORIGIN}${route}`, extra = "" } = {}) {
+  return [
+    "<title>T</title>",
+    '<meta name="description" content="D"/>',
+    `<link rel="canonical" href="${canonical}"/>`,
+    `<meta property="og:url" content="${canonical}"/>`,
+    `<meta property="og:image" content="${ORIGIN}/og-default.png"/>`,
+    '<meta name="twitter:card" content="summary_large_image"/>',
+    extra,
+  ].join("");
+}
+const PERSON = '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Person","name":"N"}</script>';
+const sitemap = (...routes: string[]) =>
+  `<urlset>${routes.map((r) => `<url><loc>${ORIGIN}${r}</loc></url>`).join("")}</urlset>`;
+const ROBOTS = `User-Agent: *
+Allow: /
+
+Sitemap: ${ORIGIN}/sitemap.xml
+`;
+const indexed = {
+  "out/index.html": page(PERSON, seoHead("/")),
+  "out/projects.html": page("", seoHead("/projects")),
+  "out/sitemap.xml": sitemap("/", "/projects"),
+  "out/robots.txt": ROBOTS,
+};
 
 let dir = "";
 afterEach(() => {
@@ -66,5 +96,30 @@ describe("check:export", () => {
       "out/_next/static/chunks/c.js": randomBytes(160_000).toString("latin1"),
     });
     expect(run.status).toBe(0);
+  });
+
+  it("passes pages open to search with one canonical, title and description each", () => {
+    const run = exportWith(indexed);
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+  });
+
+  it.each([
+    ["a second canonical", { "out/projects.html": page("", seoHead("/projects", { extra: '<link rel="canonical" href="x"/>' })) }, /not one canonical: out.projects\.html/],
+    ["a canonical on another host", { "out/projects.html": page("", seoHead("/projects", { canonical: "https://elsewhere.test/projects" })) }, /canonical on another host \(https:\/\/elsewhere\.test\)/],
+    ["a canonical to another page", { "out/projects.html": page("", seoHead("/projects", { canonical: `${ORIGIN}/` })) }, /canonical points at \/, not the page/],
+    ["no description", { "out/projects.html": page("", seoHead("/projects").replace(/<meta name="description"[^>]*>/, "")) }, /not one description: out.projects\.html/],
+    ["two titles", { "out/projects.html": page("", seoHead("/projects", { extra: "<title>U</title>" })) }, /not one <title>: out.projects\.html/],
+    ["a canonical on a hidden page", { "out/projects/page/2.html": page("", `${HIDDEN}<link rel="canonical" href="${ORIGIN}/projects/page/2"/>`) }, /canonical on a page kept out of search/],
+    ["a hidden page in the sitemap", { "out/projects/page/2.html": page(""), "out/sitemap.xml": sitemap("/", "/projects", "/projects/page/2") }, /sitemap lists a page that is missing or kept out of search: .*\/projects\/page\/2/],
+    ["/desk in the sitemap", { "out/sitemap.xml": sitemap("/", "/projects", "/desk") }, /sitemap lists a page that is missing or kept out of search: .*\/desk/],
+    ["a page left out of the sitemap", { "out/sitemap.xml": sitemap("/") }, /sitemap leaves out \/projects/],
+    ["no JSON-LD Person on home", { "out/index.html": page("", seoHead("/")) }, /home has not exactly one JSON-LD Person/],
+    ["a 404 page open to search", { "out/404.html": page("", "<title>T</title>") }, /404 page open to search/],
+    ["robots.txt without the sitemap", { "out/robots.txt": "User-Agent: *" }, /robots.txt does not name the sitemap/],
+  ])("fails with %s", (_, files, message) => {
+    const run = exportWith({ ...indexed, ...files });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toMatch(message);
   });
 });

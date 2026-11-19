@@ -42,12 +42,32 @@ test("every inline script on a page is listed in its policy and nothing is block
     const listed = hashesIn(response?.headers()["content-security-policy"]);
     const inline = await page.evaluate(() =>
       Array.from(document.scripts)
-        .filter((script) => !script.src && script.textContent)
+        .filter((script) => !script.src && script.textContent && script.type !== "application/ld+json")
         .map((script) => script.textContent ?? ""),
     );
 
     expect(inline.length).toBeGreaterThan(0);
     for (const text of inline) expect(listed).toContain(sha(text));
+  }
+  expect(blocked).toEqual([]);
+});
+
+test("the JSON-LD blocks are data: not in the policy, never blocked, and valid", async ({ page }) => {
+  const blocked: string[] = [];
+  page.on("console", (message) => {
+    if (message.text().includes("Content Security Policy")) blocked.push(message.text());
+  });
+  for (const [path, type] of [
+    ["/", "Person"],
+    ["/projects/task-board", "CreativeWork"],
+  ]) {
+    const response = await page.goto(path);
+    await page.waitForLoadState("networkidle");
+    const blocks = await page.locator('script[type="application/ld+json"]').allTextContents();
+    expect(blocks, path).toHaveLength(1);
+    const data = JSON.parse(blocks[0]);
+    expect(data["@type"]).toBe(type);
+    expect(hashesIn(response?.headers()["content-security-policy"])).not.toContain(sha(blocks[0]));
   }
   expect(blocked).toEqual([]);
 });

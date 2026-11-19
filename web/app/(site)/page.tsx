@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
+import { JsonLd } from "@/components/public/bits";
 import { HomeEnhancer } from "@/components/public/HomeEnhancer";
 import { Hero, SectionBlock, SkillsStrip } from "@/components/public/Sections";
 import { SectionPager } from "@/components/public/SiteNav";
 import { pageModel } from "@/lib/public/content";
+import { hiddenMetadata, homeMetadata, personData } from "@/lib/public/meta";
 import { loadSite } from "@/lib/site";
 
 // Built from the published site at build time.
 // With nothing published the home page is a placeholder and stays out of search.
 export async function generateMetadata(): Promise<Metadata> {
   const site = await loadSite();
-  return site.sections.length === 0 ? { robots: { index: false, follow: false } } : {};
+  if (site.sections.length === 0) return hiddenMetadata(site.settings.title || "Portfolio");
+  return homeMetadata(site, pageModel(site));
 }
 
 export default async function Home() {
@@ -25,6 +28,7 @@ export default async function Home() {
   const model = pageModel(site);
   return (
     <>
+      <JsonLd data={personData(site, model)} />
       <Hero site={site} model={model} />
       <SkillsStrip site={site} />
       {model.sections.map((entry) => (
