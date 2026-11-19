@@ -85,8 +85,17 @@ export function setupShowcase(root: HTMLElement): () => void {
     counter!.textContent = counterText(active, count);
   }
 
+  // While a button moves the carousel smoothly, the cards it passes are not
+  // the visitor's choice: in-view updates wait until the target arrives, so a
+  // second press counts from the target, not from a card on the way.
+  let heading: number | null = null;
+  let headingTimer = 0;
   function scrollToActive(smooth: boolean) {
-    deck!.scrollTo({ left: slots[active].offsetLeft, behavior: smooth && !reduce.matches ? "smooth" : "auto" });
+    const smoothly = smooth && !reduce.matches;
+    window.clearTimeout(headingTimer);
+    heading = smoothly ? active : null;
+    if (smoothly) headingTimer = window.setTimeout(() => (heading = null), 1000);
+    deck!.scrollTo({ left: slots[active].offsetLeft, behavior: smoothly ? "smooth" : "auto" });
   }
 
   function go(index: number, { focusCard = false, announce = true } = {}) {
@@ -220,6 +229,10 @@ export function setupShowcase(root: HTMLElement): () => void {
             if (mode() !== "flat") return;
             for (const entry of entries) seen.set(entry.target, entry.intersectionRatio);
             const index = slots.findIndex((slot) => (seen.get(slot) ?? 0) >= 0.6);
+            if (heading !== null) {
+              if (index === heading) heading = null;
+              return;
+            }
             if (index >= 0 && index !== active) {
               active = index;
               paint();
@@ -269,6 +282,7 @@ export function setupShowcase(root: HTMLElement): () => void {
     wide.removeEventListener("change", setMode);
     window.removeEventListener("hashchange", fromHash);
     observer?.disconnect();
+    window.clearTimeout(headingTimer);
     delete root.dataset.enhanced;
     delete root.dataset.mode;
   };

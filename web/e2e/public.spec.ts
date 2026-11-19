@@ -192,13 +192,17 @@ test("without JavaScript the nav links show on a phone and no burger appears", a
   await context.close();
 });
 
-test("scroll snapping is off when the viewport is under 500 px tall", async ({ page }) => {
+test("scroll snapping is off under 500 px tall and until the visitor scrolls", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 480 });
   await page.goto("/");
   const snap = () => page.evaluate(() => getComputedStyle(document.documentElement).scrollSnapType);
   expect(await snap()).toBe("none");
   await page.setViewportSize({ width: 1280, height: 800 });
-  expect(await snap()).toMatch(/^y( proximity)?$/);
+  // Snapping starts with the first scroll input, once the layout has settled.
+  expect(await snap()).toBe("none");
+  await page.mouse.move(600, 400);
+  await page.mouse.wheel(0, 40);
+  await expect.poll(snap).toMatch(/^y( proximity)?$/);
 });
 
 for (const width of [320, 360, 390, 768, 1024, 1280, 1920]) {
@@ -336,4 +340,31 @@ test.describe("search engines", () => {
     expect(response.headers()["cache-control"]).toContain("no-store");
     expect(await response.text()).not.toContain('rel="canonical"');
   });
+});
+
+test.describe("the nav never covers what it points at", () => {
+  for (const width of [390, 768, 1024]) {
+    test(`at ${width} px the page stays where it loads`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/");
+      await expect(page.locator("[data-nav]")).toHaveAttribute("data-enhanced", "true");
+      const before = await page.locator("[data-nav]").boundingBox();
+      await page.waitForTimeout(1200);
+      expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(0);
+      expect((await page.locator("[data-nav]").boundingBox())?.height).toBe(before?.height);
+    });
+
+    test(`at ${width} px a jump from another page lands below the nav`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/#projects");
+      await expect(page.locator("[data-nav]")).toHaveAttribute("data-enhanced", "true");
+      await expect
+        .poll(async () => {
+          const nav = await page.locator("[data-nav]").boundingBox();
+          const heading = await page.getByRole("heading", { level: 2, name: "Selected work" }).boundingBox();
+          return nav && heading ? heading.y - (nav.y + nav.height) : -1;
+        })
+        .toBeGreaterThanOrEqual(0);
+    });
+  }
 });

@@ -13,6 +13,9 @@
   --radius-card: 12px;
   --radius-control: 6px;
   --nav-height: 56px;
+  /* The nav's real height, which NavEnhancer measures: it wraps onto more
+     rows on narrow screens. Scroll margins use it so nothing lands under it. */
+  --nav-offset: var(--nav-measured, var(--nav-height));
   --line: 2px;
   --gutter: max(var(--s-2), env(safe-area-inset-left), env(safe-area-inset-right));
 
@@ -46,8 +49,11 @@ html[data-theme="dark"]:has(.site) {
   color-scheme: dark;
 }
 
+/* Snapping starts with the visitor's first scroll (NavEnhancer), once the nav
+   is measured and the layout has settled; turned on at load, the browser
+   could snap the page down by itself and hide the hero under the nav. */
 @media (min-height: 500px) {
-  html:has(.site) {
+  html[data-snap]:has(.site) {
     scroll-snap-type: y proximity;
   }
 }
@@ -125,6 +131,12 @@ html[data-theme="dark"]:has(.site) {
   transform: none;
 }
 
+/* Clips sideways overflow without making main a scroll container, so sticky
+   and fixed parts still work. WebKit measures a section tilted for its enter
+   transition wider than the page; nothing here is meant to reach past it. */
+main {
+  overflow-x: clip;
+}
 main:focus {
   outline: none;
 }
@@ -219,6 +231,14 @@ main:focus {
   color: var(--c-ink);
   border-bottom: var(--line) solid var(--c-ink);
   padding-top: env(safe-area-inset-top);
+}
+/* Without JavaScript nothing measures the nav, and below 1280 px it wraps onto
+   more rows than the scroll margins allow for, so it scrolls away with the
+   page rather than cover the heading a jump link lands on. */
+@media (max-width: 1279.98px) {
+  .nav:not([data-enhanced]) {
+    position: relative;
+  }
 }
 .nav__inner {
   display: flex;
@@ -334,7 +354,12 @@ main:focus {
 .display {
   order: 2;
 }
-.display[hidden],
+/* Until its script shows it, the Theme button keeps its place, so the nav
+   does not wrap onto another row (and push the page down) when it appears. */
+.display[hidden] {
+  display: block;
+  visibility: hidden;
+}
 .display__panel[hidden] {
   display: none;
 }
@@ -479,11 +504,11 @@ main > section:not(.strip),
 /* The hero's snap point is the top of the page, under the sticky nav, so a
    re-snap after the script changes the layout does not move the page. */
 .hero {
-  scroll-margin-top: calc(var(--nav-height) + var(--s-1));
+  scroll-margin-top: calc(var(--nav-offset) + var(--s-1));
 }
 
 .section {
-  scroll-margin-top: calc(var(--nav-height) + var(--s-1));
+  scroll-margin-top: calc(var(--nav-offset) + var(--s-1));
   padding-block: var(--s-8);
   border-top: var(--line) solid var(--c-ink);
 }
@@ -505,7 +530,7 @@ main > section:not(.strip),
   letter-spacing: -0.03em;
   margin-top: var(--s-1);
   max-width: 20ch;
-  scroll-margin-top: calc(var(--nav-height) + var(--s-2));
+  scroll-margin-top: calc(var(--nav-offset) + var(--s-2));
 }
 .section-header h2:focus,
 .hero__name:focus,

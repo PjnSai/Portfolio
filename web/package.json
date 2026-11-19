@@ -10,6 +10,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "e2e": "playwright test",
+    "test:matrix": "playwright test --config playwright.matrix.config.ts",
     "check:export": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-export.ts",
     "check:build-refuses": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-build-refuses.ts"
   },

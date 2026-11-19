@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 
 const MOBILE = "(max-width: 759.98px)";
+/** Input that can scroll the page: the first one turns scroll snapping on. */
+const SNAP_TRIGGERS = ["wheel", "touchstart", "keydown"] as const;
 
 /** The heading to focus for a jump target: the target itself or its first heading. */
 function focusable(target: HTMLElement): HTMLElement {
@@ -22,6 +24,25 @@ export function NavEnhancer() {
     nav.dataset.enhanced = "true";
 
     const isOpen = () => burger.getAttribute("aria-expanded") === "true";
+
+    // The nav's real height for the stylesheet's scroll margins (a CSSOM
+    // write, which the policy allows; no style attribute is written). Not
+    // while the menu is open: it is taller then only for the moment.
+    const root = document.documentElement;
+    const measure = () => {
+      if (!isOpen()) root.style.setProperty("--nav-measured", `${Math.ceil(nav.getBoundingClientRect().height)}px`);
+    };
+    measure();
+    // A page opened at a #fragment was scrolled before the nav was measured.
+    const landed = window.location.hash ? document.getElementById(decodeURIComponent(window.location.hash.slice(1))) : null;
+    landed?.scrollIntoView({ behavior: "instant", block: "start" });
+    const resize = "ResizeObserver" in window ? new ResizeObserver(measure) : null;
+    resize?.observe(nav);
+    const startSnap = () => {
+      root.dataset.snap = "true";
+      for (const type of SNAP_TRIGGERS) window.removeEventListener(type, startSnap);
+    };
+    for (const type of SNAP_TRIGGERS) window.addEventListener(type, startSnap, { passive: true });
     const setOpen = (open: boolean) => {
       burger.setAttribute("aria-expanded", String(open));
       nav.dataset.open = String(open);
@@ -91,6 +112,10 @@ export function NavEnhancer() {
       document.removeEventListener("click", onClick);
       mobile.removeEventListener("change", onResize);
       observer?.disconnect();
+      resize?.disconnect();
+      root.style.removeProperty("--nav-measured");
+      for (const type of SNAP_TRIGGERS) window.removeEventListener(type, startSnap);
+      delete root.dataset.snap;
       delete nav.dataset.enhanced;
     };
   }, []);

@@ -223,6 +223,17 @@ test.describe("phone", () => {
     const deck = page.locator("[data-showcase-deck]");
     await expect.poll(() => deck.evaluate((el) => el.scrollLeft)).toBeGreaterThan(100);
   });
+
+  test("a second press during the smooth scroll counts from the target card", async ({ page }) => {
+    await home(page);
+    await expect(showcase(page)).toHaveAttribute("data-mode", "flat");
+    await settle(page);
+    await page.getByRole("button", { name: "Next project" }).tap();
+    await page.getByRole("button", { name: "Previous project" }).tap();
+    await expect(counter(page)).toHaveText("01 / 08");
+    await page.waitForTimeout(1200);
+    await expect(counter(page)).toHaveText("01 / 08");
+  });
 });
 
 test.describe("reduced motion", () => {
