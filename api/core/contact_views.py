@@ -15,7 +15,7 @@ from core.guard import UNAVAILABLE
 
 log = logging.getLogger(__name__)
 
-FIELDS = {"name", "email", "body", "website", "started", "turnstile"}
+FIELDS = {"name", "email", "reason", "body", "website", "started", "turnstile"}
 # A message at its longest is about 5 kB of JSON.
 MAX_BODY_BYTES = 20_000
 
@@ -93,8 +93,8 @@ def _accept(data, values, address):
         _logged("bad_challenge")
         return responses.bad_challenge()
     contact.count_sender(values["email"])
-    outcome = contact.spam_outcome(values, data.get("website", ""), seconds)
-    message = contact.store(values, address, spam=outcome is not None)
+    score, outcome = contact.spam_score(values, data.get("website", ""), seconds)
+    message = contact.store(values, address, score, spam=outcome is not None)
     _logged(outcome or "stored", message)
     return responses.contact_sent()
 

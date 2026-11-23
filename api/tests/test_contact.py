@@ -96,7 +96,7 @@ def database_down(monkeypatch):
     def down(*args, **kwargs):
         raise OperationalError("down")
 
-    monkeypatch.setattr(ContactMessage.objects, "create", down)
+    monkeypatch.setattr(ContactMessage, "save", down)
 
 
 # The form-start token
@@ -179,19 +179,115 @@ def test_the_address_is_stored_only_as_a_keyed_hash():
     assert message.ip_hash != contact.address_hash("203.0.113.8")
 
 
-def test_messages_expire_after_ninety_days_by_default():
+def test_a_message_is_kept_for_twelve_months_by_default():
     submit()
 
     (message,) = stored()
-    assert message.expires_at - message.created_at == timedelta(days=90)
+    assert message.expires_at - message.created_at == timedelta(days=365)
 
 
-def test_the_retention_setting_is_used(settings):
-    settings.RETENTION_DAYS_MESSAGES = 30
-    submit()
+def test_spam_is_kept_for_thirty_days_by_default():
+    submit(website="x")
 
     (message,) = stored()
+    assert message.status == "spam"
     assert message.expires_at - message.created_at == timedelta(days=30)
+
+
+def test_the_owners_saved_periods_are_used():
+    from core import retention
+
+    retention.save(10, 100)
+    submit()
+    submit(website="x")
+
+    normal, spam = stored()
+    assert normal.expires_at - normal.created_at == timedelta(days=100)
+    assert spam.expires_at - spam.created_at == timedelta(days=10)
+
+
+def test_a_public_message_never_creates_the_settings_row():
+    from core.models import SiteSettings
+
+    submit()
+
+    assert not SiteSettings.objects.exists()
+
+
+# The reason and the spam score
+
+
+@pytest.mark.parametrize("reason", ["hiring", "project", "other", ""])
+def test_the_reason_is_stored(reason):
+    assert submit(reason=reason).status_code == 201
+
+    assert stored()[0].reason == reason
+
+
+def test_the_reason_is_optional():
+    client = visitor()
+    body = good(client)
+
+    assert send(client, body).status_code == 201
+    assert stored()[0].reason == ""
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ["Hiring", "spam", "hiring,project", " hiring", None, 1, ["hiring"], "x" * 50],
+)
+def test_any_other_reason_is_refused(reason):
+    assert invalid(reason=reason)["errors"]["reason"]
+
+
+def test_a_plain_message_scores_nothing():
+    submit()
+
+    assert stored()[0].spam_score == 0
+
+
+def test_each_link_adds_a_little():
+    submit(body="My site is https://a.example and my repo http://b.example thanks.")
+
+    message = stored()[0]
+    assert (message.status, message.spam_score) == ("new", 40)
+
+
+def test_keywords_add_points_but_never_quarantine_alone():
+    submit(body="Casino and viagra and backlinks and forex, all for your site.")
+
+    message = stored()[0]
+    assert (message.status, message.spam_score) == ("new", 75)
+
+
+def test_points_from_links_and_keywords_can_add_up_to_quarantine():
+    submit(
+        body="Casino viagra backlinks, see https://a.example and https://b.example now."
+    )
+
+    message = stored()[0]
+    assert (message.status, message.spam_score) == ("spam", 100)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"website": "x"},
+        {"age": 1},
+        {"body": "https://a.example https://b.example https://c.example"},
+    ],
+)
+def test_a_failed_check_scores_the_full_hundred(overrides):
+    submit(**overrides)
+
+    message = stored()[0]
+    assert (message.status, message.spam_score) == ("spam", 100)
+
+
+def test_the_score_is_never_above_a_hundred():
+    submit(website="x", age=0, body="casino viagra backlinks https://a.example " * 3)
+
+    assert stored()[0].spam_score == 100
 
 
 def test_the_form_is_refused_from_another_origin():
@@ -618,7 +714,9 @@ def test_the_default_limits():
     assert settings.CONTACT_PER_ADDRESS_PER_HOUR == 5
     assert settings.CONTACT_PER_EMAIL_PER_DAY == 3
     assert settings.CONTACT_MIN_SECONDS == 3
-    assert settings.RETENTION_DAYS_MESSAGES == 90
+    assert settings.RETENTION_SPAM_DAYS == 30
+    assert settings.RETENTION_MESSAGE_DAYS == 365
+    assert settings.CONTACT_SPAM_THRESHOLD == 100
 
 
 def test_every_limit_gives_the_same_answer():

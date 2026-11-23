@@ -13,7 +13,7 @@ GRANT USAGE ON SCHEMA public TO app_rw;
 -- Content the admin edits. Projects, experience, skills and the rest are
 -- rows in section_items.
 GRANT SELECT, INSERT, UPDATE, DELETE ON
-    site_settings, sections, section_items, media, cv_files, messages,
+    site_settings, sections, section_items, media, cv_files,
     revisions, palettes
 TO app_rw;
 

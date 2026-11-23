@@ -10,14 +10,17 @@ import { sendMessage, startForm } from "./fixtures/contact";
 const PEOPLE = [
   {
     name: "Alice Archer",
+    reason: "hiring",
     body: "Hello, I would like to discuss a graduate role with you.",
   },
   {
     name: "Bruno Baker",
+    reason: "project",
     body: "Hi, we have a short project that might suit your skills.",
   },
   {
     name: "Chen Cole",
+    reason: "other",
     body: "Good afternoon, are you free for a call about an internship?",
   },
 ];
@@ -125,7 +128,7 @@ export function inboxTests(getPage: () => Page) {
       await expect(heading).toBeVisible();
       await expect(heading).toBeFocused();
       await expect(page.getByText(PEOPLE[0].body)).toBeVisible();
-      await expect(page.getByText("Email (not verified)")).toBeVisible();
+      await expect(page.getByText("Email (UNVERIFIED)")).toBeVisible();
       await expect(page.getByText(email("Alice Archer"))).toBeVisible();
       const reply = page.getByRole("link", { name: "Reply by email" });
       await expect(reply).toHaveAttribute(
@@ -221,7 +224,7 @@ export function inboxTests(getPage: () => Page) {
       await expect(page.getByText("No longer kept.")).toBeVisible();
     });
 
-    test("delete asks first, can be cancelled from the keyboard, then removes the message", async () => {
+    test("deleting asks first, needs the passkey, waits 24 hours and can be cancelled", async () => {
       const page = getPage();
       await page.goto("/desk/messages");
       await page.getByRole("link", { name: "Bruno Baker" }).click();
@@ -229,13 +232,14 @@ export function inboxTests(getPage: () => Page) {
         page.getByRole("heading", { name: "Message from Bruno Baker" }),
       ).toBeFocused();
 
-      const ask = page.getByRole("button", { name: "Delete", exact: true });
+      const ask = page.getByRole("button", { name: "Delete for good" });
       await ask.focus();
       await page.keyboard.press("Enter");
       const group = page.getByRole("group", {
         name: "Delete this message for good?",
       });
       await expect(group).toBeVisible();
+      await expect(group).toContainText("24 hours");
       await expect(page.getByRole("button", { name: "Keep it" })).toBeFocused();
 
       await page.keyboard.press("Escape");
@@ -243,22 +247,105 @@ export function inboxTests(getPage: () => Page) {
       await expect(ask).toBeFocused();
 
       await page.keyboard.press("Enter");
-      await expect(page.getByRole("button", { name: "Keep it" })).toBeFocused();
-      await page.keyboard.press("Shift+Tab");
+      await page.getByRole("button", { name: "Request deletion" }).click();
+      const dialog = page.getByRole("dialog", {
+        name: "Confirm with your passkey",
+      });
+      const pending = page.getByTestId("deletion-pending");
+      // The passkey is asked for only if it was not confirmed in the last few
+      // minutes, so either may come first.
+      await expect(dialog.or(pending)).toBeVisible();
+      if (await dialog.isVisible()) {
+        await dialog.getByRole("button", { name: "Use passkey" }).click();
+      }
+      await expect(pending).toBeVisible();
+      await expect(pending).toContainText("Deletion requested");
+      await expect(pending).toContainText(
+        /It can run in (23 h 5\d|24 h 0) min\./,
+      );
+      await expect(
+        page
+          .getByRole("status")
+          .filter({ hasText: "Deletion requested. It waits 24 hours" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Delete for good" }),
+      ).toHaveCount(0);
+      // Nothing has been removed: the message and its text are still here.
+      await expect(page.getByText(PEOPLE[1].body)).toBeVisible();
+
+      // It shows in the pending list too, and a reload still shows it here.
+      await page.reload();
+      await expect(page.getByTestId("deletion-pending")).toBeVisible();
+
+      await page.getByRole("button", { name: "Cancel deletion" }).click();
+      await expect(
+        page
+          .getByRole("status")
+          .filter({ hasText: "Deletion cancelled. The message is unchanged." }),
+      ).toBeVisible();
+      await expect(page.getByTestId("deletion-pending")).toHaveCount(0);
       await expect(
         page.getByRole("button", { name: "Delete for good" }),
       ).toBeFocused();
-      await page.keyboard.press("Enter");
 
-      await expect(page).toHaveURL(/\/desk\/messages(\?|$)/);
+      await page.goto("/desk/pending");
+      await expect(page.getByText("Nothing is waiting.")).toBeVisible();
+      await page.goto("/desk/messages");
+      await expect(page.getByTestId("message-row")).toHaveCount(3);
+    });
+
+    test("search and the reason and date filters narrow the list and keep the folder counts", async () => {
+      const page = getPage();
+      await page.goto("/desk/messages");
+      const rows = page.getByTestId("message-row");
+      await expect(rows).toHaveCount(3);
+      // Every row says the address is unverified, and shows a spam score and a reason.
+      await expect(rows.first()).toContainText("Unverified");
+      await expect(rows.first()).toContainText("Spam score 0 of 100");
+      await expect(rows.first()).toContainText("Other");
+
+      const search = page.getByRole("search", {
+        name: "Search and filter messages",
+      });
+      await search
+        .getByLabel("Search name, email or message")
+        .fill("graduate role");
+      await search.getByRole("button", { name: "Apply" }).click();
+      await expect(rows).toHaveCount(1);
+      await expect(rows.first()).toContainText("Alice Archer");
+      await expect(page).toHaveURL(/q=graduate\+role/);
+      expect(await folderCount(page, "Inbox")).toBe(3);
+
+      await search.getByRole("button", { name: "Clear filters" }).click();
+      await expect(rows).toHaveCount(3);
+
+      await search.getByLabel("Reason").selectOption("project");
+      await search.getByRole("button", { name: "Apply" }).click();
+      await expect(rows).toHaveCount(1);
+      await expect(rows.first()).toContainText("Bruno Baker");
+
+      await search.getByLabel("Reason").selectOption("");
+      const today = new Date().toISOString().slice(0, 10);
+      await search.getByLabel("Received from").fill("2999-01-01");
+      await search.getByRole("button", { name: "Apply" }).click();
       await expect(
-        page.getByRole("status").filter({ hasText: "Message deleted." }),
+        page.getByText("No messages match those filters."),
       ).toBeVisible();
-      await expect(page.getByText("Bruno Baker")).toHaveCount(0);
-      await expect(page.getByTestId("message-row")).toHaveCount(2);
-      expect(await folderCount(page, "Inbox")).toBe(2);
-      // The notice is taken out of the address, so a reload does not repeat it.
-      await expect(page).not.toHaveURL(/notice=/);
+      await search.getByLabel("Received from").fill(today);
+      await search.getByLabel("Received to").fill(today);
+      await search.getByRole("button", { name: "Apply" }).click();
+      await expect(rows).toHaveCount(3);
+
+      // A first day after the last day is refused on the page, with words.
+      await search.getByLabel("Received from").fill("2999-01-02");
+      await search.getByLabel("Received to").fill("2999-01-01");
+      await search.getByRole("button", { name: "Apply" }).click();
+      await expect(
+        page.getByText("The first day must not be after the last day."),
+      ).toBeVisible();
+      await search.getByRole("button", { name: "Clear filters" }).click();
+      await expect(rows).toHaveCount(3);
     });
 
     test("the spam tab lists held-back messages, and Not spam moves one to the inbox", async () => {
@@ -302,8 +389,45 @@ export function inboxTests(getPage: () => Page) {
       await page.getByRole("link", { name: /^Back to/ }).click();
       await expect(page.getByTestId("message-row")).toHaveCount(1);
       await page.goto("/desk/messages");
-      expect(await folderCount(page, "Inbox")).toBe(3);
+      expect(await folderCount(page, "Inbox")).toBe(4);
       expect(await folderCount(page, "Spam")).toBe(1);
+    });
+
+    test("message retention is edited in settings, checked, saved and kept after a reload", async () => {
+      const page = getPage();
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.goto("/desk/settings");
+      const card = page.getByRole("region", { name: "Message retention" });
+      const spam = card.getByLabel("Spam: days to keep");
+      const other = card.getByLabel("Other messages: days to keep");
+      await expect(spam).toHaveValue("30");
+      await expect(other).toHaveValue("365");
+
+      await spam.fill("0");
+      await card.getByRole("button", { name: "Save retention" }).click();
+      await expect(
+        card.getByText("Use between 1 and 3650 days."),
+      ).toBeVisible();
+      await expect(spam).toHaveAttribute("aria-invalid", "true");
+      await spam.fill("abc");
+      await card.getByRole("button", { name: "Save retention" }).click();
+      await expect(
+        card.getByText("Enter a whole number of days."),
+      ).toBeVisible();
+
+      await spam.fill("7");
+      await other.fill("180");
+      await card.getByRole("button", { name: "Save retention" }).click();
+      await expect(card.getByText(/Retention saved/)).toBeVisible();
+
+      await page.reload();
+      await expect(card.getByLabel("Spam: days to keep")).toHaveValue("7");
+      await expect(card.getByLabel("Other messages: days to keep")).toHaveValue(
+        "180",
+      );
+      // The periods are private: they are not part of the public site.
+      const site = await page.request.get("http://localhost:8100/api/v1/site");
+      expect(await site.text()).not.toContain("retention");
     });
 
     test("the inbox pages have no accessibility violations at 390 and 1280 px, light and dark", async () => {
@@ -332,9 +456,7 @@ export function inboxTests(getPage: () => Page) {
           found = await new AxeBuilder({ page }).analyze();
           expect(found.violations, `detail ${label}`).toEqual([]);
 
-          await page
-            .getByRole("button", { name: "Delete", exact: true })
-            .click();
+          await page.getByRole("button", { name: "Delete for good" }).click();
           await expect(
             page.getByRole("group", { name: "Delete this message for good?" }),
           ).toBeVisible();

@@ -2,28 +2,33 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { ADMIN } from "@/components/admin/AdminApp";
+import { ADMIN, useAdmin } from "@/components/admin/AdminApp";
 import {
   FOCUS_IDS,
+  InboxFilters,
   InboxTabs,
   MessageRows,
   MessageView,
 } from "@/components/admin/inbox/InboxViews";
 import { api, ApiError, describeError } from "@/lib/admin/api";
 import {
+  type Filters,
+  filtersFrom,
   inboxApi,
   type MessageDetail,
   type MessageStatus,
   MOVE_LABEL,
   pageFrom,
+  pendingDeletion,
   tabFrom,
-  tabHref,
   TABS,
+  tabHref,
 } from "@/lib/admin/inbox";
 import { useLoaded } from "@/lib/admin/use-loaded";
 
-// One static page; the message and the tab come from the query string, because
-// messages are made after the site is built.
+// One static page; the message, the folder, the filters and the page number
+// come from the query string, because messages exist only after the site is
+// built.
 const ID = /^[0-9a-f-]{36}$/;
 const BASE = `${ADMIN}/messages`;
 const inbox = inboxApi(api);
@@ -70,18 +75,20 @@ function FromQuery() {
   const id = params.get("id");
   const tab = tabFrom(params.get("status"));
   const page = pageFrom(params.get("page"));
+  const filters = filtersFrom((name) => params.get(name));
   const notice = params.get("notice");
   if (id !== null) {
     return ID.test(id) ? (
-      <Detail key={id} id={id} tab={tab} page={page} />
+      <Detail key={id} id={id} tab={tab} page={page} filters={filters} />
     ) : (
-      <ListScreen tab={tab} page={page} notice="" missing />
+      <ListScreen tab={tab} page={page} filters={filters} notice="" missing />
     );
   }
   return (
     <ListScreen
       tab={tab}
       page={page}
+      filters={filters}
       notice={notice === "deleted" ? "Message deleted." : ""}
     />
   );
@@ -90,27 +97,34 @@ function FromQuery() {
 function ListScreen({
   tab,
   page,
+  filters,
   notice,
   missing = false,
 }: {
   tab: ReturnType<typeof tabFrom>;
   page: number;
+  filters: Filters;
   notice: string;
   missing?: boolean;
 }) {
   const router = useRouter();
-  const fetcher = useCallback(() => inbox.list(tab, page), [tab, page]);
+  const filterKey = JSON.stringify(filters);
+  const fetcher = useCallback(
+    () => inbox.list(tab, page, JSON.parse(filterKey) as Filters),
+    [tab, page, filterKey],
+  );
   const { data: listing, error: loadError } = useLoaded(fetcher);
   const heading = useRef<HTMLHeadingElement>(null);
   const [done, setDone] = useState(notice);
   const label = TABS.find((entry) => entry.tab === tab)?.label ?? "Inbox";
 
-  // After deleting a message, say so and take the notice out of the address.
+  // After a deletion is carried out elsewhere and the owner comes back here
+  // with a notice, say so and take it out of the address.
   useEffect(() => {
     if (!notice) return;
     heading.current?.focus();
-    router.replace(tabHref(BASE, tab, page));
-  }, [notice, router, tab, page]);
+    router.replace(tabHref(BASE, tab, page, filters));
+  }, [notice, router, tab, page, filters]);
 
   // After moving to another page of the list, announce it and put focus on the
   // list heading so the next Tab goes to the first message.
@@ -143,9 +157,27 @@ function ListScreen({
               : ""
         }
       />
-      <InboxTabs base={BASE} tab={tab} counts={listing?.counts ?? null} />
-      <h2 ref={heading} tabIndex={-1} className="mb-4 text-xl font-bold">
+      <InboxTabs
+        base={BASE}
+        tab={tab}
+        counts={listing?.counts ?? null}
+        filters={filters}
+      />
+      <InboxFilters
+        key={filterKey}
+        filters={filters}
+        onApply={(next) => router.push(tabHref(BASE, tab, 1, next))}
+      />
+      <h2
+        id={FOCUS_IDS.list}
+        ref={heading}
+        tabIndex={-1}
+        className="mb-4 text-xl font-bold"
+      >
         {label}
+        {listing
+          ? `: ${listing.count} ${listing.count === 1 ? "message" : "messages"}`
+          : ""}
         {listing && listing.pages > 1
           ? `, page ${listing.page} of ${listing.pages}`
           : ""}
@@ -157,7 +189,8 @@ function ListScreen({
           base={BASE}
           listing={listing}
           tab={tab}
-          onPage={(next) => router.push(tabHref(BASE, tab, next))}
+          filters={filters}
+          onPage={(next) => router.push(tabHref(BASE, tab, next, filters))}
         />
       )}
     </>
@@ -170,12 +203,14 @@ function Detail({
   id,
   tab,
   page,
+  filters,
 }: {
   id: string;
   tab: ReturnType<typeof tabFrom>;
   page: number;
+  filters: Filters;
 }) {
-  const router = useRouter();
+  const { pending, refreshPending, vital } = useAdmin();
   const fetcher = useCallback(() => inbox.open(id), [id]);
   const { data: loaded, error: loadError } = useLoaded(fetcher);
   // The message as loaded, until the owner changes something.
@@ -195,17 +230,28 @@ function Detail({
   useEffect(() => {
     const target = nextFocus.current;
     if (!target || !message) return;
+    // Keep waiting if the element is not on the page yet (it appears once the
+    // list of waiting deletions has been refreshed).
+    const element = document.getElementById(FOCUS_IDS[target]);
+    if (!element) return;
     nextFocus.current = null;
-    document.getElementById(FOCUS_IDS[target])?.focus();
+    element.focus();
   });
+
+  // The list of waiting deletions comes from the admin shell; make sure it is
+  // current when a message is opened.
+  useEffect(() => {
+    void refreshPending().catch(() => undefined);
+  }, [refreshPending]);
 
   function setFocus(target: Focus) {
     nextFocus.current = target;
     rerender((count) => count + 1);
   }
 
-  const back = tabHref(BASE, tab, page);
+  const back = tabHref(BASE, tab, page, filters);
   const backLabel = TABS.find((entry) => entry.tab === tab)?.label ?? "Inbox";
+  const waiting = pendingDeletion(pending, id);
 
   async function run<T>(
     call: () => Promise<T>,
@@ -264,8 +310,18 @@ function Detail({
         message={current}
         backHref={back}
         backLabel={backLabel}
+        pendingHref={`${ADMIN}/pending`}
         busy={busy}
         confirming={confirming}
+        deletion={
+          waiting
+            ? {
+                state: waiting.state,
+                executeAfter: waiting.execute_after,
+                expiresAt: waiting.expires_at,
+              }
+            : null
+        }
         noteText={noteText}
         noteError={noteError}
         onNoteText={(text) => {
@@ -339,16 +395,30 @@ function Detail({
           setConfirming(false);
           setFocus("delete");
         }}
-        onDelete={() =>
+        onRequestDelete={() =>
           run(
-            () => inbox.remove(id),
+            async () => {
+              await vital(() => inbox.requestDelete(id));
+              await refreshPending();
+            },
             () => {
-              const list = tabHref(BASE, tab, page);
-              router.push(
-                `${list}${list.includes("?") ? "&" : "?"}notice=deleted`,
+              setConfirming(false);
+              setDone(
+                "Deletion requested. It waits 24 hours and you can cancel it here until it runs.",
               );
             },
-            null,
+            "heading",
+          )
+        }
+        onCancelDeletion={() =>
+          run(
+            async () => {
+              if (waiting)
+                await api.post(`/vital-actions/${waiting.id}/cancel`);
+              await refreshPending();
+            },
+            () => setDone("Deletion cancelled. The message is unchanged."),
+            "delete",
           )
         }
       />

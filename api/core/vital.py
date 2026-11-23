@@ -17,7 +17,7 @@ from django.utils import timezone
 from core import audit, content, notify, passkeys
 from core.models import (
     AdminCredential,
-    Message,
+    ContactMessage,
     PendingAction,
     Section,
     SectionItem,
@@ -33,7 +33,7 @@ PERMANENT_DELETE = "permanent_delete"
 
 # Allow-list. Auth and audit tables can never be named here.
 DELETABLE = {
-    "message": Message,
+    "message": ContactMessage,
     "section": Section,
     "item": SectionItem,
 }

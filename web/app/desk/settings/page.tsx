@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { useAdmin } from "@/components/admin/AdminApp";
 import { ContentForm, type SaveResult } from "@/components/admin/ContentForm";
+import { RetentionCard } from "@/components/admin/inbox/RetentionCard";
 import { PaletteList } from "@/components/admin/palettes/PaletteList";
 import { privacyWarnings, PublishBar, type Warning } from "@/components/admin/PublishBar";
 import { Button, FieldErrors, INPUT, Label, Notice, PageTitle } from "@/components/admin/ui";
@@ -115,6 +116,13 @@ export default function SettingsPage() {
           Changes here reach visitors only after you publish the settings above.
         </p>
         <PaletteList onChanged={reload} />
+      </section>
+
+      <section aria-labelledby="retention-title" className="mb-12">
+        <h2 id="retention-title" className="mb-4 text-2xl font-extrabold">
+          Message retention
+        </h2>
+        <RetentionCard />
       </section>
 
     </>

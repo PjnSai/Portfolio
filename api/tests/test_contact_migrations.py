@@ -120,3 +120,60 @@ def test_0012_reverses_cleanly(at_latest):
     apps = migrate(SLUGS)
     section = apps.get_model("core", "Section").objects.get(id=section.id)
     assert section.published["items"][0]["slug"] == "task-board"
+
+
+# Migrations 0014 (reason, spam score, retention periods) and 0015 (old table)
+
+AFTER_CONTACT = [("core", "0013_contact_messages")]
+FIELDS = [("core", "0014_contact_reason_score_retention")]
+DROP_OLD = [("core", "0015_drop_old_messages")]
+
+
+def test_0014_adds_the_fields_with_safe_defaults_and_reverses(at_latest):
+    apps = migrate(AFTER_CONTACT)
+    message = apps.get_model("core", "ContactMessage").objects.create(
+        name="A",
+        email="a@example.com",
+        body="Hello there, a message.",
+        expires_at="2030-01-01T00:00:00Z",
+    )
+    settle()
+    assert "reason" not in columns("contact_messages")
+    assert "retention_spam_days" not in columns("site_settings")
+
+    apps = migrate(FIELDS)
+
+    row = apps.get_model("core", "ContactMessage").objects.get(id=message.id)
+    assert (row.reason, row.spam_score) == ("", 0)
+    assert columns("contact_messages") >= {"reason", "spam_score"}
+    assert columns("site_settings") >= {"retention_spam_days", "retention_message_days"}
+    settings_row = apps.get_model("core", "SiteSettings").objects.create()
+    assert (settings_row.retention_spam_days, settings_row.retention_message_days) == (
+        30,
+        365,
+    )
+    settings_row.delete()
+    settle()
+
+    apps = migrate(AFTER_CONTACT)
+
+    assert "reason" not in columns("contact_messages")
+    assert "spam_score" not in columns("contact_messages")
+    assert "retention_spam_days" not in columns("site_settings")
+    assert "retention_message_days" not in columns("site_settings")
+    assert apps.get_model("core", "ContactMessage").objects.filter(id=message.id)
+
+
+def test_0015_drops_the_old_table_and_reverses(at_latest):
+    migrate(FIELDS)
+    assert "messages" in tables()
+
+    migrate(DROP_OLD)
+
+    assert "messages" not in tables()
+    assert "contact_messages" in tables()
+
+    migrate(FIELDS)
+
+    assert "messages" in tables()
+    assert columns("messages") >= {"name", "email", "body", "status", "is_spam"}

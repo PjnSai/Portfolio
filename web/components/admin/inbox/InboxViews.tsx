@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { FormEvent, KeyboardEvent } from "react";
+import { type FormEvent, type KeyboardEvent, useState } from "react";
 import {
   Button,
   FieldErrors,
@@ -10,21 +10,26 @@ import {
 import {
   type Counts,
   detailHref,
+  type Filters,
+  hasFilters,
   MOVE_LABEL,
   type MessageDetail,
   type MessageList,
   type MessageSummary,
   mailtoHref,
   movesFrom,
+  NO_FILTERS,
   NOTE_LABEL,
   NOTE_MAX,
+  REASON_LABEL,
+  scoreLabel,
   STATUS_LABEL,
   type Tab,
   TABS,
   tabCount,
   tabHref,
 } from "@/lib/admin/inbox";
-import { shortDate } from "@/lib/admin/time";
+import { shortDate, timeLeft } from "@/lib/admin/time";
 
 /** Ids the page moves focus to after an action. */
 export const FOCUS_IDS = {
@@ -32,9 +37,8 @@ export const FOCUS_IDS = {
   note: "note-text",
   delete: "delete-message",
   cancel: "delete-cancel",
+  list: "list-title",
 } as const;
-const DELETE_ID = FOCUS_IDS.delete;
-const CANCEL_ID = FOCUS_IDS.cancel;
 
 function StatusChip({ status }: { status: MessageSummary["status"] }) {
   const tone =
@@ -48,14 +52,25 @@ function StatusChip({ status }: { status: MessageSummary["status"] }) {
   );
 }
 
+/** The address the sender typed. No mail is ever sent to check it. */
+function Unverified() {
+  return (
+    <span className="rounded-md border border-line px-1.5 py-0.5 font-mono text-xs uppercase tracking-wide text-muted">
+      Unverified
+    </span>
+  );
+}
+
 export function InboxTabs({
   base,
   tab,
   counts,
+  filters = NO_FILTERS,
 }: {
   base: string;
   tab: Tab;
   counts: Counts | null;
+  filters?: Filters;
 }) {
   return (
     <nav aria-label="Message folders" className="mb-6">
@@ -65,7 +80,7 @@ export function InboxTabs({
           return (
             <li key={each}>
               <Link
-                href={tabHref(base, each)}
+                href={tabHref(base, each, 1, filters)}
                 aria-current={current ? "page" : undefined}
                 className={`inline-flex min-h-11 items-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold ${
                   current
@@ -88,6 +103,104 @@ export function InboxTabs({
   );
 }
 
+/** Search, reason and date range. Applying goes back to the first page. */
+export function InboxFilters({
+  filters,
+  onApply,
+}: {
+  filters: Filters;
+  onApply: (filters: Filters) => void;
+}) {
+  const [draft, setDraft] = useState(filters);
+  const set = (name: keyof Filters, value: string) =>
+    setDraft({ ...draft, [name]: value });
+  const backwards = Boolean(
+    draft.since && draft.until && draft.since > draft.until,
+  );
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (backwards) return;
+    onApply({ ...draft, q: draft.q.trim() });
+  }
+
+  return (
+    <form
+      role="search"
+      aria-label="Search and filter messages"
+      onSubmit={submit}
+      noValidate
+      className="mb-6 grid gap-3 rounded-lg border border-line bg-panel p-4 sm:grid-cols-2 lg:grid-cols-4"
+    >
+      <label className="block sm:col-span-2">
+        <Label>Search name, email or message</Label>
+        <input
+          type="search"
+          className={INPUT}
+          maxLength={100}
+          value={draft.q}
+          onChange={(event) => set("q", event.target.value)}
+        />
+      </label>
+      <label className="block">
+        <Label>Reason</Label>
+        <select
+          className={INPUT}
+          value={draft.reason}
+          onChange={(event) => set("reason", event.target.value)}
+        >
+          <option value="">Any reason</option>
+          <option value="hiring">{REASON_LABEL.hiring}</option>
+          <option value="project">{REASON_LABEL.project}</option>
+          <option value="other">{REASON_LABEL.other}</option>
+          <option value="none">{REASON_LABEL.none}</option>
+        </select>
+      </label>
+      <div className="hidden lg:block" />
+      <label className="block">
+        <Label>Received from</Label>
+        <input
+          type="date"
+          className={INPUT}
+          value={draft.since}
+          onChange={(event) => set("since", event.target.value)}
+        />
+      </label>
+      <label className="block">
+        <Label>Received to</Label>
+        <input
+          type="date"
+          className={INPUT}
+          value={draft.until}
+          onChange={(event) => set("until", event.target.value)}
+        />
+      </label>
+      <div className="flex flex-wrap items-end gap-2 sm:col-span-2">
+        <Button type="submit" variant="primary">
+          Apply
+        </Button>
+        {hasFilters(filters) && (
+          <Button
+            onClick={() => {
+              setDraft(NO_FILTERS);
+              onApply(NO_FILTERS);
+            }}
+          >
+            Clear filters
+          </Button>
+        )}
+      </div>
+      <div className="sm:col-span-2 lg:col-span-4">
+        <FieldErrors
+          messages={
+            backwards ? ["The first day must not be after the last day."] : []
+          }
+        />
+      </div>
+    </form>
+  );
+}
+
 const EMPTY: Record<Tab, string> = {
   inbox: "No messages yet.",
   new: "No new messages.",
@@ -101,15 +214,22 @@ export function MessageRows({
   base,
   listing,
   tab,
+  filters = NO_FILTERS,
   onPage,
 }: {
   base: string;
   listing: MessageList;
   tab: Tab;
+  filters?: Filters;
   onPage: (page: number) => void;
 }) {
-  if (listing.results.length === 0)
-    return <p className="text-muted">{EMPTY[tab]}</p>;
+  if (listing.results.length === 0) {
+    return (
+      <p className="text-muted">
+        {hasFilters(filters) ? "No messages match those filters." : EMPTY[tab]}
+      </p>
+    );
+  }
   return (
     <>
       {tab === "spam" && (
@@ -127,15 +247,21 @@ export function MessageRows({
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Link
-                href={detailHref(base, message.id, tab, listing.page)}
+                href={detailHref(base, message.id, tab, listing.page, filters)}
                 className="text-lg font-bold underline underline-offset-4"
               >
                 {message.name}
               </Link>
               <StatusChip status={message.status} />
             </div>
-            <p className="font-mono text-xs uppercase tracking-wide text-muted">
+            <p className="mt-1 flex flex-wrap items-center gap-2 break-all text-sm">
+              {message.email} <Unverified />
+            </p>
+            <p className="mt-1 font-mono text-xs uppercase tracking-wide text-muted">
               {shortDate(message.created_at)}
+              {message.reason ? ` · ${REASON_LABEL[message.reason]}` : ""}
+              {" · "}
+              {scoreLabel(message.spam_score)}
               {message.kept ? " · Kept" : ""}
             </p>
             <p className="mt-2 text-ink">{message.snippet}</p>
@@ -147,12 +273,22 @@ export function MessageRows({
   );
 }
 
+/** A deletion waiting out its 24 hours. */
+export type Deletion = {
+  state: "waiting" | "ready";
+  executeAfter: string;
+  expiresAt: string;
+};
+
 export type MessageViewProps = {
   message: MessageDetail;
   backHref: string;
   backLabel: string;
+  pendingHref: string;
   busy: boolean;
   confirming: boolean;
+  deletion: Deletion | null;
+  now?: Date;
   noteText: string;
   noteError: string;
   onNoteText: (text: string) => void;
@@ -163,11 +299,19 @@ export type MessageViewProps = {
   onNotSpam: () => void;
   onAskDelete: () => void;
   onCancelDelete: () => void;
-  onDelete: () => void;
+  onRequestDelete: () => void;
+  onCancelDeletion: () => void;
 };
 
+function retentionText(message: MessageDetail): string {
+  if (message.kept) return "Kept: it stays until you delete it.";
+  if (message.notes.length > 0)
+    return "It has notes, so it stays until you delete it.";
+  return `Ends ${shortDate(message.expires_at)}. Kept messages and messages with notes are exempt.`;
+}
+
 export function MessageView(props: MessageViewProps) {
-  const { message, busy, confirming } = props;
+  const { message, busy, confirming, deletion } = props;
   const spam = message.status === "spam";
 
   function submit(event: FormEvent) {
@@ -210,7 +354,7 @@ export function MessageView(props: MessageViewProps) {
         </div>
         <div>
           <dt>
-            <Label>Email (not verified)</Label>
+            <Label>Email (UNVERIFIED)</Label>
           </dt>
           <dd className="break-all">{message.email}</dd>
         </div>
@@ -230,13 +374,21 @@ export function MessageView(props: MessageViewProps) {
         </div>
         <div>
           <dt>
+            <Label>Reason</Label>
+          </dt>
+          <dd>{REASON_LABEL[message.reason || "none"]}</dd>
+        </div>
+        <div>
+          <dt>
+            <Label>Spam score</Label>
+          </dt>
+          <dd>{scoreLabel(message.spam_score)}</dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt>
             <Label>Retention</Label>
           </dt>
-          <dd>
-            {message.kept
-              ? "Kept: it stays until you delete it."
-              : `Ends ${shortDate(message.expires_at)}. Kept messages are exempt.`}
-          </dd>
+          <dd>{retentionText(message)}</dd>
         </div>
       </dl>
 
@@ -283,14 +435,14 @@ export function MessageView(props: MessageViewProps) {
           >
             {message.kept ? "Kept: release it" : "Keep this message"}
           </Button>
-          {!confirming && (
+          {!confirming && !deletion && (
             <Button
               variant="danger"
               disabled={busy}
               onClick={props.onAskDelete}
-              id={DELETE_ID}
+              id={FOCUS_IDS.delete}
             >
-              Delete
+              Delete for good
             </Button>
           )}
         </div>
@@ -305,21 +457,60 @@ export function MessageView(props: MessageViewProps) {
               Delete this message for good?
             </p>
             <p className="mb-3 text-sm text-muted">
-              It and its notes are removed. This cannot be undone.
+              This is a vital action. You will confirm with your passkey, then
+              it waits 24 hours before it can run. You can cancel at any point
+              until then. When it runs, the message and its notes are removed
+              and cannot be recovered.
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button variant="danger" disabled={busy} onClick={props.onDelete}>
-                Delete for good
+              <Button
+                variant="danger"
+                disabled={busy}
+                onClick={props.onRequestDelete}
+              >
+                Request deletion
               </Button>
               <button
                 type="button"
-                id={CANCEL_ID}
+                id={FOCUS_IDS.cancel}
                 className="min-h-11 rounded-md border border-line bg-panel px-4 py-2 text-sm font-semibold text-ink"
                 onClick={props.onCancelDelete}
               >
                 Keep it
               </button>
             </div>
+          </div>
+        )}
+        {deletion && (
+          <div
+            role="group"
+            aria-labelledby="pending-title"
+            className="mt-4 rounded-md border-2 border-ink bg-panel p-4"
+            data-testid="deletion-pending"
+          >
+            <p id="pending-title" className="font-bold">
+              Deletion requested
+            </p>
+            <p className="mb-3 text-sm text-muted">
+              {deletion.state === "waiting"
+                ? `It can run in ${timeLeft(deletion.executeAfter, props.now).replace(" left", "")}.`
+                : `It is ready to run and expires unused in ${timeLeft(deletion.expiresAt, props.now).replace(" left", "")}.`}{" "}
+              Run it from{" "}
+              <Link
+                href={props.pendingHref}
+                className="underline underline-offset-4"
+              >
+                Pending actions
+              </Link>{" "}
+              once it is ready. Until then the message stays as it is.
+            </p>
+            <Button
+              variant="danger"
+              disabled={busy}
+              onClick={props.onCancelDeletion}
+            >
+              Cancel deletion
+            </Button>
           </div>
         )}
       </section>

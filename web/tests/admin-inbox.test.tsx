@@ -1,22 +1,28 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
+  InboxFilters,
   InboxTabs,
   MessageRows,
   MessageView,
   type MessageViewProps,
 } from "@/components/admin/inbox/InboxViews";
+import { checkDays } from "@/components/admin/inbox/RetentionCard";
 import { createClient } from "@/lib/admin/api";
 import {
   type Counts,
   detailHref,
+  filtersFrom,
+  hasFilters,
   inboxApi,
   type MessageDetail,
   type MessageList,
   type MessageStatus,
   mailtoHref,
   movesFrom,
+  NO_FILTERS,
   pageFrom,
+  pendingDeletion,
   tabCount,
   tabFrom,
   tabHref,
@@ -46,6 +52,8 @@ function message(over: Partial<MessageDetail> = {}): MessageDetail {
     name: "Sam Recruiter",
     email: "sam@example.com",
     body: "Hello there.\nSecond line.",
+    reason: "hiring",
+    spam_score: 0,
     status: "new",
     created_at: "2026-03-01T10:00:00Z",
     read_at: null,
@@ -63,8 +71,10 @@ function view(over: Partial<MessageViewProps> = {}) {
       message={message()}
       backHref="/desk/messages"
       backLabel="Inbox"
+      pendingHref="/desk/pending"
       busy={false}
       confirming={false}
+      deletion={null}
       noteText=""
       noteError=""
       onNoteText={noop}
@@ -75,7 +85,8 @@ function view(over: Partial<MessageViewProps> = {}) {
       onNotSpam={noop}
       onAskDelete={noop}
       onCancelDelete={noop}
-      onDelete={noop}
+      onRequestDelete={noop}
+      onCancelDeletion={noop}
       {...over}
     />,
   );
@@ -89,6 +100,8 @@ function listing(over: Partial<MessageList> = {}): MessageList {
         name: "Sam Recruiter",
         email: "sam@example.com",
         status: "new",
+        reason: "hiring",
+        spam_score: 0,
         created_at: "2026-03-01T10:00:00Z",
         kept: false,
         snippet: "Hello there.",
@@ -145,7 +158,7 @@ describe("inbox calls", () => {
     await inbox.logResponse(ID, "");
     await inbox.setKept(ID, true);
     await inbox.notSpam(ID);
-    await inbox.remove(ID);
+    await inbox.requestDelete(ID);
 
     const sent = calls.slice(1).map((c) => [c.url, c.init.body]);
     const at = (path: string) => `/api/v1/admin/messages/${ID}/${path}`;
@@ -156,7 +169,10 @@ describe("inbox calls", () => {
       [at("responded"), "{}"],
       [at("keep"), '{"kept":true}'],
       [at("not-spam"), "{}"],
-      [at("delete"), "{}"],
+      [
+        "/api/v1/admin/vital-actions/request",
+        `{"kind":"permanent_delete","payload":{"entity":"message","id":"${ID}"}}`,
+      ],
     ]);
     for (const call of calls.slice(1)) {
       expect(call.init.method).toBe("POST");
@@ -349,7 +365,7 @@ describe("detail markup", () => {
   it("shows the sender, an unverified email, the message and a labelled note box", () => {
     const html = view();
     expect(html).toContain("Message from Sam Recruiter");
-    expect(html).toContain("Email (not verified)");
+    expect(html).toContain("Email (UNVERIFIED)");
     expect(html).toContain("sam@example.com");
     expect(html).toContain("Hello there.\nSecond line.");
     expect(html).toMatch(/<label for="note-text">/);
@@ -425,16 +441,48 @@ describe("detail markup", () => {
     expect(view()).toContain("No notes yet.");
   });
 
-  it("asks before deleting: the question appears only when asked", () => {
+  it("asks before requesting deletion: the question appears only when asked", () => {
     const before = view();
-    expect(before).toContain(">Delete</button>");
+    expect(before).toContain(">Delete for good</button>");
     expect(before).not.toContain("Delete this message for good?");
     const asking = view({ confirming: true });
     expect(asking).toContain('role="group"');
     expect(asking).toContain("Delete this message for good?");
-    expect(asking).toContain(">Delete for good</button>");
+    expect(asking).toContain("waits 24 hours");
+    expect(asking).toContain("passkey");
+    expect(asking).toContain(">Request deletion</button>");
     expect(asking).toContain(">Keep it</button>");
-    expect(asking).not.toContain(">Delete</button>");
+    expect(asking).not.toContain(">Delete for good</button>");
+  });
+
+  it("shows a waiting deletion with its time and a cancel, and hides the delete button", () => {
+    const html = view({
+      deletion: {
+        state: "waiting",
+        executeAfter: "2026-03-02T10:00:00Z",
+        expiresAt: "2026-03-09T10:00:00Z",
+      },
+      now: new Date("2026-03-01T11:00:00Z"),
+    });
+    expect(html).toContain('data-testid="deletion-pending"');
+    expect(html).toContain("Deletion requested");
+    expect(html).toContain("It can run in 23 h 0 min.");
+    expect(html).toContain(">Cancel deletion</button>");
+    expect(html).toContain('href="/desk/pending"');
+    expect(html).not.toContain(">Delete for good</button>");
+  });
+
+  it("says when a deletion is ready and when it expires unused", () => {
+    const html = view({
+      deletion: {
+        state: "ready",
+        executeAfter: "2026-03-02T10:00:00Z",
+        expiresAt: "2026-03-09T10:00:00Z",
+      },
+      now: new Date("2026-03-03T10:00:00Z"),
+    });
+    expect(html).toContain("ready to run");
+    expect(html).toContain("expires unused in 6 days");
   });
 
   it("shows keep as a pressed state with words", () => {
@@ -476,5 +524,252 @@ describe("detail markup", () => {
     expect(html).not.toContain("<img");
     expect(html).not.toContain("<b>Bold");
     expect(html).toContain("&lt;script&gt;");
+  });
+});
+
+describe("SPEC 5.8 and 5.8a details", () => {
+  it("labels every email as unverified, in the list and the detail", () => {
+    const rows = renderToStaticMarkup(
+      <MessageRows
+        base="/desk/messages"
+        listing={listing()}
+        tab="inbox"
+        onPage={() => {}}
+      />,
+    );
+    expect(rows).toContain("sam@example.com");
+    expect(rows).toContain(">Unverified<");
+    expect(view()).toContain("Email (UNVERIFIED)");
+  });
+
+  it("shows the spam score and the reason in the list and the detail", () => {
+    const rows = renderToStaticMarkup(
+      <MessageRows
+        base="/desk/messages"
+        listing={listing({
+          results: [
+            { ...listing().results[0], spam_score: 40, reason: "project" },
+          ],
+        })}
+        tab="inbox"
+        onPage={() => {}}
+      />,
+    );
+    expect(rows).toContain("Spam score 40 of 100");
+    expect(rows).toContain("Project");
+    const html = view({ message: message({ spam_score: 100, reason: "" }) });
+    expect(html).toContain("Spam score 100 of 100");
+    expect(html).toContain("No reason given");
+    expect(view()).toContain("Hiring");
+  });
+
+  it("explains retention, and that notes keep a message", () => {
+    expect(view()).toContain(
+      "Kept messages and messages with notes are exempt.",
+    );
+    const withNote = view({
+      message: message({
+        notes: [
+          {
+            id: "a",
+            kind: "note",
+            text: "x",
+            created_at: "2026-03-02T09:00:00Z",
+          },
+        ],
+      }),
+    });
+    expect(withNote).toContain(
+      "It has notes, so it stays until you delete it.",
+    );
+  });
+
+  it("has a labelled search form with reason and date filters", () => {
+    const html = renderToStaticMarkup(
+      <InboxFilters filters={NO_FILTERS} onApply={() => {}} />,
+    );
+    expect(html).toContain('role="search"');
+    expect(html).toContain('aria-label="Search and filter messages"');
+    for (const label of [
+      "Search name, email or message",
+      "Reason",
+      "Received from",
+      "Received to",
+    ]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain('type="date"');
+    for (const option of [
+      "Any reason",
+      "Hiring",
+      "Project",
+      "Other",
+      "No reason given",
+    ]) {
+      expect(html).toContain(`>${option}</option>`);
+    }
+    expect(html).not.toContain("Clear filters");
+  });
+
+  it("offers Clear filters, and says so when nothing matches", () => {
+    const filters = { ...NO_FILTERS, q: "alice" };
+    expect(
+      renderToStaticMarkup(
+        <InboxFilters filters={filters} onApply={() => {}} />,
+      ),
+    ).toContain("Clear filters");
+    const none = renderToStaticMarkup(
+      <MessageRows
+        base="/desk/messages"
+        listing={listing({ results: [], count: 0 })}
+        tab="inbox"
+        filters={filters}
+        onPage={() => {}}
+      />,
+    );
+    expect(none).toContain("No messages match those filters.");
+  });
+
+  it("keeps the filters in every folder and message link", () => {
+    const filters = {
+      q: "alice",
+      reason: "hiring" as const,
+      since: "2026-01-01",
+      until: "",
+    };
+    const tabs = renderToStaticMarkup(
+      <InboxTabs
+        base="/desk/messages"
+        tab="inbox"
+        counts={COUNTS}
+        filters={filters}
+      />,
+    );
+    expect(tabs).toContain("q=alice");
+    expect(tabs).toContain("reason=hiring");
+    expect(tabs).toContain("since=2026-01-01");
+    const rows = renderToStaticMarkup(
+      <MessageRows
+        base="/desk/messages"
+        listing={listing()}
+        tab="inbox"
+        filters={filters}
+        onPage={() => {}}
+      />,
+    );
+    expect(rows).toContain("q=alice");
+  });
+});
+
+describe("filters in the address and the request", () => {
+  const from = (query: string) => {
+    const params = new URLSearchParams(query);
+    return filtersFrom((name) => params.get(name));
+  };
+
+  it("reads valid filters and drops anything else", () => {
+    expect(
+      from("q=alice&reason=hiring&since=2026-01-02&until=2026-02-03"),
+    ).toEqual({
+      q: "alice",
+      reason: "hiring",
+      since: "2026-01-02",
+      until: "2026-02-03",
+    });
+    expect(from("reason=spam&since=yesterday&until=2026-1-1")).toEqual(
+      NO_FILTERS,
+    );
+    expect(from("reason=none").reason).toBe("none");
+    expect(from(`q=${"x".repeat(300)}`).q).toHaveLength(100);
+    expect(hasFilters(NO_FILTERS)).toBe(false);
+    expect(hasFilters({ ...NO_FILTERS, until: "2026-01-01" })).toBe(true);
+  });
+
+  it("builds addresses with the filters and the page", () => {
+    const filters = {
+      q: "a b",
+      reason: "none" as const,
+      since: "",
+      until: "2026-02-03",
+    };
+    expect(tabHref("/desk/messages", "spam", 2, filters)).toBe(
+      "/desk/messages?status=spam&q=a+b&reason=none&until=2026-02-03&page=2",
+    );
+  });
+
+  it("sends the filters to the API, leaving out what is empty", async () => {
+    const { calls, fetcher } = fakeFetch([
+      [200, listing()],
+      [200, listing()],
+    ]);
+    const inbox = inboxApi(createClient(fetcher));
+
+    await inbox.list("inbox", 1, {
+      q: "  alice ",
+      reason: "hiring",
+      since: "2026-01-01",
+      until: "",
+    });
+    await inbox.list("read", 2);
+
+    expect(calls[0].url).toBe(
+      "/api/v1/admin/messages?q=alice&reason=hiring&since=2026-01-01",
+    );
+    expect(calls[1].url).toBe("/api/v1/admin/messages?status=read&page=2");
+  });
+});
+
+describe("deletion and retention helpers", () => {
+  const waiting = {
+    kind: "permanent_delete",
+    target: { entity: "message", id: ID },
+    state: "waiting",
+  };
+
+  it("finds the waiting deletion of this message and no other", () => {
+    expect(pendingDeletion([waiting], ID)).toBe(waiting);
+    expect(pendingDeletion([waiting], "other-id")).toBeUndefined();
+    expect(
+      pendingDeletion(
+        [{ ...waiting, target: { entity: "section", id: ID } }],
+        ID,
+      ),
+    ).toBeUndefined();
+    expect(
+      pendingDeletion([{ ...waiting, kind: "add_passkey" }], ID),
+    ).toBeUndefined();
+  });
+
+  it("checks retention days as whole numbers in range", () => {
+    expect(checkDays("30", 1, 3650)).toBe("");
+    expect(checkDays("3650", 1, 3650)).toBe("");
+    expect(checkDays("0", 1, 3650)).toContain("between 1 and 3650");
+    expect(checkDays("3651", 1, 3650)).toContain("between 1 and 3650");
+    for (const bad of ["", "abc", "1.5", "-1", " ", "1e3", "123456"]) {
+      expect(checkDays(bad, 1, 3650)).toBe("Enter a whole number of days.");
+    }
+  });
+
+  it("reads and saves the retention periods", async () => {
+    const reply = {
+      spam_days: 30,
+      message_days: 365,
+      min_days: 1,
+      max_days: 3650,
+    };
+    const { calls, fetcher } = fakeFetch([
+      [200, reply],
+      [200, { csrf_token: "t" }],
+      [200, { ...reply, spam_days: 7 }],
+    ]);
+    const inbox = inboxApi(createClient(fetcher));
+
+    expect(await inbox.retention()).toEqual(reply);
+    await inbox.saveRetention(7, 365);
+
+    expect(calls[0].url).toBe("/api/v1/admin/retention");
+    expect(calls[2].url).toBe("/api/v1/admin/retention");
+    expect(calls[2].init.method).toBe("PATCH");
+    expect(calls[2].init.body).toBe('{"spam_days":7,"message_days":365}');
   });
 });

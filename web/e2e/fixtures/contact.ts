@@ -41,6 +41,7 @@ export type Sent = {
   name: string;
   email: string;
   body: string;
+  reason?: string;
   website?: string;
 };
 

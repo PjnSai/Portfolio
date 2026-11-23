@@ -12,10 +12,31 @@ export type MessageSummary = {
   name: string;
   email: string;
   status: MessageStatus;
+  reason: "" | Reason;
+  spam_score: number;
   created_at: string;
   kept: boolean;
   snippet: string;
 };
+
+export type Reason = "hiring" | "project" | "other";
+
+export const REASON_LABEL: Record<Reason | "none", string> = {
+  hiring: "Hiring",
+  project: "Project",
+  other: "Other",
+  none: "No reason given",
+};
+
+/** The narrowing the list page offers, as it sits in the address. */
+export type Filters = {
+  q: string;
+  reason: "" | Reason | "none";
+  since: string;
+  until: string;
+};
+
+export const NO_FILTERS: Filters = { q: "", reason: "", since: "", until: "" };
 
 export type Counts = Record<MessageStatus, number>;
 export type MessageList = Page<MessageSummary> & { counts: Counts };
@@ -33,6 +54,8 @@ export type MessageDetail = {
   name: string;
   email: string;
   body: string;
+  reason: "" | Reason;
+  spam_score: number;
   status: MessageStatus;
   created_at: string;
   read_at: string | null;
@@ -41,7 +64,31 @@ export type MessageDetail = {
   notes: Note[];
 };
 
+export type Retention = {
+  spam_days: number;
+  message_days: number;
+  min_days: number;
+  max_days: number;
+};
+
 export const NOTE_MAX = 2000;
+
+/** A pending deletion of this message, from the list of waiting vital actions. */
+export function pendingDeletion<
+  T extends { kind: string; target: Record<string, string> },
+>(pending: readonly T[], id: string): T | undefined {
+  return pending.find(
+    (action) =>
+      action.kind === "permanent_delete" &&
+      action.target.entity === "message" &&
+      action.target.id === id,
+  );
+}
+
+/** The spam score in words, for people who cannot see a gauge. */
+export function scoreLabel(score: number): string {
+  return `Spam score ${score} of 100`;
+}
 
 export const TABS: readonly { tab: Tab; label: string }[] = [
   { tab: "inbox", label: "Inbox" },
@@ -109,11 +156,29 @@ export function pageFrom(value: string | null): number {
     : 1;
 }
 
-export function tabHref(base: string, tab: Tab, page = 1): string {
-  const query = new URLSearchParams();
-  if (tab !== "inbox") query.set("status", tab);
-  if (page > 1) query.set("page", String(page));
-  const search = query.toString();
+function query(
+  tab: Tab,
+  page: number,
+  filters: Filters,
+  extra: Record<string, string> = {},
+) {
+  const params = new URLSearchParams(extra);
+  if (tab !== "inbox") params.set("status", tab);
+  if (filters.q) params.set("q", filters.q);
+  if (filters.reason) params.set("reason", filters.reason);
+  if (filters.since) params.set("since", filters.since);
+  if (filters.until) params.set("until", filters.until);
+  if (page > 1) params.set("page", String(page));
+  return params;
+}
+
+export function tabHref(
+  base: string,
+  tab: Tab,
+  page = 1,
+  filters: Filters = NO_FILTERS,
+): string {
+  const search = query(tab, page, filters).toString();
   return search ? `${base}?${search}` : base;
 }
 
@@ -122,11 +187,36 @@ export function detailHref(
   id: string,
   tab: Tab,
   page: number,
+  filters: Filters = NO_FILTERS,
 ): string {
-  const query = new URLSearchParams({ id });
-  if (tab !== "inbox") query.set("status", tab);
-  if (page > 1) query.set("page", String(page));
-  return `${base}?${query.toString()}`;
+  return `${base}?${query(tab, page, filters, { id }).toString()}`;
+}
+
+const DAY = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+
+/** The filters an address asks for. Anything not valid is dropped, never sent on. */
+export function filtersFrom(get: (name: string) => string | null): Filters {
+  const reason = get("reason");
+  const day = (name: string) => {
+    const value = get(name) ?? "";
+    return DAY.test(value) ? value : "";
+  };
+  return {
+    q: (get("q") ?? "").slice(0, 100),
+    reason:
+      reason === "hiring" ||
+      reason === "project" ||
+      reason === "other" ||
+      reason === "none"
+        ? reason
+        : "",
+    since: day("since"),
+    until: day("until"),
+  };
+}
+
+export function hasFilters(filters: Filters): boolean {
+  return Boolean(filters.q || filters.reason || filters.since || filters.until);
 }
 
 /** What a tab's count is: the inbox is everything except spam. */
@@ -149,9 +239,13 @@ export function mailtoHref(email: string): string {
 /** Calls against the inbox API. */
 export function inboxApi(client: AdminApi) {
   return {
-    list(tab: Tab, page: number) {
+    list(tab: Tab, page: number, filters: Filters = NO_FILTERS) {
       return client.get<MessageList>("/messages", {
         status: tab === "inbox" ? undefined : tab,
+        q: filters.q.trim() || undefined,
+        reason: filters.reason || undefined,
+        since: filters.since || undefined,
+        until: filters.until || undefined,
         page: page > 1 ? page : undefined,
       });
     },
@@ -166,7 +260,15 @@ export function inboxApi(client: AdminApi) {
       client.post<MessageDetail>(`/messages/${id}/keep`, { kept }),
     notSpam: (id: string) =>
       client.post<MessageDetail>(`/messages/${id}/not-spam`),
-    remove: (id: string) => client.post(`/messages/${id}/delete`),
+    /** Deletion is a vital action: it needs a fresh passkey and waits 24 hours. */
+    requestDelete: (id: string) =>
+      client.post("/vital-actions/request", {
+        kind: "permanent_delete",
+        payload: { entity: "message", id },
+      }),
+    retention: () => client.get<Retention>("/retention"),
+    saveRetention: (spam_days: number, message_days: number) =>
+      client.patch<Retention>("/retention", { spam_days, message_days }),
   };
 }
 

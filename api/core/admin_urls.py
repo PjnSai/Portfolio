@@ -70,11 +70,11 @@ urlpatterns = [
     path("cache/purge", media.cache_purge),
     path("deploy", media.site_deploy),
     path("messages", inbox.message_list),
+    path("retention", inbox.retention_view),
     path("messages/<uuid:message_id>", inbox.message),
     path("messages/<uuid:message_id>/status", inbox.message_status),
     path("messages/<uuid:message_id>/notes", inbox.message_notes),
     path("messages/<uuid:message_id>/responded", inbox.message_responded),
     path("messages/<uuid:message_id>/keep", inbox.message_keep),
-    path("messages/<uuid:message_id>/delete", inbox.message_delete),
     path("messages/<uuid:message_id>/not-spam", inbox.message_not_spam),
 ]

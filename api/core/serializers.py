@@ -412,6 +412,20 @@ class InboxKeep(Strict):
     kept = Flag()
 
 
+class Retention(Strict):
+    spam_days = serializers.IntegerField(min_value=1, max_value=3650)
+    message_days = serializers.IntegerField(min_value=1, max_value=3650)
+
+    def to_internal_value(self, data):
+        # Whole numbers only: not "30", 30.5 or true.
+        for name in ("spam_days", "message_days"):
+            value = data.get(name) if isinstance(data, dict) else None
+            if isinstance(value, bool) or not isinstance(value, int):
+                if name in data:
+                    raise serializers.ValidationError({name: ["Enter a whole number."]})
+        return super().to_internal_value(data)
+
+
 class Nothing(Strict):
     """A request that takes no fields."""
 

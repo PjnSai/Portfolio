@@ -1,11 +1,15 @@
 """Inbox routes under /api/v1/admin/messages. All need a signed-in owner."""
 
+import re
+from datetime import date
+
 from django.http import JsonResponse
 
-from core import inbox, pages, responses, serializers
+from core import inbox, pages, responses, retention, serializers
 from core.authz import Level, admin_route
 
 POST = ("POST",)
+READ_EDIT = ("GET", "PATCH")
 STATUSES = {"all", "new", "read", "replied", "archived", "spam"}
 
 
@@ -16,14 +20,48 @@ def _valid(serializer_class, data):
     return None, responses.invalid(serializer.errors)
 
 
+FILTERS = ("status", "q", "reason", "since", "until")
+REASONS = {"hiring", "project", "other", "none"}
+DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+SEARCH_MAX = 100
+
+
+def _day(value):
+    """A date from YYYY-MM-DD, None if absent, False if it is not a real date."""
+    if value is None:
+        return None
+    if not DAY.fullmatch(value):
+        return False
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return False
+
+
 @admin_route(Level.SESSION)
 def message_list(request):
-    number = pages.requested_page(request.GET, allowed=("status",))
-    status = request.GET.get("status")
-    if number is None or (status is not None and status not in STATUSES):
+    params = request.GET
+    number = pages.requested_page(params, allowed=FILTERS)
+    status = params.get("status")
+    search = params.get("q", "").strip()
+    reason = params.get("reason")
+    since, until = _day(params.get("since")), _day(params.get("until"))
+    refused = (
+        number is None
+        or (status is not None and status not in STATUSES)
+        or len(search) > SEARCH_MAX
+        or not search.isprintable()
+        or (reason is not None and reason not in REASONS)
+        or since is False
+        or until is False
+    )
+    if refused:
         return responses.bad_request()
     body = pages.page_of(
-        inbox.listing(status), number, inbox.summary, size=inbox.PAGE_SIZE
+        inbox.listing(status, search, reason, since, until),
+        number,
+        inbox.summary,
+        size=inbox.PAGE_SIZE,
     )
     return JsonResponse({**body, "counts": inbox.counts()})
 
@@ -100,11 +138,21 @@ def message_not_spam(request, message_id):
     return JsonResponse(inbox.detail(found))
 
 
-@admin_route(Level.SESSION, methods=POST)
-def message_delete(request, message_id):
-    _, error = _valid(serializers.Nothing, request.json)
-    if error:
-        return error
-    if not inbox.delete(message_id):
-        return responses.not_found()
-    return JsonResponse({})
+def _retention():
+    spam, other = retention.periods()
+    return {
+        "spam_days": spam,
+        "message_days": other,
+        "min_days": retention.MIN_DAYS,
+        "max_days": retention.MAX_DAYS,
+    }
+
+
+@admin_route(Level.SESSION, methods=READ_EDIT)
+def retention_view(request):
+    if request.method == "PATCH":
+        data, error = _valid(serializers.Retention, request.json)
+        if error:
+            return error
+        retention.save(data["spam_days"], data["message_days"])
+    return JsonResponse(_retention())

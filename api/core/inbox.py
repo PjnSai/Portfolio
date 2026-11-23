@@ -4,14 +4,14 @@ and its record stand or fall together. Audit detail holds ids and states only,
 never a name, an address or any text."""
 
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 
-from core import audit
+from core import audit, retention
 from core.models import ContactMessage, ContactNote
 
 Status = ContactMessage.Status
-PAGE_SIZE = 20
+PAGE_SIZE = 25
 SNIPPET = 140
 RESPONDED_TEXT = "Responded with details."
 
@@ -40,6 +40,8 @@ def summary(message):
         "name": message.name,
         "email": message.email,
         "status": message.status,
+        "reason": message.reason,
+        "spam_score": message.spam_score,
         "created_at": message.created_at.isoformat(),
         "kept": message.kept,
         "snippet": snippet(message.body),
@@ -61,6 +63,8 @@ def detail(message):
         "name": message.name,
         "email": message.email,
         "body": message.body,
+        "reason": message.reason,
+        "spam_score": message.spam_score,
         "status": message.status,
         "created_at": message.created_at.isoformat(),
         "read_at": message.read_at.isoformat() if message.read_at else None,
@@ -70,14 +74,30 @@ def detail(message):
     }
 
 
-def listing(status):
-    """The rows for a tab. No tab means the main inbox: everything but spam."""
+def listing(status, search="", reason=None, since=None, until=None):
+    """The rows for a tab, narrowed by a search over name, email and message, a
+    reason ("none" for messages with no reason) and the days they arrived
+    (inclusive, UTC). No tab means the main inbox: everything but spam."""
     rows = ContactMessage.objects.all()
     if status is None:
-        return rows.exclude(status=Status.SPAM)
-    if status == "all":
-        return rows
-    return rows.filter(status=status)
+        rows = rows.exclude(status=Status.SPAM)
+    elif status != "all":
+        rows = rows.filter(status=status)
+    if search:
+        rows = rows.filter(
+            Q(name__icontains=search)
+            | Q(email__icontains=search)
+            | Q(body__icontains=search)
+        )
+    if reason == "none":
+        rows = rows.filter(reason="")
+    elif reason:
+        rows = rows.filter(reason=reason)
+    if since:
+        rows = rows.filter(created_at__date__gte=since)
+    if until:
+        rows = rows.filter(created_at__date__lte=until)
+    return rows
 
 
 def counts():
@@ -117,7 +137,8 @@ def set_status(message_id, new):
         if new not in TRANSITIONS[message.status]:
             raise Refused
         old, message.status = message.status, new
-        message.save(update_fields=["status"])
+        retention.apply(message)
+        message.save(update_fields=["status", "expires_at"])
         audit.record("message_status", id=str(message.id), to=new, **{"from": old})
         return message
 
@@ -171,17 +192,7 @@ def not_spam(message_id):
         if message.status != Status.SPAM:
             raise Refused
         message.status = Status.NEW
-        message.save(update_fields=["status"])
+        retention.apply(message)
+        message.save(update_fields=["status", "expires_at"])
         audit.record("message_not_spam", id=str(message.id))
         return message
-
-
-def delete(message_id):
-    """Remove the message and its notes for good. The audit entry has the id."""
-    with transaction.atomic():
-        message = _locked(message_id)
-        if message is None:
-            return False
-        message.delete()
-        audit.record("message_deleted", id=str(message_id))
-        return True

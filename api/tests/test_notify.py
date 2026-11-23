@@ -3,9 +3,9 @@ import logging
 import pytest
 
 from core import notify
-from core.models import AdminCredential, AuditLog, Message, PendingAction
+from core.models import AdminCredential, AuditLog, PendingAction
 from tests.authenticator import SoftAuthenticator
-from tests.conftest import mature
+from tests.conftest import mature, new_message
 from tests.notifiers import Recorder
 
 pytestmark = pytest.mark.django_db
@@ -15,7 +15,7 @@ ADD = {"kind": "add_passkey", "payload": {"name": "Second key"}}
 
 
 def delete_body():
-    message = Message.objects.create(name="A", email="a@example.com", body="Hi")
+    message = new_message()
     return DELETE | {"payload": {"entity": "message", "id": str(message.id)}}
 
 

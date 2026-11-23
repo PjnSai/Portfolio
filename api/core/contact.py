@@ -11,19 +11,19 @@ import hashlib
 import hmac
 import re
 import time
-from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.utils import timezone
 
-from core import cache, ratelimit
+from core import cache, ratelimit, retention
 from core.models import ContactMessage
 
 DAY = 86400
 HOUR = 3600
 
+REASONS = tuple(choice.value for choice in ContactMessage.Reason)
 NAME_MAX = 100
 EMAIL_MAX = 254
 BODY_MIN = 10
@@ -127,6 +127,11 @@ def clean(data):
             values[field], problem = _clean_field(field, value)
             if problem:
                 errors[field] = [problem]
+    # The reason is optional; a blank one is stored as none.
+    reason = data.get("reason", "")
+    if not isinstance(reason, str) or reason not in ("", *REASONS):
+        errors["reason"] = ["Choose one of the options."]
+    values["reason"] = reason if isinstance(reason, str) else ""
     return values, errors
 
 
@@ -208,28 +213,62 @@ def count_sender(email):
 # Bot checks
 
 
-def spam_outcome(values, honeypot, seconds):
-    """The outcome code of the first bot check the message fails, else None."""
+# Words that mostly come from advertising. Each adds a few points; they never
+# quarantine a message on their own, only together with other signs.
+KEYWORDS = (
+    "viagra",
+    "cialis",
+    "casino",
+    "payday loan",
+    "seo services",
+    "backlinks",
+    "forex",
+    "lottery",
+    "guaranteed income",
+    "crypto investment",
+)
+KEYWORD_POINTS = 25
+KEYWORD_MAX = 75
+LINK_POINTS = 20
+HARD = 100
+
+
+def spam_score(values, honeypot, seconds):
+    """(score from 0 to 100, outcome code). The code names the first hard check
+    the message fails, "spam_score" if only the points added up, else None. A
+    filled honeypot, a rushed form, too many links or a repeated body each score
+    the full 100; links and keywords score less on their own."""
+    text = values["body"]
+    links = len(LINKS.findall(text))
+    keywords = sum(word in text.lower() for word in KEYWORDS)
+    code = None
+    score = min(KEYWORD_POINTS * keywords, KEYWORD_MAX) + LINK_POINTS * min(links, 5)
     if honeypot != "":
-        return "spam_honeypot"
+        score, code = score + HARD, "spam_honeypot"
     if seconds < settings.CONTACT_MIN_SECONDS:
-        return "spam_timing"
-    if len(LINKS.findall(values["body"])) > settings.CONTACT_MAX_LINKS:
-        return "spam_links"
-    key = f"contact:body:{_body_hash(values['body'])}"
+        score, code = score + HARD, code or "spam_timing"
+    if links > settings.CONTACT_MAX_LINKS:
+        score, code = score + HARD, code or "spam_links"
+    key = f"contact:body:{_body_hash(text)}"
     if not cache.client().set(key, 1, nx=True, ex=DAY):
-        return "spam_repeat"
-    return None
+        score, code = score + HARD, code or "spam_repeat"
+    score = min(score, 100)
+    if code is None and score >= settings.CONTACT_SPAM_THRESHOLD:
+        code = "spam_score"
+    return score, code
 
 
-def store(values, address, spam):
-    created = timezone.now()
-    return ContactMessage.objects.create(
+def store(values, address, score, spam):
+    message = ContactMessage(
         name=values["name"],
         email=values["email"],
         body=values["body"],
+        reason=values["reason"],
+        spam_score=score,
         status=ContactMessage.Status.SPAM if spam else ContactMessage.Status.NEW,
-        created_at=created,
-        expires_at=created + timedelta(days=settings.RETENTION_DAYS_MESSAGES),
+        created_at=timezone.now(),
         ip_hash=address_hash(address),
     )
+    retention.apply(message)
+    message.save(force_insert=True)
+    return message
