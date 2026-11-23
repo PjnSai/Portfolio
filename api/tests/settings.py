@@ -19,5 +19,7 @@ from config.settings import *  # noqa: E402, F403
 
 NOTIFIERS = ["tests.notifiers.Recorder"]
 
-# Quick to solve in a test.
-CONTACT_POW_DIFFICULTY = 8
+# Cloudflare's published dummy secret that always passes; the verifier is a
+# local fake, so tests never call Cloudflare.
+TURNSTILE_SECRET_KEY = "1x0000000000000000000000000000000AA"
+TURNSTILE_VERIFIER = "tests.turnstile.FakeVerifier"

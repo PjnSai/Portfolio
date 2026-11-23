@@ -1,4 +1,4 @@
-"""The public contact form: a signed proof-of-work challenge, input cleaning,
+"""The public contact form: the form-start token, input cleaning,
 rate limits, bot checks and storage.
 
 Nothing here logs or keeps a message body, an email address or a raw client
@@ -10,7 +10,6 @@ form fails closed.
 import hashlib
 import hmac
 import re
-import secrets
 import time
 from datetime import timedelta
 
@@ -56,17 +55,11 @@ LINE_BREAKS = re.compile(
 )
 EMAIL_BAD = re.compile(r'[\s"<>,;()\[\]\\]')
 LINKS = re.compile(r"https?://|www\.", re.IGNORECASE)
-SOLUTION = re.compile(r"[0-9]{1,12}")
-CHALLENGE_ID = re.compile(r"[0-9a-f]{32}")
 DIGITS = re.compile(r"[0-9]{1,12}")
 
 
 def now():
     return time.time()
-
-
-def difficulty():
-    return settings.CONTACT_POW_DIFFICULTY
 
 
 def _sign(purpose, text):
@@ -113,62 +106,9 @@ def seconds_open(token):
     return max(0, elapsed)
 
 
-def issue():
-    """A new challenge: find a number n so that SHA-256 of "<id>:<n>" starts
-    with `difficulty` zero bits. The id, expiry and difficulty are signed."""
-    challenge_id = secrets.token_hex(16)
-    expires = int(now()) + settings.CONTACT_CHALLENGE_SECONDS
-    signed = f"{challenge_id}.{expires}.{difficulty()}"
-    return {
-        "id": challenge_id,
-        "challenge": f"{signed}.{_sign('contact-challenge', signed)}",
-        "difficulty": difficulty(),
-        "started": form_token(now()),
-    }
-
-
-def _parse(challenge):
-    """(id, bits) if the challenge is ours and still current, else None."""
-    if not isinstance(challenge, str):
-        return None
-    parts = challenge.split(".")
-    if len(parts) != 4:
-        return None
-    challenge_id, expires, bits, signature = parts
-    signed = ".".join(parts[:3])
-    if not CHALLENGE_ID.fullmatch(challenge_id):
-        return None
-    if not (DIGITS.fullmatch(expires) and DIGITS.fullmatch(bits)):
-        return None
-    if not hmac.compare_digest(signature, _sign("contact-challenge", signed)):
-        return None
-    if now() > int(expires):
-        return None
-    return challenge_id, int(bits)
-
-
-def solved(challenge, solution):
-    """True if the challenge is ours, current, and the solution meets it. Does
-    not use the challenge up (see use_up)."""
-    parsed = _parse(challenge)
-    if parsed is None or not isinstance(solution, str):
-        return False
-    if not SOLUTION.fullmatch(solution):
-        return False
-    challenge_id, bits = parsed
-    digest = hashlib.sha256(f"{challenge_id}:{solution}".encode()).digest()
-    return int.from_bytes(digest, "big") >> (256 - bits) == 0
-
-
-def use_up(challenge):
-    """Mark a challenge used. False if it already was: a replay."""
-    parsed = _parse(challenge)
-    if parsed is None:
-        return False
-    challenge_id, _ = parsed
-    # Kept past its expiry, so a replay just after it is still caught.
-    ttl = settings.CONTACT_CHALLENGE_SECONDS + 60
-    return bool(cache.client().set(f"contact:used:{challenge_id}", 1, nx=True, ex=ttl))
+def start():
+    """The signed form-start token, fetched when the form is opened."""
+    return {"started": form_token(now())}
 
 
 # Cleaning
@@ -246,11 +186,11 @@ def _over(bucket, seconds, limit):
         raise Limited(left)
 
 
-def count_challenge(address):
+def count_start(address):
     _over(
-        f"challenges:{address_hash(address)}",
+        f"starts:{address_hash(address)}",
         HOUR,
-        settings.CONTACT_CHALLENGES_PER_HOUR,
+        settings.CONTACT_STARTS_PER_HOUR,
     )
 
 

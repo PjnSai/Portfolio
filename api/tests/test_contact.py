@@ -1,4 +1,4 @@
-"""The public contact form: challenge, validation, bot checks, limits, logs."""
+"""The public contact form: Turnstile, validation, bot checks, limits, logs."""
 
 import hashlib
 import json
@@ -13,12 +13,14 @@ from django.utils import timezone
 
 from core import cache, contact
 from core.models import ContactMessage
+from tests import turnstile as fake
 from tests.conftest import ORIGIN
+from tests.turnstile import PASSES
 
 pytestmark = pytest.mark.django_db
 
 URL = "/api/v1/contact"
-CHALLENGE = "/api/v1/contact/challenge"
+START = "/api/v1/contact/start"
 SENT = {"detail": "Thank you. Your message has been received."}
 
 NAME = "Sam Recruiter"
@@ -32,34 +34,28 @@ def visitor():
     return Client(enforce_csrf_checks=True)
 
 
-def solve(challenge_id, difficulty):
-    n = 0
-    while True:
-        digest = hashlib.sha256(f"{challenge_id}:{n}".encode()).digest()
-        if int.from_bytes(digest, "big") >> (256 - difficulty) == 0:
-            return str(n)
-        n += 1
-
-
-def fetch(client, ip=ADDRESS):
-    response = client.get(CHALLENGE, secure=True, headers={"Cf-Connecting-Ip": ip})
+def start(client, ip=ADDRESS):
+    response = client.get(START, secure=True, headers={"Cf-Connecting-Ip": ip})
     assert response.status_code == 200, response.content
     return response.json()
 
 
+def token():
+    """A Turnstile token the stand-in accepts once (see tests/turnstile.py)."""
+    return f"{PASSES}#{next(_counter)}"
+
+
 def good(client=None, ip=ADDRESS, age=30, **overrides):
-    """A complete, valid submission: a solved challenge and a form opened `age`
+    """A complete, valid submission: a Turnstile token and a form opened `age`
     seconds ago. Each call gets its own email and body unless overridden."""
     n = next(_counter)
-    issued = fetch(client or visitor(), ip)
     body = {
         "name": NAME,
         "email": f"sam{n}@example.com",
         "body": f"{BODY} Reference {n}.",
         "website": "",
         "started": contact.form_token(contact.now() - age),
-        "challenge": issued["challenge"],
-        "solution": solve(issued["id"], issued["difficulty"]),
+        "turnstile": token(),
     }
     body.update(overrides)
     return body
@@ -103,29 +99,29 @@ def database_down(monkeypatch):
     monkeypatch.setattr(ContactMessage.objects, "create", down)
 
 
-# The challenge
+# The form-start token
 
 
-def test_challenge_is_json_and_never_cached():
-    response = visitor().get(CHALLENGE, secure=True)
+@pytest.fixture(autouse=True)
+def fresh_stand_in():
+    fake.spent.clear()
+    fake.asked.clear()
+
+
+def test_the_start_token_is_json_and_never_cached():
+    response = visitor().get(START, secure=True)
 
     body = response.json()
     assert response.status_code == 200
     assert response["Cache-Control"] == "no-store"
-    assert set(body) == {"id", "challenge", "difficulty", "started"}
-    assert body["id"] in body["challenge"]
-    assert body["difficulty"] == contact.difficulty()
+    assert set(body) == {"started"}
+    assert contact.seconds_open(body["started"]) is not None
+    assert contact.seconds_open(body["started"]) < 3
 
 
-def test_every_challenge_is_different():
-    client = visitor()
-
-    assert fetch(client)["id"] != fetch(client)["id"]
-
-
-def test_challenge_only_answers_get():
+def test_the_start_route_only_answers_get():
     response = visitor().post(
-        CHALLENGE,
+        START,
         "{}",
         content_type="application/json",
         secure=True,
@@ -135,23 +131,23 @@ def test_challenge_only_answers_get():
     assert response.status_code == 405
 
 
-def test_challenge_requests_are_limited_per_address(settings):
-    settings.CONTACT_CHALLENGES_PER_HOUR = 3
+def test_start_requests_are_limited_per_address(settings):
+    settings.CONTACT_STARTS_PER_HOUR = 3
     client = visitor()
     for _ in range(3):
-        fetch(client)
+        start(client)
 
-    response = client.get(CHALLENGE, secure=True, headers={"Cf-Connecting-Ip": ADDRESS})
+    response = client.get(START, secure=True, headers={"Cf-Connecting-Ip": ADDRESS})
 
     assert response.status_code == 429
     assert "Retry-After" in response
-    assert fetch(client, ip="203.0.113.8")["id"]
+    assert start(client, ip="203.0.113.8")["started"]
 
 
-def test_challenge_fails_closed_without_redis(monkeypatch):
+def test_the_start_route_fails_closed_without_redis(monkeypatch):
     redis_down(monkeypatch)
 
-    assert visitor().get(CHALLENGE, secure=True).status_code == 503
+    assert visitor().get(START, secure=True).status_code == 503
 
 
 # A good message
@@ -451,7 +447,7 @@ def test_a_quarantined_message_keeps_the_same_fields_for_review():
     assert message.expires_at > timezone.now()
 
 
-# Challenge: bad, expired, replayed
+# Turnstile and the form token
 
 
 BAD = {
@@ -466,114 +462,88 @@ def assert_bad_challenge(response):
     assert stored() == []
 
 
-def test_a_wrong_solution_is_refused():
-    client = visitor()
-    body = good(client)
-    wrong = int(body["solution"]) + 1
-    while contact.solved(body["challenge"], str(wrong)):
-        wrong += 1
-    body["solution"] = str(wrong)
+def test_a_good_token_is_checked_with_cloudflare_once():
+    good_token = token()
 
-    assert_bad_challenge(send(client, body))
+    assert submit(turnstile=good_token).status_code == 201
 
-
-@pytest.mark.parametrize("solution", ["", "abc", "-1", "1.5", "9" * 13, " 1", None, 5])
-def test_a_solution_in_the_wrong_shape_is_refused(solution):
-    assert_bad_challenge(submit(solution=solution))
+    assert fake.asked == [good_token]
 
 
 @pytest.mark.parametrize(
-    "tamper",
-    [
-        lambda c: c[:-1] + ("0" if c[-1] != "0" else "1"),
-        lambda c: "x" + c,
-        lambda c: c.rsplit(".", 1)[0],
-        lambda c: "",
-        lambda c: "a.b.c.d",
-        lambda c: c.replace(".", ":"),
-    ],
+    "value", ["", "wrong", "XXXX", None, 5, ["a"], {"a": 1}, True, "x" * 2049]
 )
-def test_a_tampered_challenge_is_refused(tamper):
+def test_a_token_cloudflare_refuses_or_in_the_wrong_shape_is_refused(value):
+    assert_bad_challenge(submit(turnstile=value))
+
+
+def test_a_missing_token_is_refused():
     client = visitor()
     body = good(client)
-    body["challenge"] = tamper(body["challenge"])
+    del body["turnstile"]
 
     assert_bad_challenge(send(client, body))
 
 
-def test_the_difficulty_cannot_be_lowered_by_the_client():
-    client = visitor()
-    issued = fetch(client)
-    parts = issued["challenge"].split(".")
-    parts[2] = "0"
-    body = good(client, challenge=".".join(parts), solution="0")
+def test_a_token_works_once():
+    spent = token()
+    assert submit(turnstile=spent).status_code == 201
 
-    assert_bad_challenge(send(client, body))
-
-
-def test_an_expired_challenge_is_refused(monkeypatch):
-    client = visitor()
-    body = good(client)
-    later = contact.now() + 301
-    monkeypatch.setattr(contact, "now", lambda: later)
-
-    assert_bad_challenge(send(client, body))
-
-
-def test_a_challenge_just_inside_five_minutes_still_works(monkeypatch):
-    client = visitor()
-    body = good(client)
-    later = contact.now() + 290
-    monkeypatch.setattr(contact, "now", lambda: later)
-
-    assert send(client, body).status_code == 201
-
-
-def test_a_challenge_works_once():
-    client = visitor()
-    body = good(client)
-    assert send(client, body).status_code == 201
-
-    replay = send(client, {**body, "email": "other@example.com", "body": BODY + " 2"})
+    assert len(stored()) == 1
+    replay = submit(turnstile=spent, email="other@example.com", body=BODY + " 2")
 
     assert replay.status_code == 400
     assert replay.json() == BAD
     assert len(stored()) == 1
 
 
-def test_a_refused_message_does_not_use_up_a_challenge():
+def test_a_refused_message_does_not_use_up_a_token():
     client = visitor()
     body = good(client)
     assert send(client, {**body, "email": "nope"}).status_code == 400
+    assert fake.asked == []
 
     assert send(client, body).status_code == 201
 
 
-def test_a_form_token_is_not_a_challenge():
-    client = visitor()
-    body = good(client)
-    body["challenge"] = body["started"]
+def test_cloudflare_being_down_fails_closed():
+    response = submit(turnstile="unavailable")
 
-    assert_bad_challenge(send(client, body))
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Service unavailable."}
+    assert stored() == []
+
+
+def test_a_missing_secret_key_fails_closed_with_the_real_check(settings):
+    settings.TURNSTILE_VERIFIER = "core.turnstile.CloudflareVerifier"
+    settings.TURNSTILE_SECRET_KEY = ""
+
+    response = submit()
+
+    assert response.status_code == 503
+    assert stored() == []
 
 
 @pytest.mark.parametrize("started", ["", "x", "1.2", None, "9999999999." + "0" * 64])
-def test_a_bad_form_token_gets_the_same_error_as_a_bad_challenge(started):
+def test_a_bad_form_token_gets_the_same_error_as_a_bad_turnstile_token(started):
     assert_bad_challenge(submit(started=started))
+    # Cloudflare is not asked about a form that was not ours.
+    assert fake.asked == []
 
 
 def test_an_old_form_token_is_refused():
-    client = visitor()
-    body = good(client, age=7 * 3600)
+    assert_bad_challenge(submit(age=7 * 3600))
 
-    assert_bad_challenge(send(client, body))
+
+def test_a_form_token_from_the_future_is_refused():
+    assert_bad_challenge(submit(age=-3600))
 
 
 def test_the_bad_challenge_error_does_not_say_what_else_failed():
     # A filled honeypot, a rushed form and too many links, all at once: the
-    # answer is still only the challenge error.
+    # answer is still only the check error.
     response = submit(
-        solution="",
+        turnstile="wrong",
         website="x",
         age=0,
         body="https://a.example https://b.example https://c.example https://d.example",
@@ -648,7 +618,6 @@ def test_the_default_limits():
     assert settings.CONTACT_PER_ADDRESS_PER_HOUR == 5
     assert settings.CONTACT_PER_EMAIL_PER_DAY == 3
     assert settings.CONTACT_MIN_SECONDS == 3
-    assert settings.CONTACT_CHALLENGE_SECONDS == 300
     assert settings.RETENTION_DAYS_MESSAGES == 90
 
 
@@ -701,7 +670,7 @@ def test_quarantined_messages_count_towards_the_email_limit():
 
 def test_refused_attempts_still_count_for_the_address():
     for _ in range(5):
-        submit(solution="")
+        submit(turnstile="wrong")
 
     assert submit().status_code == 429
 
@@ -799,7 +768,7 @@ def test_logs_never_hold_personal_data(caplog):
     personal = {"name": PRIVATE_NAME, "email": PRIVATE_EMAIL, "body": PRIVATE_BODY}
     submit(ip=PRIVATE_ADDRESS, **personal)
     submit(ip=PRIVATE_ADDRESS, website="x", **{**personal, "email": "b@example.com"})
-    submit(ip=PRIVATE_ADDRESS, solution="", **personal)
+    submit(ip=PRIVATE_ADDRESS, turnstile="wrong", **personal)
     submit(ip=PRIVATE_ADDRESS, **{**personal, "email": "not valid"})
     for _ in range(6):
         submit(ip=PRIVATE_ADDRESS, **personal)
@@ -811,7 +780,7 @@ def test_logs_hold_the_id_and_an_outcome_code(caplog):
     caplog.set_level(logging.INFO)
     submit()
     submit(website="x")
-    submit(solution="")
+    submit(turnstile="wrong")
 
     first, second = stored()
     assert f"id={first.id} outcome=stored" in caplog.text

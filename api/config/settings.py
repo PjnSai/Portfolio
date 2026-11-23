@@ -113,13 +113,17 @@ RETENTION_DAYS_MESSAGES = 90
 CONTACT_PER_ADDRESS_PER_HOUR = 5
 CONTACT_PER_EMAIL_PER_DAY = 3
 CONTACT_DAILY_CAP = 25
-CONTACT_CHALLENGES_PER_HOUR = 30
-# Leading zero bits a proof-of-work answer needs: about 2**n hashes to find.
-CONTACT_POW_DIFFICULTY = 17
-CONTACT_CHALLENGE_SECONDS = 300
+CONTACT_STARTS_PER_HOUR = 30
 CONTACT_MIN_SECONDS = 3
 CONTACT_FORM_TOKEN_SECONDS = 6 * 3600
 CONTACT_MAX_LINKS = 2
+# Cloudflare Turnstile (core.turnstile). With no secret key the form is
+# refused (503), never open: production must set it. Development and tests use
+# Cloudflare's published dummy keys (see tests/settings.py and docker-compose).
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+TURNSTILE_VERIFIER = os.environ.get(
+    "TURNSTILE_VERIFIER", "core.turnstile.CloudflareVerifier"
+)
 
 # Dotted paths of classes with send(event, context), comma-separated. With none
 # configured, vital actions are refused because the owner could not be told.

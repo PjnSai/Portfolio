@@ -43,6 +43,10 @@ os.environ.update(
         "CF_ACCESS_EMAIL": EMAIL,
         "BOOTSTRAP_TOKEN_SHA256": hashlib.sha256(BOOTSTRAP_TOKEN.encode()).hexdigest(),
         "NOTIFIERS": "core.notify.LogNotifier",
+        # Cloudflare's dummy secret; the check itself is a local stand-in, so the
+        # browser suite needs no network.
+        "TURNSTILE_SECRET_KEY": "1x0000000000000000000000000000000AA",
+        "TURNSTILE_VERIFIER": "tests.turnstile.FakeVerifier",
         "DATABASE_URL": DATABASE_URL,
         "REDIS_URL": os.environ.get("E2E_REDIS_URL", "redis://127.0.0.1:6379/14"),
         "MEDIA_STORAGE": "local",

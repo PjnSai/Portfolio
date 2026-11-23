@@ -5,15 +5,17 @@ Origin on the POST."""
 import json
 import logging
 
+from django.conf import settings
 from django.http import JsonResponse
+from django.utils.module_loading import import_string
 from django.views.decorators.csrf import csrf_exempt
 
-from core import contact, ratelimit, responses
+from core import contact, ratelimit, responses, turnstile
 from core.guard import UNAVAILABLE
 
 log = logging.getLogger(__name__)
 
-FIELDS = {"name", "email", "body", "website", "started", "challenge", "solution"}
+FIELDS = {"name", "email", "body", "website", "started", "turnstile"}
 # A message at its longest is about 5 kB of JSON.
 MAX_BODY_BYTES = 20_000
 
@@ -26,17 +28,17 @@ def _logged(outcome, message=None):
 
 
 @csrf_exempt
-def challenge(request):
+def start(request):
     if request.method != "GET":
         return responses.method_not_allowed(("GET",))
     try:
-        contact.count_challenge(ratelimit.client_address(request))
+        contact.count_start(ratelimit.client_address(request))
     except contact.Limited as limit:
         _logged("rate_limited")
         return responses.too_many_requests(limit.seconds)
     except UNAVAILABLE as error:
         return _unavailable(error)
-    return JsonResponse(contact.issue(), headers={"Cache-Control": "no-store"})
+    return JsonResponse(contact.start(), headers={"Cache-Control": "no-store"})
 
 
 @csrf_exempt
@@ -55,7 +57,7 @@ def submit(request):
     except contact.Limited as limit:
         _logged("rate_limited")
         return responses.contact_limited(limit.seconds)
-    except UNAVAILABLE as error:
+    except (*UNAVAILABLE, turnstile.Unavailable) as error:
         return _unavailable(error)
 
 
@@ -75,15 +77,19 @@ def _read(request):
     return data, None
 
 
+def _checked(token):
+    """True if Turnstile says this token is good. Raises Unavailable if it could
+    not be asked."""
+    if not isinstance(token, str) or not 0 < len(token) <= turnstile.TOKEN_MAX:
+        return False
+    return bool(import_string(settings.TURNSTILE_VERIFIER)().verify(token))
+
+
 def _accept(data, values, address):
     contact.count_attempt(address)
     seconds = contact.seconds_open(data.get("started"))
-    challenge, solution = data.get("challenge"), data.get("solution")
-    if (
-        seconds is None
-        or not contact.solved(challenge, solution)
-        or not contact.use_up(challenge)
-    ):
+    # A bad form token is refused before Cloudflare is asked.
+    if seconds is None or not _checked(data.get("turnstile")):
         _logged("bad_challenge")
         return responses.bad_challenge()
     contact.count_sender(values["email"])

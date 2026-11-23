@@ -7,5 +7,5 @@ urlpatterns = [
     path("site", media_views.public_site),
     path("media/<str:name>", media_views.public_file),
     path("contact", contact_views.submit),
-    path("contact/challenge", contact_views.challenge),
+    path("contact/start", contact_views.start),
 ]

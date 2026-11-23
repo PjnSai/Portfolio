@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
-import { challenge, sendMessage } from "./fixtures/contact";
+import { sendMessage, startForm } from "./fixtures/contact";
 
 // The inbox steps of the admin suite. They run inside admin.spec.ts, after the
 // owner has signed in, because that spec holds the one passkey and its session.
@@ -59,7 +59,7 @@ export function inboxTests(getPage: () => Page) {
     test("messages sent from the site reach the inbox, and quarantine looks the same to the sender", async ({
       request,
     }) => {
-      const started = (await challenge(request, "203.0.113.200")).started;
+      const started = await startForm(request, "203.0.113.200");
       // The form must have been open for three seconds, or it counts as a bot.
       await new Promise((done) => setTimeout(done, 3200));
 

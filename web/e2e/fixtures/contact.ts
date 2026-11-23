@@ -1,35 +1,17 @@
-import { createHash } from "node:crypto";
 import type { APIRequestContext } from "@playwright/test";
 
 // The API is on its own origin, as in production (see playwright.config.ts).
 export const API = "http://localhost:8100";
 export const SITE = "http://localhost:3100";
 
-type Issued = {
-  id: string;
-  challenge: string;
-  difficulty: number;
-  started: string;
-};
-
-/** A number n so that SHA-256 of "<id>:<n>" starts with `bits` zero bits. */
-export function solve(id: string, bits: number): string {
-  for (let n = 0; ; n++) {
-    const digest = createHash("sha256").update(`${id}:${n}`).digest();
-    let zeros = 0;
-    for (const byte of digest) {
-      if (byte === 0) {
-        zeros += 8;
-        continue;
-      }
-      zeros += Math.clz32(byte) - 24;
-      break;
-    }
-    if (zeros >= bits) return String(n);
-  }
-}
-
+/** Cloudflare's dummy token; the e2e API's stand-in accepts it once per suffix. */
+const PASSES = "XXXX.DUMMY.TOKEN.XXXX";
 let counter = 0;
+
+export function turnstileToken(): string {
+  counter += 1;
+  return `${PASSES}#${Date.now().toString(36)}-${counter}`;
+}
 
 /** A fresh client address for each call, so the per-address limit is not met. */
 export function nextAddress(): string {
@@ -46,12 +28,13 @@ export function formHeaders(address: string) {
   };
 }
 
-export async function challenge(request: APIRequestContext, address: string) {
-  const response = await request.get(`${API}/api/v1/contact/challenge`, {
+/** The signed form-start token, as the form fetches it when it opens. */
+export async function startForm(request: APIRequestContext, address: string) {
+  const response = await request.get(`${API}/api/v1/contact/start`, {
     headers: { "Cf-Connecting-Ip": address },
   });
-  if (!response.ok()) throw new Error(`challenge: ${response.status()}`);
-  return (await response.json()) as Issued;
+  if (!response.ok()) throw new Error(`start: ${response.status()}`);
+  return ((await response.json()) as { started: string }).started;
 }
 
 export type Sent = {
@@ -63,8 +46,7 @@ export type Sent = {
 
 /**
  * Send a message through the real public route. `started` must be a form token
- * at least three seconds old (the first call's, kept), or the message is
- * quarantined as too fast.
+ * at least three seconds old, or the message is quarantined as too fast.
  */
 export async function sendMessage(
   request: APIRequestContext,
@@ -72,16 +54,9 @@ export async function sendMessage(
   message: Sent,
   address = nextAddress(),
 ) {
-  const issued = await challenge(request, address);
   const response = await request.post(`${API}/api/v1/contact`, {
     headers: formHeaders(address),
-    data: {
-      website: "",
-      ...message,
-      started,
-      challenge: issued.challenge,
-      solution: solve(issued.id, issued.difficulty),
-    },
+    data: { website: "", ...message, started, turnstile: turnstileToken() },
   });
   return {
     status: response.status(),
