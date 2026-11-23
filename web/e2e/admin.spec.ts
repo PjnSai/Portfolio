@@ -10,6 +10,7 @@ import {
   type Response,
   test,
 } from "@playwright/test";
+import { inboxTests } from "./inbox-tests";
 
 // One owner, one browser, one passkey: the steps build on each other.
 test.describe.configure({ mode: "serial" });
@@ -616,3 +617,5 @@ test("the admin fits a phone screen", async () => {
     expect(width, path).toBeLessThanOrEqual(390);
   }
 });
+
+inboxTests(() => page);
