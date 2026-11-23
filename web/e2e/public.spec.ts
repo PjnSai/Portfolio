@@ -305,7 +305,15 @@ test.describe("search engines", () => {
       expect.arrayContaining([`${ORIGIN}/`, `${ORIGIN}/projects`, `${ORIGIN}/projects/page/2`, `${ORIGIN}/projects/first-seeded-project`]),
     );
     expect(locs.every((loc) => loc.startsWith(`${ORIGIN}/`))).toBe(true);
-    expect(locs.some((loc) => /\/desk|404|\/projects\/page\/3|seeded-project-3$/.test(loc))).toBe(false);
+    expect(
+      locs.some(
+        (loc) =>
+          loc.includes("/desk") ||
+          loc.includes("404") ||
+          loc.includes("/projects/page/3") ||
+          loc.endsWith("seeded-project-3"),
+      ),
+    ).toBe(false);
   });
 
   test("robots.txt names the sitemap and turns away AI crawlers only", async ({ request }) => {
