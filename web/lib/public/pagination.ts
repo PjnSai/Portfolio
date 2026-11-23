@@ -56,3 +56,9 @@ export function pageParams(total: number, size = PAGE_SIZE): { n: string }[] {
 export function parsePage(value: string): number {
   return /^[1-9]\d{0,5}$/.test(value) ? Number(value) : Number.NaN;
 }
+
+/** The list pages that exist and may be indexed, linked and put in the sitemap.
+    The stand-in page that pageParams builds past the end is never one of them. */
+export function listRoutes(total: number, size = PAGE_SIZE): string[] {
+  return Array.from({ length: pageCount(total, size) }, (_, i) => pageHref(i + 1));
+}

@@ -1,5 +1,6 @@
 import { DisplayMenu, type PaletteOption } from "@/components/public/DisplayMenu";
 import type { PageSection } from "@/lib/public/content";
+import { FOOTER_PAGES } from "@/lib/public/footer-pages";
 
 type Props = {
   name: string;
@@ -53,7 +54,9 @@ export function SiteNav({ name, sections, contact, palettes = [], defaultId }: P
   );
 }
 
-/** The numbered pager on the right edge, on wide screens only (CSS hides it below 1000 px). */
+/** The numbered pager on the right edge: a dot rail under 1000 px, a panel
+    above. The Next section button is shown by NavEnhancer; without
+    JavaScript the links and the footer's Back to top still work. */
 export function SectionPager({ sections }: { sections: readonly PageSection[] }) {
   if (sections.length === 0) return null;
   return (
@@ -73,6 +76,14 @@ export function SectionPager({ sections }: { sections: readonly PageSection[] })
           </li>
         ))}
       </ol>
+      <button type="button" className="pager__next" data-pager-next hidden>
+        <svg className="pager__arrow" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+          <path d="M8 2v11M3 8l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="2" />
+        </svg>
+        <span className="pager__next-label" data-pager-next-label>
+          Next section
+        </span>
+      </button>
     </nav>
   );
 }
@@ -84,16 +95,23 @@ export function Footer({ name, hasProjects }: { name: string; hasProjects: boole
         <p>
           © {new Date().getFullYear()} {name}
         </p>
-        <ul className="footer__links">
-          {hasProjects ? (
+        <nav aria-label="Footer">
+          <ul className="footer__links">
+            {hasProjects ? (
+              <li>
+                <a href="/projects">All projects</a>
+              </li>
+            ) : null}
+            {FOOTER_PAGES.map((page) => (
+              <li key={page.route}>
+                <a href={page.route}>{page.label}</a>
+              </li>
+            ))}
             <li>
-              <a href="/projects">All projects</a>
+              <a href="#top">Back to top</a>
             </li>
-          ) : null}
-          <li>
-            <a href="#top">Back to top</a>
-          </li>
-        </ul>
+          </ul>
+        </nav>
       </div>
     </footer>
   );

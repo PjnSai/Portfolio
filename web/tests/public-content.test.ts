@@ -3,11 +3,14 @@ import {
   accentFor,
   dateRange,
   pageModel,
+  projectSlugs,
   slugify,
   statsFor,
   uniqueSlugs,
 } from "@/lib/public/content";
+import type { Item, Project } from "@/lib/public/content";
 import type { PublicSite } from "@/lib/site";
+import vectors from "../../api/tests/slug_vectors.json";
 
 const project = (title: string, extra = {}) => ({
   id: `id-${title}`,
@@ -86,6 +89,21 @@ describe("helpers", () => {
     ["  ", "section"],
     ["<script>", "script"],
   ])("slugify(%j)", (input, out) => expect(slugify(input)).toBe(out));
+
+  it.each(vectors as [string, string][])("slugify(%j) matches the API", (input, out) =>
+    expect(slugify(input)).toBe(out),
+  );
+
+  it("uses the slug the API stored, whatever the title is now", () => {
+    const found = projectSlugs(([
+      { ...project("Kanban"), slug: "task-board" },
+      project("Task board"),
+      { ...project("Odd"), slug: "Not a slug/../x" },
+      { ...project("Copy"), slug: "task-board" },
+      { ...project("Paged"), slug: "page" },
+    ] as unknown) as Item<Project>[]);
+    expect(found.map((entry) => entry.slug)).toEqual(["task-board", "task-board-2", "odd", "copy", "paged"]);
+  });
 
   it("uniqueSlugs avoids taken names", () => {
     expect(uniqueSlugs(["top", "top"], ["top"])).toEqual(["top-2", "top-3"]);

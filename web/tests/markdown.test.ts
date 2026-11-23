@@ -7,7 +7,7 @@ const html = (source: string) => renderToStaticMarkup(createElement(Markdown, { 
 
 // Tags and attributes the renderer may produce; anything else is a failure.
 const ALLOWED_TAGS = new Set([
-  "div", "p", "h3", "h4", "ul", "ol", "li", "blockquote", "pre", "code",
+  "div", "p", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "code",
   "hr", "em", "strong", "a", "br",
 ]);
 const ALLOWED_ATTRIBUTES = new Set(["href", "rel", "class", "start"]);
@@ -106,10 +106,27 @@ describe("Markdown renderer", () => {
     expectInert(markup);
   });
 
-  it("caps headings so they sit under the section heading", () => {
-    expect(html("# a\n\n## b\n\n###### c")).toBe(
-      '<div class="prose"><h3>a</h3><h4>b</h4><h4>c</h4></div>',
+  it("starts headings one below the section heading", () => {
+    expect(html("# a\n\n## b\n\n### c")).toBe(
+      '<div class="prose"><h3>a</h3><h4>b</h4><h5>c</h5></div>',
     );
+  });
+
+  it("never skips a level, whatever level the text starts at", () => {
+    const levels = (source: string, headingLevel?: number) =>
+      [
+        ...renderToStaticMarkup(createElement(Markdown, { source, headingLevel })).matchAll(/<h(\d)>/g),
+      ].map((m) => Number(m[1]));
+    expect(levels("## a\n\n### b\n\n## c")).toEqual([3, 4, 3]);
+    expect(levels("## a\n\n#### b\n\n###### c\n\n### d\n\n# e")).toEqual([3, 4, 5, 4, 3]);
+    expect(levels("### a\n\n# b\n\n## c")).toEqual([3, 3, 4]);
+    expect(levels("# a\n\n## b", 2)).toEqual([2, 3]);
+    expect(levels("# 1\n\n## 2\n\n### 3\n\n#### 4\n\n##### 5", 4)).toEqual([4, 5, 6, 6, 6]);
+    for (const source of ["## a\n\n#### b", "###### a\n\n# b\n\n### c\n\n###### d"]) {
+      const found = levels(source);
+      expect(found[0]).toBe(3);
+      for (let i = 1; i < found.length; i += 1) expect(found[i]).toBeLessThanOrEqual(found[i - 1] + 1);
+    }
   });
 
   it("renders empty input as nothing", () => {

@@ -1,21 +1,25 @@
 "use client";
 
 import { useEffect } from "react";
-import { setupMarquee } from "@/lib/public/marquee";
-import { setupSectionMotion } from "@/lib/public/motion";
-import { setupShowcase } from "@/lib/public/showcase";
 
 // The home page's motion: section transitions, the project showcase and the
 // skills strip. It renders nothing; without it the page is complete and static.
+// The code is fetched after hydration so it stays out of the initial bundle;
+// until it runs the page shows the static versions, which it only enhances.
 export function HomeEnhancer() {
   useEffect(() => {
-    const cleanups = [
-      setupSectionMotion(),
-      ...Array.from(document.querySelectorAll<HTMLElement>("[data-showcase]"), setupShowcase),
-      ...Array.from(document.querySelectorAll<HTMLElement>("[data-marquee]"), setupMarquee),
-    ];
+    let cleanup: (() => void) | undefined;
+    let stopped = false;
+    import("@/lib/public/home-motion")
+      .then(({ setupHome }) => {
+        if (!stopped) cleanup = setupHome();
+      })
+      .catch(() => {
+        // A failed chunk leaves the static page, which is complete.
+      });
     return () => {
-      for (const cleanup of cleanups) cleanup();
+      stopped = true;
+      cleanup?.();
     };
   }, []);
   return null;

@@ -21,9 +21,10 @@ await new Promise<void>((done) => api.listen(0, "localhost", done));
 const origin = `http://localhost:${(api.address() as AddressInfo).port}`;
 
 // Not spawnSync: the API above runs in this process and must keep answering.
-function build(apiBase: string): Promise<{ exit: number; output: string }> {
-  const env = { ...process.env, API_BASE_URL: apiBase };
+function build(apiBase: string, extra: Record<string, string> = {}): Promise<{ exit: number; output: string }> {
+  const env: NodeJS.ProcessEnv = { ...process.env, API_BASE_URL: apiBase, ...extra };
   Reflect.deleteProperty(env, "SKIP_SITE_FETCH");
+  if (!("SITE_ORIGIN" in extra)) Reflect.deleteProperty(env, "SITE_ORIGIN");
   return new Promise((done) => {
     const child = spawn("npm run build", { env, shell: true });
     let output = "";
@@ -48,6 +49,12 @@ const placeholder =
   (existsSync("out/desk.html") || existsSync("out/desk/index.html"));
 console.log(`nothing published: build exited ${empty.exit}${placeholder ? "" : ", no placeholder or /desk"}`);
 if (!placeholder) wrong.push("nothing published");
+
+// A Pages build must know the public address, or every canonical would be wrong.
+const noOrigin = await build(origin, { CF_PAGES: "1" });
+const named = /SITE_ORIGIN is not set/.test(noOrigin.output);
+console.log(`Pages build without SITE_ORIGIN: build exited ${noOrigin.exit}${named ? "" : ", for another reason"}`);
+if (noOrigin.exit === 0 || !named) wrong.push("Pages build without SITE_ORIGIN");
 
 const cases: [string, () => void, RegExp][] = [
   ["API answers 503", () => (answer = { status: 503, body: "{}" }), /answered 503/],

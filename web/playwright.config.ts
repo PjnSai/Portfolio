@@ -34,6 +34,7 @@ export default defineConfig({
         PORT: String(port),
         HOSTNAME: "localhost",
         API_BASE_URL: `http://localhost:${apiPort}`,
+        SITE_ORIGIN: `http://localhost:${port}`,
       },
       url: `http://localhost:${port}/`,
       reuseExistingServer: !process.env.CI,

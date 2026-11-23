@@ -32,7 +32,7 @@ export function Hero({ site, model }: { site: PublicSite; model: PageModel }) {
             {model.name}
           </h1>
           <p className="hero__role">{role || "TODO: role title"}</p>
-          {body ? <Markdown source={body} /> : <Placeholder>TODO: short summary</Placeholder>}
+          {body ? <Markdown source={body} headingLevel={2} /> : <Placeholder>TODO: short summary</Placeholder>}
           {projects || model.contact ? (
             <p className="hero__actions">
               {projects ? <Button href={`#${projects.anchor}`}>See projects</Button> : null}
@@ -135,7 +135,7 @@ function Timeline({ entries }: { entries: { key: string; title: string; place: s
               {entry.place}
               {entry.extra ? ` · ${entry.extra}` : ""}
             </p>
-            {entry.summary ? <Markdown source={entry.summary} /> : null}
+            {entry.summary ? <Markdown source={entry.summary} headingLevel={4} /> : null}
             {entry.tags ? <Tags tags={entry.tags} label={`Tags, ${entry.title}`} /> : null}
           </div>
         </li>

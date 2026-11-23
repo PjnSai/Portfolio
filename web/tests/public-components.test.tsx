@@ -52,6 +52,16 @@ describe("public components", () => {
     expect(nav).toContain('href="/#contact"');
   });
 
+  it("the footer links every footer page in its own labelled nav", () => {
+    const footer = html(<Footer name="N" hasProjects />);
+    expect(footer).toMatch(/^<footer class="footer">/);
+    expect(footer).toContain('<nav aria-label="Footer">');
+    for (const href of ["/projects", "/privacy", "/accessibility", "/security", "/how-this-site-is-built", "#top"]) {
+      expect(footer).toContain(`href="${href}"`);
+    }
+    expect(html(<Footer name="N" hasProjects={false} />)).not.toContain('href="/projects"');
+  });
+
   it("pager links are labelled with the section name", () => {
     const pager = html(<SectionPager sections={model.sections} />);
     expect(pager).toContain('aria-label="Sections"');

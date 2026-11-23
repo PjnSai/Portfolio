@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Button, Picture, Placeholder, Tags } from "@/components/public/bits";
+import { Button, JsonLd, Picture, Placeholder, Tags } from "@/components/public/bits";
 import { Markdown, safeHref } from "@/lib/markdown";
 import { accentFor, monthLabel, pageModel, STATUS_LABELS } from "@/lib/public/content";
+import { hiddenMetadata, projectData, projectMetadata } from "@/lib/public/meta";
 import { loadSite } from "@/lib/site";
 
 export const dynamicParams = false;
@@ -19,18 +20,19 @@ export async function generateStaticParams() {
 
 async function find(slug: string) {
   const site = await loadSite();
-  const project = pageModel(site).projects.find((entry) => entry.slug === slug);
-  return { site, project };
+  const model = pageModel(site);
+  const project = model.projects.find((entry) => entry.slug === slug);
+  return { site, model, project };
 }
 
 export async function generateMetadata({ params }: PageProps<"/projects/[slug]">): Promise<Metadata> {
-  const { project } = await find((await params).slug);
-  return project ? { title: project.data.title } : { robots: { index: false, follow: false } };
+  const { model, project } = await find((await params).slug);
+  return project ? projectMetadata(model, project) : hiddenMetadata(`Projects | ${model.name}`);
 }
 
 export default async function CaseStudy({ params }: PageProps<"/projects/[slug]">) {
   const slug = (await params).slug;
-  const { site, project } = await find(slug);
+  const { site, model, project } = await find(slug);
   if (!project && slug === NO_PROJECTS) {
     return (
       <div className="wrap page">
@@ -44,6 +46,7 @@ export default async function CaseStudy({ params }: PageProps<"/projects/[slug]"
   const links = data.links.filter((link) => safeHref(link.url));
   return (
     <article className="case">
+      <JsonLd data={projectData(model, project)} />
       <header className="case__header" data-accent={accentFor(data.colour)}>
         <div className="wrap">
           <p className="label">
@@ -51,7 +54,7 @@ export default async function CaseStudy({ params }: PageProps<"/projects/[slug]"
             {data.created ? ` / ${monthLabel(data.created)}` : ""}
           </p>
           <h1 tabIndex={-1}>{data.title}</h1>
-          {data.summary ? <Markdown source={data.summary} /> : null}
+          {data.summary ? <Markdown source={data.summary} headingLevel={2} /> : null}
           <Tags tags={data.tags} label="Built with" />
         </div>
       </header>

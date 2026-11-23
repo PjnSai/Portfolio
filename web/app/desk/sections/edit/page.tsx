@@ -31,7 +31,7 @@ type Detail = {
   privacy_warnings: Warning[];
 };
 
-type Item = { id: string; visible: boolean; label: string; data: ItemData };
+type Item = { id: string; visible: boolean; label: string; slug: string | null; data: ItemData };
 type Version = { version: number; created_at: string; title: string; items: number };
 
 async function fetchSection(id: string, versionPage: number) {
@@ -278,6 +278,11 @@ function ItemRow({
           <span className="font-mono text-xs uppercase text-muted">
             {item.visible ? "Shown" : "Hidden"}
           </span>
+          {item.slug ? (
+            <span className="block font-mono text-xs text-muted" data-testid="item-address">
+              Address: /projects/{item.slug} (kept if the title changes)
+            </span>
+          ) : null}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button aria-label={`Move ${item.label} up`} disabled={first} onClick={() => onMove(-1)}>

@@ -42,7 +42,8 @@ export type Education = {
 export type SkillGroup = { name: string; skills: string[] };
 export type Link = { label: string; url: string };
 
-export type Item<T> = { id: string; data: T };
+/** `slug` is stored by the API for a project when it is first published. */
+export type Item<T> = { id: string; slug?: string; data: T };
 
 /** A card colour from the admin, as the slot it is painted with. */
 export type Accent = "primary" | "1" | "2" | "3" | "4" | "ink";
@@ -123,6 +124,31 @@ export function uniqueSlugs(titles: readonly string[], taken: readonly string[] 
   });
 }
 
+const STORED_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Each project's address: the slug the API stored when it was first published,
+ * so a rename keeps the URL. A project without a usable stored slug (a site
+ * document from before slugs were stored) gets one from its title that no
+ * other project has. /projects/page/ holds the list pages, so "page" is never one.
+ */
+export function projectSlugs(items: readonly Item<Project>[]): ProjectEntry[] {
+  const taken = new Set(["page"]);
+  const stored = items.map((item) => {
+    const slug = typeof item.slug === "string" && STORED_SLUG.test(item.slug) ? item.slug : null;
+    if (!slug || taken.has(slug)) return null;
+    taken.add(slug);
+    return slug;
+  });
+  const missing = items.filter((_, index) => stored[index] === null);
+  const made = uniqueSlugs(
+    missing.map((item) => item.data.title),
+    [...taken],
+  );
+  let next = 0;
+  return items.map((item, index) => ({ ...item, slug: stored[index] ?? made[next++] }));
+}
+
 export function itemsOf<T>(section: SiteSection | undefined): Item<T>[] {
   const items = section?.items;
   return Array.isArray(items) ? (items as Item<T>[]) : [];
@@ -160,12 +186,7 @@ export function pageModel(site: PublicSite): PageModel {
   const projectItems = rest
     .filter((section) => section.type === "projects")
     .flatMap((section) => itemsOf<Project>(section));
-  // /projects/page/ holds the list pages, so no project may be called "page".
-  const slugs = uniqueSlugs(
-    projectItems.map((item) => item.data.title),
-    ["page"],
-  );
-  const projects = projectItems.map((item, index) => ({ ...item, slug: slugs[index] }));
+  const projects = projectSlugs(projectItems);
 
   const about = rest.find((section) => section.type === "about");
   const photo = about?.photo as ImageSlot | null | undefined;

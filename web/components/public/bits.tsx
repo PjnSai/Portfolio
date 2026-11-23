@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { apiOrigin } from "@/lib/api-base";
 import type { Accent, ImageSlot, Stat } from "@/lib/public/content";
 import type { SiteMedia } from "@/lib/site";
+import { jsonLd } from "@/lib/seo";
 import { srcset } from "@/lib/site";
 
 export function SkipLink() {
@@ -135,4 +136,10 @@ export function Picture({ slot, media, sizes, placeholder, eager = false }: Pict
       decoding="async"
     />
   );
+}
+
+/** Structured data for search engines. A data block, not a script: the
+    browser never runs it, so the page's script policy does not apply. */
+export function JsonLd({ data }: { data: unknown }) {
+  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(data) }} />;
 }

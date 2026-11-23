@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/clear-fetch-cache.ts && next build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/flatten-segments.ts && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/write-headers.ts",
+    "build": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/clear-fetch-cache.ts && next build && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/flatten-segments.ts && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/write-headers.ts && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/write-security-txt.ts",
     "start": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/serve-static.ts",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "e2e": "playwright test",
+    "test:matrix": "playwright test --config playwright.matrix.config.ts",
     "check:export": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-export.ts",
     "check:build-refuses": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-build-refuses.ts"
   },

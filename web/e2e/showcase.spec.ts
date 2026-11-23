@@ -223,6 +223,17 @@ test.describe("phone", () => {
     const deck = page.locator("[data-showcase-deck]");
     await expect.poll(() => deck.evaluate((el) => el.scrollLeft)).toBeGreaterThan(100);
   });
+
+  test("a second press during the smooth scroll counts from the target card", async ({ page }) => {
+    await home(page);
+    await expect(showcase(page)).toHaveAttribute("data-mode", "flat");
+    await settle(page);
+    await page.getByRole("button", { name: "Next project" }).tap();
+    await page.getByRole("button", { name: "Previous project" }).tap();
+    await expect(counter(page)).toHaveText("01 / 08");
+    await page.waitForTimeout(1200);
+    await expect(counter(page)).toHaveText("01 / 08");
+  });
 });
 
 test.describe("reduced motion", () => {
@@ -400,8 +411,8 @@ test("pagination: canonical links, keyboard use and pages past the end", async (
   const missing = await request.get("/projects/page/3");
   expect(missing.status()).toBe(404);
   await page.goto("/projects/page/3");
-  await expect(page.getByText("If it was a page of projects, that page does not exist.")).toBeVisible();
-  await expect(page.getByRole("link", { name: "See the list of projects" })).toHaveAttribute("href", "/projects");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Page not found");
+  await expect(page.getByRole("main").getByRole("link", { name: "See all projects" })).toHaveAttribute("href", "/projects");
 });
 
 for (const scheme of ["light", "dark"] as const) {

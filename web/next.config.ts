@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 import { apiOrigin } from "./lib/api-base";
+import { siteOrigin } from "./lib/seo";
+
+// Fails the build at once, with the reason, if SITE_ORIGIN is missing on Pages
+// or is not a plain origin.
+siteOrigin(process.env);
 
 // A static export for Cloudflare Pages: no server, no middleware, no route
 // handlers. scripts/check-export.ts fails the build if any server output appears.

@@ -120,10 +120,12 @@ test.describe("desktop", () => {
 });
 
 for (const width of [760, 999]) {
-  test(`no section pager at ${width} px`, async ({ page }) => {
+  test(`the section pager is a dot rail at ${width} px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
-    await expect(pager(page)).toBeHidden();
+    await expect(pager(page)).toBeVisible();
+    await expect(pager(page)).toHaveAttribute("class", "pager");
+    expect((await pager(page).getByRole("link").first().boundingBox())?.width).toBe(44);
   });
 }
 
@@ -171,9 +173,9 @@ test.describe("phone", () => {
     await expect(burger(page)).toHaveAttribute("aria-expanded", "false");
   });
 
-  test("no pager and the hero stacks with the photo below the text", async ({ page }) => {
+  test("a dot rail, and the hero stacks with the photo below the text", async ({ page }) => {
     await page.goto("/");
-    await expect(pager(page)).toBeHidden();
+    await expect(pager(page).getByRole("link", { name: "Go to Projects" })).toBeVisible();
     const name = await page.locator("h1").boundingBox();
     const photo = await page.locator(".portrait").boundingBox();
     expect(photo!.y).toBeGreaterThan(name!.y + name!.height);
@@ -192,13 +194,17 @@ test("without JavaScript the nav links show on a phone and no burger appears", a
   await context.close();
 });
 
-test("scroll snapping is off when the viewport is under 500 px tall", async ({ page }) => {
+test("scroll snapping is off under 500 px tall and until the visitor scrolls", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 480 });
   await page.goto("/");
   const snap = () => page.evaluate(() => getComputedStyle(document.documentElement).scrollSnapType);
   expect(await snap()).toBe("none");
   await page.setViewportSize({ width: 1280, height: 800 });
-  expect(await snap()).toMatch(/^y( proximity)?$/);
+  // Snapping starts with the first scroll input, once the layout has settled.
+  expect(await snap()).toBe("none");
+  await page.mouse.move(600, 400);
+  await page.mouse.wheel(0, 40);
+  await expect.poll(snap).toMatch(/^y( proximity)?$/);
 });
 
 for (const width of [320, 360, 390, 768, 1024, 1280, 1920]) {
@@ -232,7 +238,30 @@ test("/projects lists the first six projects and links to each case study", asyn
   await expect(page.getByRole("heading", { level: 3, name: "Problem" })).toBeVisible();
 });
 
-for (const path of ["/", "/projects", "/projects/task-board"]) {
+test("a project keeps the address it was first published under", async ({ page, request }) => {
+  await page.goto("/projects");
+  await page.getByRole("link", { name: "Seeded project 3" }).click();
+  await expect(page).toHaveURL(/\/projects\/first-seeded-project$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Seeded project 3");
+  expect((await request.get("/projects/seeded-project-3")).status()).toBe(404);
+});
+
+test("a case study with deep headings never skips a level", async ({ page }) => {
+  await page.goto("/projects/log-parser");
+  const levels = await page
+    .locator("main")
+    .evaluate((main) => Array.from(main.querySelectorAll("h1, h2, h3, h4, h5, h6"), (h) => Number(h.tagName[1])));
+  expect(levels[0]).toBe(1);
+  for (let i = 1; i < levels.length; i += 1) expect(levels[i], `heading ${i}`).toBeLessThanOrEqual(levels[i - 1] + 1);
+  await expect(page.getByRole("heading", { level: 3, name: "Approach" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 4, name: "Parsing" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 5, name: "Edge cases" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "Outcome" })).toBeVisible();
+  const order = await new AxeBuilder({ page }).withRules(["heading-order", "page-has-heading-one"]).analyze();
+  expect(order.violations.map((v) => v.id)).toEqual([]);
+});
+
+for (const path of ["/", "/projects", "/projects/task-board", "/projects/log-parser"]) {
   for (const scheme of ["light", "dark"] as const) {
     test(`axe finds nothing on ${path} (${scheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });
@@ -264,3 +293,88 @@ for (const viewport of [PHONE, DESKTOP]) {
     });
   }
 }
+
+test.describe("search engines", () => {
+  const ORIGIN = "http://localhost:3100";
+
+  test("the sitemap lists the pages open to search and nothing else", async ({ request }) => {
+    const response = await request.get("/sitemap.xml");
+    expect(response.status()).toBe(200);
+    const locs = [...(await response.text()).matchAll(/<loc>([^<]*)<\/loc>/g)].map((m) => m[1]);
+    expect(locs).toEqual(
+      expect.arrayContaining([`${ORIGIN}/`, `${ORIGIN}/projects`, `${ORIGIN}/projects/page/2`, `${ORIGIN}/projects/first-seeded-project`]),
+    );
+    expect(locs.every((loc) => loc.startsWith(`${ORIGIN}/`))).toBe(true);
+    expect(
+      locs.some(
+        (loc) =>
+          loc.includes("/desk") ||
+          loc.includes("404") ||
+          loc.includes("/projects/page/3") ||
+          loc.endsWith("seeded-project-3"),
+      ),
+    ).toBe(false);
+  });
+
+  test("robots.txt names the sitemap and turns away AI crawlers only", async ({ request }) => {
+    const text = await (await request.get("/robots.txt")).text();
+    expect(text).toContain(`Sitemap: ${ORIGIN}/sitemap.xml`);
+    expect(text).toMatch(/User-Agent: GPTBot[\s\S]*Disallow: \//);
+    expect(text).toMatch(/User-Agent: \*\nAllow: \//);
+  });
+
+  for (const path of ["/", "/projects", "/projects/page/2", "/projects/task-board"]) {
+    test(`${path} has one absolute canonical on this site and preview tags`, async ({ page }) => {
+      await page.goto(path);
+      const canonical = page.locator('link[rel="canonical"]');
+      await expect(canonical).toHaveCount(1);
+      // Next writes the home address without its final slash; both name the same URL.
+      const url = path === "/" ? new RegExp(`^${ORIGIN}/?$`) : `${ORIGIN}${path}`;
+      await expect(canonical).toHaveAttribute("href", url);
+      await expect(page.locator('meta[name="description"]')).toHaveCount(1);
+      await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", url);
+      await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", `${ORIGIN}/og-default.png`);
+      await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+    });
+  }
+
+  test("the preview image is served", async ({ request }) => {
+    const response = await request.get("/og-default.png");
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toBe("image/png");
+  });
+
+  test("/desk stays out of search and is never stored", async ({ request }) => {
+    const response = await request.get("/desk");
+    expect(response.headers()["x-robots-tag"]).toContain("noindex");
+    expect(response.headers()["cache-control"]).toContain("no-store");
+    expect(await response.text()).not.toContain('rel="canonical"');
+  });
+});
+
+test.describe("the nav never covers what it points at", () => {
+  for (const width of [390, 768, 1024]) {
+    test(`at ${width} px the page stays where it loads`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/");
+      await expect(page.locator("[data-nav]")).toHaveAttribute("data-enhanced", "true");
+      const before = await page.locator("[data-nav]").boundingBox();
+      await page.waitForTimeout(1200);
+      expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(0);
+      expect((await page.locator("[data-nav]").boundingBox())?.height).toBe(before?.height);
+    });
+
+    test(`at ${width} px a jump from another page lands below the nav`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/#projects");
+      await expect(page.locator("[data-nav]")).toHaveAttribute("data-enhanced", "true");
+      await expect
+        .poll(async () => {
+          const nav = await page.locator("[data-nav]").boundingBox();
+          const heading = await page.getByRole("heading", { level: 2, name: "Selected work" }).boundingBox();
+          return nav && heading ? heading.y - (nav.y + nav.height) : -1;
+        })
+        .toBeGreaterThanOrEqual(0);
+    });
+  }
+});

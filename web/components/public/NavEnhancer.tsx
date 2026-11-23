@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
+import { currentSection, nextStep } from "@/lib/public/sections";
 
 const MOBILE = "(max-width: 759.98px)";
+/** Input that can scroll the page: the first one turns scroll snapping on. */
+const SNAP_TRIGGERS = ["wheel", "touchstart", "keydown"] as const;
 
 /** The heading to focus for a jump target: the target itself or its first heading. */
 function focusable(target: HTMLElement): HTMLElement {
@@ -22,6 +25,25 @@ export function NavEnhancer() {
     nav.dataset.enhanced = "true";
 
     const isOpen = () => burger.getAttribute("aria-expanded") === "true";
+
+    // The nav's real height for the stylesheet's scroll margins (a CSSOM
+    // write, which the policy allows; no style attribute is written). Not
+    // while the menu is open: it is taller then only for the moment.
+    const root = document.documentElement;
+    const measure = () => {
+      if (!isOpen()) root.style.setProperty("--nav-measured", `${Math.ceil(nav.getBoundingClientRect().height)}px`);
+    };
+    measure();
+    // A page opened at a #fragment was scrolled before the nav was measured.
+    const landed = window.location.hash ? document.getElementById(decodeURIComponent(window.location.hash.slice(1))) : null;
+    landed?.scrollIntoView({ behavior: "instant", block: "start" });
+    const resize = "ResizeObserver" in window ? new ResizeObserver(measure) : null;
+    resize?.observe(nav);
+    const startSnap = () => {
+      root.dataset.snap = "true";
+      for (const type of SNAP_TRIGGERS) window.removeEventListener(type, startSnap);
+    };
+    for (const type of SNAP_TRIGGERS) window.addEventListener(type, startSnap, { passive: true });
     const setOpen = (open: boolean) => {
       burger.setAttribute("aria-expanded", String(open));
       nav.dataset.open = String(open);
@@ -60,24 +82,66 @@ export function NavEnhancer() {
     const links = Array.from(document.querySelectorAll<HTMLAnchorElement>("[data-nav-link]"));
     const sections = Array.from(document.querySelectorAll<HTMLElement>("[data-section]"));
     const inView = new Map<string, boolean>();
+
+    // The pager's Next section button: the section after the current one,
+    // or back to the top from the last. It moves focus as the links do.
+    const next = document.querySelector<HTMLButtonElement>("[data-pager-next]");
+    const nextLabel = next?.querySelector<HTMLElement>("[data-pager-next-label]");
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let marked = -1;
+    let jumped: { index: number; until: number } | null = null;
+    const atBottom = () => window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+    const step = () => {
+      const recent = jumped && performance.now() < jumped.until ? jumped.index : null;
+      return nextStep(sections.length, currentSection(sections.length, marked, atBottom(), recent));
+    };
+    // aria-current on the nav and pager links: the section in view, or the
+    // last one at the bottom of the page, where it may never reach the band.
+    const paint = () => {
+      const current = sections[currentSection(sections.length, marked, atBottom(), null)]?.id;
+      for (const link of links) {
+        if (current && link.hash === `#${current}`) link.setAttribute("aria-current", "location");
+        else link.removeAttribute("aria-current");
+      }
+      paintNext();
+    };
+    const paintNext = () => {
+      if (!next || !nextLabel) return;
+      const found = step();
+      next.hidden = found === null;
+      nextLabel.textContent = found?.kind === "top" ? "Back to top" : "Next section";
+      next.dataset.direction = found?.kind === "top" ? "up" : "down";
+    };
+    const onNext = () => {
+      const found = step();
+      const target = found?.kind === "section" ? sections[found.index] : document.getElementById("top");
+      if (!found || !target) return;
+      jumped = { index: found.kind === "section" ? found.index : -1, until: performance.now() + 1500 };
+      target.scrollIntoView({ behavior: reduce.matches ? "instant" : "smooth", block: "start" });
+      history.pushState(history.state, "", `#${target.id}`);
+      focusable(target).focus({ preventScroll: true });
+      paintNext();
+    };
+    let frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(paint);
+    };
     const observer =
       "IntersectionObserver" in window && sections.length > 0
         ? new IntersectionObserver(
             (entries) => {
               for (const entry of entries) inView.set(entry.target.id, entry.isIntersecting);
-              const current = sections.find((section) => inView.get(section.id))?.id;
-              for (const link of links) {
-                if (current && link.hash === `#${current}`) {
-                  link.setAttribute("aria-current", "location");
-                } else {
-                  link.removeAttribute("aria-current");
-                }
-              }
+              marked = sections.findIndex((section) => inView.get(section.id));
+              paint();
             },
             { rootMargin: "-30% 0px -60% 0px" },
           )
         : null;
     for (const section of sections) observer?.observe(section);
+    paint();
+    next?.addEventListener("click", onNext);
+    window.addEventListener("scroll", onScroll, { passive: true });
 
     burger.addEventListener("click", onBurger);
     document.addEventListener("keydown", onKey);
@@ -91,6 +155,14 @@ export function NavEnhancer() {
       document.removeEventListener("click", onClick);
       mobile.removeEventListener("change", onResize);
       observer?.disconnect();
+      next?.removeEventListener("click", onNext);
+      window.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+      if (next) next.hidden = true;
+      resize?.disconnect();
+      root.style.removeProperty("--nav-measured");
+      for (const type of SNAP_TRIGGERS) window.removeEventListener(type, startSnap);
+      delete root.dataset.snap;
       delete nav.dataset.enhanced;
     };
   }, []);
