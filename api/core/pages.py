@@ -18,13 +18,13 @@ def requested_page(params, allowed=()):
     return int(raw)
 
 
-def page_of(rows, number, describe):
+def page_of(rows, number, describe, size=PAGE_SIZE):
     """One page of a queryset or list, with the totals the admin needs."""
     count = len(rows) if isinstance(rows, list) else rows.count()
-    start = (number - 1) * PAGE_SIZE
+    start = (number - 1) * size
     return {
-        "results": [describe(row) for row in rows[start : start + PAGE_SIZE]],
+        "results": [describe(row) for row in rows[start : start + size]],
         "page": number,
-        "pages": max(1, -(-count // PAGE_SIZE)),
+        "pages": max(1, -(-count // size)),
         "count": count,
     }

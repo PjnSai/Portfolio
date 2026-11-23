@@ -388,6 +388,34 @@ class Settings(PaletteChoice):
     social_image = ImageSlot(required=False, allow_null=True)
 
 
+class InboxStatus(Strict):
+    status = serializers.ChoiceField(
+        choices=["new", "read", "replied", "archived", "spam"]
+    )
+
+
+class InboxNote(Strict):
+    text = Text(multiline=True, trim_whitespace=True, max_length=2000)
+
+
+class InboxResponse(Strict):
+    text = Text(
+        multiline=True,
+        trim_whitespace=True,
+        max_length=2000,
+        required=False,
+        allow_blank=True,
+    )
+
+
+class InboxKeep(Strict):
+    kept = Flag()
+
+
+class Nothing(Strict):
+    """A request that takes no fields."""
+
+
 def as_json(value):
     """Validated data as plain dicts and lists, ready for a JSON column."""
     if isinstance(value, dict):
