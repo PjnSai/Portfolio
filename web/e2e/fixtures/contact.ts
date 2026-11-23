@@ -28,15 +28,6 @@ export function formHeaders(address: string) {
   };
 }
 
-/** The signed form-start token, as the form fetches it when it opens. */
-export async function startForm(request: APIRequestContext, address: string) {
-  const response = await request.get(`${API}/api/v1/contact/start`, {
-    headers: { "Cf-Connecting-Ip": address },
-  });
-  if (!response.ok()) throw new Error(`start: ${response.status()}`);
-  return ((await response.json()) as { started: string }).started;
-}
-
 export type Sent = {
   name: string;
   email: string;
@@ -46,18 +37,17 @@ export type Sent = {
 };
 
 /**
- * Send a message through the real public route. `started` must be a form token
- * at least three seconds old, or the message is quarantined as too fast.
+ * Send a message through the real public route. The form is taken to have been
+ * open for five seconds; under three would be quarantined as too fast.
  */
 export async function sendMessage(
   request: APIRequestContext,
-  started: string,
   message: Sent,
   address = nextAddress(),
 ) {
   const response = await request.post(`${API}/api/v1/contact`, {
     headers: formHeaders(address),
-    data: { website: "", ...message, started, turnstile: turnstileToken() },
+    data: { website: "", ...message, elapsed: 5000, turnstile: turnstileToken() },
   });
   return {
     status: response.status(),

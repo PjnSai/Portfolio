@@ -55,7 +55,7 @@ LINE_BREAKS = re.compile(
 )
 EMAIL_BAD = re.compile(r'[\s"<>,;()\[\]\\]')
 LINKS = re.compile(r"https?://|www\.", re.IGNORECASE)
-DIGITS = re.compile(r"[0-9]{1,12}")
+ELAPSED_MAX_MS = 7 * 24 * 3600 * 1000
 
 
 def now():
@@ -80,35 +80,19 @@ def _body_hash(body):
     return _sign("contact-body", " ".join(body.lower().split()))
 
 
-# The signed tokens
+# How long the form was open
 
 
-def form_token(started):
-    """Signed time the form was opened, so the server can tell a person from a
-    script that posts at once. The server keeps nothing for it."""
-    stamp = str(int(started))
-    return f"{stamp}.{_sign('contact-form', stamp)}"
-
-
-def seconds_open(token):
-    """Seconds since the form was opened, or None if the token is not ours,
-    is from the future or is older than the form may stay open."""
-    if not isinstance(token, str):
-        return None
-    stamp, _, signature = token.partition(".")
-    if not DIGITS.fullmatch(stamp) or not hmac.compare_digest(
-        signature, _sign("contact-form", stamp)
-    ):
-        return None
-    elapsed = now() - int(stamp)
-    if elapsed < -5 or elapsed > settings.CONTACT_FORM_TOKEN_SECONDS:
-        return None
-    return max(0, elapsed)
-
-
-def start():
-    """The signed form-start token, fetched when the form is opened."""
-    return {"started": form_token(now())}
+def seconds_open(elapsed):
+    """Seconds the visitor's page says the form was open, or 0 if it says
+    nothing usable. It comes from the visitor's own browser, so it only catches
+    a script that posts at once and does not try to hide it; Turnstile is the
+    real check. A whole number of milliseconds, not a boolean, up to a week."""
+    if isinstance(elapsed, bool) or not isinstance(elapsed, int):
+        return 0
+    if not 0 <= elapsed <= ELAPSED_MAX_MS:
+        return 0
+    return elapsed / 1000
 
 
 # Cleaning
@@ -189,14 +173,6 @@ def _over(bucket, seconds, limit):
     window, left = _window(seconds)
     if ratelimit.hit(f"contact:{bucket}:{window}", seconds) > limit:
         raise Limited(left)
-
-
-def count_start(address):
-    _over(
-        f"starts:{address_hash(address)}",
-        HOUR,
-        settings.CONTACT_STARTS_PER_HOUR,
-    )
 
 
 def count_attempt(address):

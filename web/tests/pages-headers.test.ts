@@ -10,6 +10,7 @@ import {
   buildRules,
   GROUP_AT,
   groupPages,
+  hasContactForm,
   headersFor,
   MAX_LINE,
   MAX_RULES,
@@ -180,5 +181,51 @@ describe("reading _headers", () => {
     expect(headersFor(rules, "/desk/x").get("x-test")).toBe("a");
     expect(headersFor(rules, "/desktop").get("x-test")).toBeNull();
     expect(headersFor(rules, "/a/desk/x").get("x-test")).toBeNull();
+  });
+});
+
+describe("the contact form's policy in _headers", () => {
+  const ORIGIN = "https://challenges.cloudflare.com";
+  const withForm = { route: "/", html: `${home.html}<div data-contact-form></div>` };
+  const policyOf = (pages: (typeof home)[], path: string) =>
+    headersFor(parseRules(writeRules(buildRules(pages, notFound, API))), path).get(
+      "content-security-policy",
+    ) ?? "";
+
+  it("is for the home page, and only when the page was built with the form", () => {
+    expect(hasContactForm(withForm)).toBe(true);
+    expect(hasContactForm(home)).toBe(false);
+    expect(hasContactForm({ route: "/privacy", html: withForm.html })).toBe(false);
+    expect(hasContactForm({ route: "/projects/a", html: withForm.html })).toBe(false);
+  });
+
+  it("gives the home page Turnstile's origins and the API, and no other page", () => {
+    const policy = policyOf([withForm, desk], "/");
+    expect(policy).toContain(` ${ORIGIN}`);
+    expect(policy).toContain(`frame-src ${ORIGIN}`);
+    expect(policy).toContain(`connect-src 'self' ${API}`);
+    for (const path of ["/desk/media", "/privacy", "/projects", "/nothing-here"]) {
+      const other = policyOf([withForm, desk], path);
+      expect(other, path).not.toContain(ORIGIN);
+      expect(other, path).not.toContain("frame-src");
+    }
+    // Public pages other than home keep a connect-src of the site alone.
+    for (const path of ["/privacy", "/projects", "/nothing-here"]) {
+      expect(policyOf([withForm, desk], path), path).toContain("connect-src 'self';");
+    }
+  });
+
+  it("leaves every policy as it was when the page has no form", () => {
+    for (const path of ["/", "/desk/media", "/other"]) {
+      expect(policyOf([home, desk], path)).not.toContain(ORIGIN);
+    }
+  });
+
+  it("does not change the default policy that unknown paths and the 404 page get", () => {
+    const rules = buildRules([withForm, desk], notFound, API);
+    const fallback = rules[0].set.find(([name]) => name === "Content-Security-Policy")?.[1] ?? "";
+    expect(fallback).not.toContain(ORIGIN);
+    expect(fallback).not.toContain("frame-src");
+    expect(policyOf([home, desk], "/missing")).toBe(policyOf([withForm, desk], "/missing"));
   });
 });

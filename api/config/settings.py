@@ -117,9 +117,7 @@ CONTACT_SPAM_THRESHOLD = 100
 CONTACT_PER_ADDRESS_PER_HOUR = 5
 CONTACT_PER_EMAIL_PER_DAY = 3
 CONTACT_DAILY_CAP = 25
-CONTACT_STARTS_PER_HOUR = 30
 CONTACT_MIN_SECONDS = 3
-CONTACT_FORM_TOKEN_SECONDS = 6 * 3600
 CONTACT_MAX_LINKS = 2
 # Cloudflare Turnstile (core.turnstile). With no secret key the form is
 # refused (503), never open: production must set it. Development and tests use

@@ -20,7 +20,6 @@ from tests.turnstile import PASSES
 pytestmark = pytest.mark.django_db
 
 URL = "/api/v1/contact"
-START = "/api/v1/contact/start"
 SENT = {"detail": "Thank you. Your message has been received."}
 
 NAME = "Sam Recruiter"
@@ -32,12 +31,6 @@ _counter = iter(range(1, 10**6))
 def visitor():
     # The route takes no cookie, so there is no CSRF token to check.
     return Client(enforce_csrf_checks=True)
-
-
-def start(client, ip=ADDRESS):
-    response = client.get(START, secure=True, headers={"Cf-Connecting-Ip": ip})
-    assert response.status_code == 200, response.content
-    return response.json()
 
 
 def token():
@@ -54,7 +47,7 @@ def good(client=None, ip=ADDRESS, age=30, **overrides):
         "email": f"sam{n}@example.com",
         "body": f"{BODY} Reference {n}.",
         "website": "",
-        "started": contact.form_token(contact.now() - age),
+        "elapsed": int(age * 1000),
         "turnstile": token(),
     }
     body.update(overrides)
@@ -99,55 +92,13 @@ def database_down(monkeypatch):
     monkeypatch.setattr(ContactMessage, "save", down)
 
 
-# The form-start token
+# Turnstile's stand-in is reset for every test
 
 
 @pytest.fixture(autouse=True)
 def fresh_stand_in():
     fake.spent.clear()
     fake.asked.clear()
-
-
-def test_the_start_token_is_json_and_never_cached():
-    response = visitor().get(START, secure=True)
-
-    body = response.json()
-    assert response.status_code == 200
-    assert response["Cache-Control"] == "no-store"
-    assert set(body) == {"started"}
-    assert contact.seconds_open(body["started"]) is not None
-    assert contact.seconds_open(body["started"]) < 3
-
-
-def test_the_start_route_only_answers_get():
-    response = visitor().post(
-        START,
-        "{}",
-        content_type="application/json",
-        secure=True,
-        headers={"Origin": ORIGIN, "Sec-Fetch-Site": "same-site"},
-    )
-
-    assert response.status_code == 405
-
-
-def test_start_requests_are_limited_per_address(settings):
-    settings.CONTACT_STARTS_PER_HOUR = 3
-    client = visitor()
-    for _ in range(3):
-        start(client)
-
-    response = client.get(START, secure=True, headers={"Cf-Connecting-Ip": ADDRESS})
-
-    assert response.status_code == 429
-    assert "Retry-After" in response
-    assert start(client, ip="203.0.113.8")["started"]
-
-
-def test_the_start_route_fails_closed_without_redis(monkeypatch):
-    redis_down(monkeypatch)
-
-    assert visitor().get(START, secure=True).status_code == 503
 
 
 # A good message
@@ -620,19 +571,52 @@ def test_a_missing_secret_key_fails_closed_with_the_real_check(settings):
     assert stored() == []
 
 
-@pytest.mark.parametrize("started", ["", "x", "1.2", None, "9999999999." + "0" * 64])
-def test_a_bad_form_token_gets_the_same_error_as_a_bad_turnstile_token(started):
-    assert_bad_challenge(submit(started=started))
-    # Cloudflare is not asked about a form that was not ours.
-    assert fake.asked == []
+def test_there_is_no_route_to_fetch_a_form_token():
+    for path in ("/api/v1/contact/start", "/api/v1/contact/challenge"):
+        assert visitor().get(path, secure=True).status_code == 404
 
 
-def test_an_old_form_token_is_refused():
-    assert_bad_challenge(submit(age=7 * 3600))
+def test_the_old_started_field_is_refused_like_any_unknown_field():
+    client = visitor()
+    body = good(client, started="123.abc")
+
+    assert send(client, body).status_code == 400
 
 
-def test_a_form_token_from_the_future_is_refused():
-    assert_bad_challenge(submit(age=-3600))
+@pytest.mark.parametrize(
+    "elapsed",
+    [None, True, False, "5000", 5000.5, -1, -5000, 7 * 24 * 3600 * 1000 + 1, [5000]],
+)
+def test_a_missing_or_unusable_time_counts_as_a_rushed_form(elapsed):
+    reference = reference_success()
+
+    response = submit(elapsed=elapsed)
+
+    assert_quarantined(response, reference)
+    assert stored()[-1].spam_score == 100
+
+
+def test_a_form_with_no_time_field_at_all_is_a_rushed_form():
+    reference = reference_success()
+    client = visitor()
+    body = good(client)
+    del body["elapsed"]
+
+    assert_quarantined(send(client, body), reference)
+
+
+@pytest.mark.parametrize("milliseconds", [0, 1, 2999])
+def test_under_three_seconds_is_rushed(milliseconds):
+    submit(elapsed=milliseconds)
+
+    assert stored()[0].status == "spam"
+
+
+@pytest.mark.parametrize("milliseconds", [3000, 3001, 60_000, 7 * 24 * 3600 * 1000])
+def test_three_seconds_or_more_is_fine(milliseconds):
+    submit(elapsed=milliseconds)
+
+    assert stored()[0].status == "new"
 
 
 def test_the_bad_challenge_error_does_not_say_what_else_failed():

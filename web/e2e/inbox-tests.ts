@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
-import { sendMessage, startForm } from "./fixtures/contact";
+import { sendMessage } from "./fixtures/contact";
 
 // The inbox steps of the admin suite. They run inside admin.spec.ts, after the
 // owner has signed in, because that spec holds the one passkey and its session.
@@ -41,12 +41,18 @@ function email(name: string) {
   return `${name.split(" ")[0].toLowerCase()}.${run}@example.com`;
 }
 
+// This run's messages only: the public form tests send real messages to the
+// same inbox, at the same time, so the page is always looked at through the
+// search for this run's tag (the folder links keep it) and counts are asked of
+// the API with the same search.
+const LIST = `/desk/messages?q=${run}`;
+
 async function folderCount(page: Page, folder: string) {
-  const link = page
-    .getByRole("navigation", { name: "Message folders" })
-    .getByRole("link", { name: new RegExp(`^${folder}`) });
-  await expect(link).toHaveText(/\d/);
-  return Number((await link.innerText()).replace(/\D/g, ""));
+  const status = folder === "Inbox" ? "" : `&status=${folder.toLowerCase()}`;
+  return page.evaluate(async (url) => {
+    const response = await fetch(url, { credentials: "include" });
+    return ((await response.json()) as { count: number }).count;
+  }, `http://localhost:8100/api/v1/admin/messages?q=${run}${status}`);
 }
 
 async function noHorizontalScroll(page: Page, width: number) {
@@ -62,14 +68,10 @@ export function inboxTests(getPage: () => Page) {
     test("messages sent from the site reach the inbox, and quarantine looks the same to the sender", async ({
       request,
     }) => {
-      const started = await startForm(request, "203.0.113.200");
-      // The form must have been open for three seconds, or it counts as a bot.
-      await new Promise((done) => setTimeout(done, 3200));
-
       const answers = [];
       for (const person of PEOPLE) {
         answers.push(
-          await sendMessage(request, started, {
+          await sendMessage(request, {
             ...person,
             body: `${person.body} (${run})`,
             email: email(person.name),
@@ -78,7 +80,7 @@ export function inboxTests(getPage: () => Page) {
       }
       for (const person of SPAMMERS) {
         answers.push(
-          await sendMessage(request, started, {
+          await sendMessage(request, {
             ...person,
             body: `${person.body} (${run})`,
             email: email(person.name),
@@ -94,7 +96,7 @@ export function inboxTests(getPage: () => Page) {
     test("the list shows the messages newest first, with a count on each folder", async () => {
       const page = getPage();
       await page.setViewportSize({ width: 1280, height: 800 });
-      await page.goto("/desk/messages");
+      await page.goto(LIST);
 
       await expect(
         page.getByRole("heading", { level: 1, name: "Messages" }),
@@ -119,7 +121,7 @@ export function inboxTests(getPage: () => Page) {
 
     test("opening a message shows it, marks it read and puts focus on its heading", async () => {
       const page = getPage();
-      await page.goto("/desk/messages");
+      await page.goto(LIST);
       await page.getByRole("link", { name: "Alice Archer" }).click();
 
       const heading = page.getByRole("heading", {
@@ -144,7 +146,7 @@ export function inboxTests(getPage: () => Page) {
 
     test("a note is added, announced and kept in order; an empty note is refused", async () => {
       const page = getPage();
-      await page.goto("/desk/messages");
+      await page.goto(LIST);
       await page.getByRole("link", { name: "Alice Archer" }).click();
       await expect(
         page.getByRole("heading", { name: "Message from Alice Archer" }),
@@ -181,7 +183,7 @@ export function inboxTests(getPage: () => Page) {
 
     test("logging a response adds a note of its own kind and marks the message replied", async () => {
       const page = getPage();
-      await page.goto("/desk/messages");
+      await page.goto(LIST);
       await page.getByRole("link", { name: "Bruno Baker" }).click();
       await expect(
         page.getByRole("heading", { name: "Message from Bruno Baker" }),
@@ -209,7 +211,7 @@ export function inboxTests(getPage: () => Page) {
 
     test("keep is a toggle with a clear state", async () => {
       const page = getPage();
-      await page.goto("/desk/messages");
+      await page.goto(LIST);
       await page.getByRole("link", { name: "Chen Cole" }).click();
       const keep = page.getByRole("button", { name: "Keep this message" });
       await expect(keep).toHaveAttribute("aria-pressed", "false");
@@ -226,7 +228,7 @@ export function inboxTests(getPage: () => Page) {
 
     test("deleting asks first, needs the passkey, waits 24 hours and can be cancelled", async () => {
       const page = getPage();
-      await page.goto("/desk/messages");
+      await page.goto(LIST);
       await page.getByRole("link", { name: "Bruno Baker" }).click();
       await expect(
         page.getByRole("heading", { name: "Message from Bruno Baker" }),
@@ -291,13 +293,13 @@ export function inboxTests(getPage: () => Page) {
 
       await page.goto("/desk/pending");
       await expect(page.getByText("Nothing is waiting.")).toBeVisible();
-      await page.goto("/desk/messages");
+      await page.goto(LIST);
       await expect(page.getByTestId("message-row")).toHaveCount(3);
     });
 
     test("search and the reason and date filters narrow the list and keep the folder counts", async () => {
       const page = getPage();
-      await page.goto("/desk/messages");
+      await page.goto(LIST);
       const rows = page.getByTestId("message-row");
       await expect(rows).toHaveCount(3);
       // Every row says the address is unverified, and shows a spam score and a reason.
@@ -317,7 +319,8 @@ export function inboxTests(getPage: () => Page) {
       await expect(page).toHaveURL(/q=graduate\+role/);
       expect(await folderCount(page, "Inbox")).toBe(3);
 
-      await search.getByRole("button", { name: "Clear filters" }).click();
+      await search.getByLabel("Search name, email or message").fill(run);
+      await search.getByRole("button", { name: "Apply" }).click();
       await expect(rows).toHaveCount(3);
 
       await search.getByLabel("Reason").selectOption("project");
@@ -344,13 +347,22 @@ export function inboxTests(getPage: () => Page) {
       await expect(
         page.getByText("The first day must not be after the last day."),
       ).toBeVisible();
-      await search.getByRole("button", { name: "Clear filters" }).click();
+      await search.getByLabel("Received from").fill("");
+      await search.getByLabel("Received to").fill("");
+      await search.getByRole("button", { name: "Apply" }).click();
       await expect(rows).toHaveCount(3);
+
+      // Clear filters takes every filter out of the address.
+      await search.getByRole("button", { name: "Clear filters" }).click();
+      await expect(page).not.toHaveURL(/q=/);
+      await expect(
+        page.getByRole("button", { name: "Clear filters" }),
+      ).toHaveCount(0);
     });
 
     test("the spam tab lists held-back messages, and Not spam moves one to the inbox", async () => {
       const page = getPage();
-      await page.goto("/desk/messages");
+      await page.goto(LIST);
       await page.getByRole("link", { name: /^Spam/ }).click();
 
       await expect(page).toHaveURL(/status=spam/);
@@ -388,7 +400,7 @@ export function inboxTests(getPage: () => Page) {
 
       await page.getByRole("link", { name: /^Back to/ }).click();
       await expect(page.getByTestId("message-row")).toHaveCount(1);
-      await page.goto("/desk/messages");
+      await page.goto(LIST);
       expect(await folderCount(page, "Inbox")).toBe(4);
       expect(await folderCount(page, "Spam")).toBe(1);
     });
@@ -433,7 +445,7 @@ export function inboxTests(getPage: () => Page) {
     test("the inbox pages have no accessibility violations at 390 and 1280 px, light and dark", async () => {
       const page = getPage();
       const detailUrl = async () => {
-        await page.goto("/desk/messages");
+        await page.goto(LIST);
         await page.getByRole("link", { name: "Alice Archer" }).click();
         await expect(
           page.getByRole("heading", { name: "Message from Alice Archer" }),
@@ -445,7 +457,7 @@ export function inboxTests(getPage: () => Page) {
           await page.emulateMedia({ colorScheme: scheme });
           const label = `${width}px ${scheme}`;
 
-          await page.goto("/desk/messages");
+          await page.goto(LIST);
           await expect(page.getByTestId("message-row").first()).toBeVisible();
           await noHorizontalScroll(page, width);
           let found = await new AxeBuilder({ page }).analyze();

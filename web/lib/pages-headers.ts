@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import {
   ADMIN_PATH,
   ASSET_CACHE,
+  CONTACT_FORM_MARKER,
   contentSecurityPolicy,
   isPrivatePath,
   PAGE_CACHE,
@@ -37,12 +38,18 @@ function hashes(html: string, pattern: RegExp): string[] {
   return [...found];
 }
 
+/** Only the home page can hold the contact form, and only if it was built with it. */
+export function hasContactForm(page: Page): boolean {
+  return page.route === "/" && page.html.includes(CONTACT_FORM_MARKER);
+}
+
 function policyOf(pages: Page[], api: string, admin: boolean): string {
   return contentSecurityPolicy({
     scripts: [...new Set(pages.flatMap((page) => hashes(page.html, SCRIPT)))],
     styles: [...new Set(pages.flatMap((page) => hashes(page.html, STYLE)))],
     api,
     admin,
+    form: pages.some(hasContactForm),
   });
 }
 

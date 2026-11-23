@@ -6,7 +6,6 @@ import json
 import logging
 
 from django.conf import settings
-from django.http import JsonResponse
 from django.utils.module_loading import import_string
 from django.views.decorators.csrf import csrf_exempt
 
@@ -15,7 +14,7 @@ from core.guard import UNAVAILABLE
 
 log = logging.getLogger(__name__)
 
-FIELDS = {"name", "email", "reason", "body", "website", "started", "turnstile"}
+FIELDS = {"name", "email", "reason", "body", "website", "elapsed", "turnstile"}
 # A message at its longest is about 5 kB of JSON.
 MAX_BODY_BYTES = 20_000
 
@@ -25,20 +24,6 @@ def _logged(outcome, message=None):
         log.info("contact outcome=%s", outcome)
     else:
         log.info("contact id=%s outcome=%s", message.id, outcome)
-
-
-@csrf_exempt
-def start(request):
-    if request.method != "GET":
-        return responses.method_not_allowed(("GET",))
-    try:
-        contact.count_start(ratelimit.client_address(request))
-    except contact.Limited as limit:
-        _logged("rate_limited")
-        return responses.too_many_requests(limit.seconds)
-    except UNAVAILABLE as error:
-        return _unavailable(error)
-    return JsonResponse(contact.start(), headers={"Cache-Control": "no-store"})
 
 
 @csrf_exempt
@@ -87,12 +72,11 @@ def _checked(token):
 
 def _accept(data, values, address):
     contact.count_attempt(address)
-    seconds = contact.seconds_open(data.get("started"))
-    # A bad form token is refused before Cloudflare is asked.
-    if seconds is None or not _checked(data.get("turnstile")):
+    if not _checked(data.get("turnstile")):
         _logged("bad_challenge")
         return responses.bad_challenge()
     contact.count_sender(values["email"])
+    seconds = contact.seconds_open(data.get("elapsed"))
     score, outcome = contact.spam_score(values, data.get("website", ""), seconds)
     message = contact.store(values, address, score, spam=outcome is not None)
     _logged(outcome or "stored", message)
