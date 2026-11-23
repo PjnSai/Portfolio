@@ -13,6 +13,8 @@ TABLES = {
     "media",
     "cv_files",
     "messages",
+    "contact_messages",
+    "contact_notes",
     "revisions",
     "palettes",
     "audit_log",

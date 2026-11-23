@@ -144,6 +144,61 @@ class Message(Timestamped):
         ordering = ["-created_at"]
 
 
+class ContactMessage(Base):
+    """A message from the public form. The sender's address is kept only as a
+    keyed hash (core.contact.address_hash); the cleanup job removes rows after
+    expires_at unless the owner marked them kept."""
+
+    class Status(models.TextChoices):
+        NEW = "new"
+        READ = "read"
+        REPLIED = "replied"
+        ARCHIVED = "archived"
+        SPAM = "spam"
+
+    name = models.CharField(max_length=100)
+    email = models.EmailField()
+    body = models.TextField()
+    status = models.CharField(max_length=10, choices=Status.choices, default="new")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    kept = models.BooleanField(default=False)
+    expires_at = models.DateTimeField(db_index=True)
+    ip_hash = models.CharField(max_length=64, blank=True, default="")
+
+    class Meta:
+        db_table = "contact_messages"
+        ordering = ["-created_at"]
+
+
+class ContactNote(Base):
+    """The owner's timeline on a message. Append-only: a note is never edited,
+    and goes only when its message does (the app role has no UPDATE on it)."""
+
+    class Kind(models.TextChoices):
+        NOTE = "note"
+        RESPONDED = "responded_with_details"
+
+    message = models.ForeignKey(
+        ContactMessage, on_delete=models.CASCADE, related_name="notes"
+    )
+    text = models.TextField()
+    kind = models.CharField(max_length=30, choices=Kind.choices, default="note")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "contact_notes"
+        ordering = ["created_at", "id"]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise RuntimeError("A note cannot be edited.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise RuntimeError("A note goes only with its message.")
+
+
 class Revision(Base):
     entity = models.CharField(max_length=40)
     entity_id = models.UUIDField()

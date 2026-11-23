@@ -18,3 +18,6 @@ os.environ.pop("DJANGO_DEBUG", None)
 from config.settings import *  # noqa: E402, F403
 
 NOTIFIERS = ["tests.notifiers.Recorder"]
+
+# Quick to solve in a test.
+CONTACT_POW_DIFFICULTY = 8

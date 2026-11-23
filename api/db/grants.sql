@@ -17,6 +17,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON
     revisions, palettes
 TO app_rw;
 
+-- Contact messages from the public form. A note can be added and read, never
+-- changed; it is deleted only along with its message.
+GRANT SELECT, INSERT, UPDATE, DELETE ON contact_messages TO app_rw;
+GRANT SELECT, INSERT, DELETE ON contact_notes TO app_rw;
+
 -- Auth state.
 GRANT SELECT, INSERT, UPDATE, DELETE ON
     admin_credentials, sessions, rate_limit_blocks, pending_actions
