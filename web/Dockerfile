@@ -1,12 +1,12 @@
 # Production runs on Cloudflare Pages from `npm run build` (out/). This image
 # serves the same files with the same _headers, for Docker Compose and the
 # kind demo. The API's address is fixed at build time.
-FROM node:24-bookworm-slim AS deps
+FROM node:26-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-FROM node:24-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 WORKDIR /app
 ARG API_BASE_URL=""
 ARG SKIP_SITE_FETCH="1"
