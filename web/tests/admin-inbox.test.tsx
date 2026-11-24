@@ -741,12 +741,14 @@ describe("deletion and retention helpers", () => {
   });
 
   it("checks retention days as whole numbers in range", () => {
-    expect(checkDays("30", 1, 3650)).toBe("");
-    expect(checkDays("3650", 1, 3650)).toBe("");
-    expect(checkDays("0", 1, 3650)).toContain("between 1 and 3650");
-    expect(checkDays("3651", 1, 3650)).toContain("between 1 and 3650");
+    expect(checkDays("30", 7, 3650)).toBe("");
+    expect(checkDays("7", 7, 3650)).toBe("");
+    expect(checkDays("3650", 7, 3650)).toBe("");
+    expect(checkDays("6", 7, 3650)).toContain("between 7 and 3650");
+    expect(checkDays("0", 7, 3650)).toContain("between 7 and 3650");
+    expect(checkDays("3651", 7, 3650)).toContain("between 7 and 3650");
     for (const bad of ["", "abc", "1.5", "-1", " ", "1e3", "123456"]) {
-      expect(checkDays(bad, 1, 3650)).toBe("Enter a whole number of days.");
+      expect(checkDays(bad, 7, 3650)).toBe("Enter a whole number of days.");
     }
   });
 
@@ -754,7 +756,7 @@ describe("deletion and retention helpers", () => {
     const reply = {
       spam_days: 30,
       message_days: 365,
-      min_days: 1,
+      min_days: 7,
       max_days: 3650,
     };
     const { calls, fetcher } = fakeFetch([

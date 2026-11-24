@@ -7,7 +7,7 @@ from django.urls import get_resolver
 from django.utils import timezone
 
 from core import admin_urls
-from core.authz import Level
+from core.authz import Level, admin_route
 from core.models import Session
 from tests.conftest import age_sessions, fill_path
 
@@ -20,8 +20,10 @@ def routes(*levels):
     found = []
     for pattern in admin_urls.urlpatterns:
         path = fill_path("/" + str(pattern.pattern))
-        level = getattr(pattern.callback, "admin_level", None)
+        route_level = getattr(pattern.callback, "admin_level", None)
+        by_method = getattr(pattern.callback, "admin_levels", {})
         for method in getattr(pattern.callback, "admin_methods", ["GET"]):
+            level = by_method.get(method, route_level)
             if not levels or level in levels:
                 found.append(pytest.param(method, path, level, id=f"{method} {path}"))
     return found
@@ -165,3 +167,23 @@ def test_wrong_method_does_not_bypass_the_check(api, method, path, level):
     response = other(path, headers={"Cf-Access-Jwt-Assertion": None})
 
     assert response.status_code == 403
+
+
+def test_a_route_lists_where_it_needs_elevation():
+    view = dict((str(p.pattern), p.callback) for p in admin_urls.urlpatterns)
+    assert view["retention"].admin_levels == {
+        "GET": Level.SESSION,
+        "PATCH": Level.ELEVATED,
+    }
+
+
+@pytest.mark.parametrize(
+    "level,methods,elevate",
+    [
+        (Level.SESSION, ("GET",), ("PATCH",)),
+        (Level.ACCESS, ("GET", "PATCH"), ("PATCH",)),
+    ],
+)
+def test_elevate_only_names_methods_of_a_session_route(level, methods, elevate):
+    with pytest.raises(ValueError):
+        admin_route(level, methods=methods, elevate=elevate)

@@ -148,7 +148,7 @@ def _retention():
     }
 
 
-@admin_route(Level.SESSION, methods=READ_EDIT)
+@admin_route(Level.SESSION, methods=READ_EDIT, elevate=("PATCH",))
 def retention_view(request):
     if request.method == "PATCH":
         data, error = _valid(serializers.Retention, request.json)

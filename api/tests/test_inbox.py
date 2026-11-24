@@ -1058,24 +1058,24 @@ def test_the_retention_periods_start_at_30_and_365_days(signed_in):
     assert body == {
         "spam_days": 30,
         "message_days": 365,
-        "min_days": 1,
+        "min_days": 7,
         "max_days": 3650,
     }
 
 
-def test_changing_the_periods_moves_every_message(signed_in):
+def test_changing_the_periods_moves_every_message(elevated):
     spam = make("spam")
     other = make("read")
     kept = make("new", kept=True)
 
-    response = signed_in.patch("/retention", {"spam_days": 7, "message_days": 100})
+    response = elevated.patch("/retention", {"spam_days": 7, "message_days": 100})
 
     assert response.status_code == 200
     assert response.json()["spam_days"] == 7
     for row, days in ((spam, 7), (other, 100), (kept, 100)):
         row.refresh_from_db()
         assert row.expires_at - row.created_at == timedelta(days=days)
-    assert signed_in.get("/retention").json()["message_days"] == 100
+    assert elevated.get("/retention").json()["message_days"] == 100
     entry = last_audit()
     assert (entry.event, entry.detail) == (
         "retention_changed",
@@ -1090,6 +1090,8 @@ def test_changing_the_periods_moves_every_message(signed_in):
         {"spam_days": 7},
         {"message_days": 7},
         {"spam_days": 0, "message_days": 7},
+        {"spam_days": 6, "message_days": 7},
+        {"spam_days": 7, "message_days": 6},
         {"spam_days": 7, "message_days": 3651},
         {"spam_days": -1, "message_days": 7},
         {"spam_days": "7", "message_days": 7},
@@ -1099,19 +1101,20 @@ def test_changing_the_periods_moves_every_message(signed_in):
         {"spam_days": 7, "message_days": 7, "kept": True},
     ],
 )
-def test_bad_periods_are_refused_and_change_nothing(signed_in, body):
+def test_bad_periods_are_refused_and_change_nothing(elevated, body):
     message = make("spam")
 
-    response = signed_in.patch("/retention", body)
+    response = elevated.patch("/retention", body)
 
     assert response.status_code == 400
-    assert signed_in.get("/retention").json()["spam_days"] == 30
+    assert elevated.get("/retention").json()["spam_days"] == 30
     message.refresh_from_db()
     assert message.expires_at - message.created_at == timedelta(days=30)
 
 
-def test_the_periods_are_not_in_the_public_site(signed_in, client):
-    signed_in.patch("/retention", {"spam_days": 7, "message_days": 100})
+def test_the_periods_are_not_in_the_public_site(elevated, client):
+    saved = elevated.patch("/retention", {"spam_days": 7, "message_days": 100})
+    assert saved.status_code == 200
 
     body = client.get("/api/v1/site", secure=True).content.decode()
 
@@ -1119,7 +1122,7 @@ def test_the_periods_are_not_in_the_public_site(signed_in, client):
 
 
 def test_saving_the_periods_and_their_audit_entry_stand_or_fall_together(
-    signed_in, monkeypatch
+    elevated, monkeypatch
 ):
     message = make("spam")
 
@@ -1129,10 +1132,38 @@ def test_saving_the_periods_and_their_audit_entry_stand_or_fall_together(
     monkeypatch.setattr(audit, "record", broken)
 
     with pytest.raises(RuntimeError):
-        signed_in.patch("/retention", {"spam_days": 7, "message_days": 100})
+        elevated.patch("/retention", {"spam_days": 7, "message_days": 100})
 
+    assert elevated.get("/retention").json()["spam_days"] == 30
+    message.refresh_from_db()
+
+
+def test_saving_the_periods_needs_a_confirmed_passkey(signed_in):
+    message = make("spam")
+    before = AuditLog.objects.count()
+
+    response = signed_in.patch("/retention", {"spam_days": 7, "message_days": 100})
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "elevation_required"
     assert signed_in.get("/retention").json()["spam_days"] == 30
     message.refresh_from_db()
+    assert message.expires_at - message.created_at == timedelta(days=30)
+    assert AuditLog.objects.count() == before
+
+
+def test_reading_the_periods_needs_only_a_session(signed_in):
+    response = signed_in.get("/retention")
+
+    assert response.status_code == 200
+    assert response.json()["spam_days"] == 30
+
+
+def test_seven_days_is_the_shortest_period(elevated):
+    response = elevated.patch("/retention", {"spam_days": 7, "message_days": 7})
+
+    assert response.status_code == 200
+    assert (response.json()["spam_days"], response.json()["message_days"]) == (7, 7)
 
 
 # Audit
@@ -1207,3 +1238,14 @@ def test_a_first_view_and_its_audit_entry_stand_or_fall_together(
 
     message.refresh_from_db()
     assert (message.status, message.read_at) == ("new", None)
+
+
+def test_the_serializer_uses_the_same_limits_as_retention():
+    from core import retention, serializers
+
+    for name in ("spam_days", "message_days"):
+        field = serializers.Retention().fields[name]
+        assert (field.min_value, field.max_value) == (
+            retention.MIN_DAYS,
+            retention.MAX_DAYS,
+        )

@@ -413,8 +413,9 @@ class InboxKeep(Strict):
 
 
 class Retention(Strict):
-    spam_days = serializers.IntegerField(min_value=1, max_value=3650)
-    message_days = serializers.IntegerField(min_value=1, max_value=3650)
+    # The same limits as core.retention.MIN_DAYS and MAX_DAYS (tested).
+    spam_days = serializers.IntegerField(min_value=7, max_value=3650)
+    message_days = serializers.IntegerField(min_value=7, max_value=3650)
 
     def to_internal_value(self, data):
         # Whole numbers only: not "30", 30.5 or true.

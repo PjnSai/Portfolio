@@ -415,10 +415,10 @@ export function inboxTests(getPage: () => Page) {
       await expect(spam).toHaveValue("30");
       await expect(other).toHaveValue("365");
 
-      await spam.fill("0");
+      await spam.fill("6");
       await card.getByRole("button", { name: "Save retention" }).click();
       await expect(
-        card.getByText("Use between 1 and 3650 days."),
+        card.getByText("Use between 7 and 3650 days."),
       ).toBeVisible();
       await expect(spam).toHaveAttribute("aria-invalid", "true");
       await spam.fill("abc");
@@ -430,7 +430,16 @@ export function inboxTests(getPage: () => Page) {
       await spam.fill("7");
       await other.fill("180");
       await card.getByRole("button", { name: "Save retention" }).click();
-      await expect(card.getByText(/Retention saved/)).toBeVisible();
+      // Saving needs a passkey confirmed in the last few minutes.
+      const dialog = page.getByRole("dialog", {
+        name: "Confirm with your passkey",
+      });
+      const saved = card.getByText(/Retention saved/);
+      await expect(dialog.or(saved)).toBeVisible();
+      if (await dialog.isVisible()) {
+        await dialog.getByRole("button", { name: "Use passkey" }).click();
+      }
+      await expect(saved).toBeVisible();
 
       await page.reload();
       await expect(card.getByLabel("Spam: days to keep")).toHaveValue("7");

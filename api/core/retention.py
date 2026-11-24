@@ -20,7 +20,7 @@ from django.db.models import F
 from core import audit, content
 from core.models import ContactMessage, SiteSettings
 
-MIN_DAYS = 1
+MIN_DAYS = 7
 MAX_DAYS = 3650
 Status = ContactMessage.Status
 

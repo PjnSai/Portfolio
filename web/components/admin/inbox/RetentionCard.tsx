@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useAdmin } from "@/components/admin/AdminApp";
 import {
   Button,
   FieldErrors,
@@ -40,6 +41,7 @@ export function RetentionCard() {
 }
 
 function RetentionForm({ start }: { start: Retention }) {
+  const { vital } = useAdmin();
   const [spam, setSpam] = useState(String(start.spam_days));
   const [other, setOther] = useState(String(start.message_days));
   const [errors, setErrors] = useState<{ spam: string; other: string }>({
@@ -60,7 +62,9 @@ function RetentionForm({ start }: { start: Retention }) {
     setErrors(next);
     if (next.spam || next.other) return;
     try {
-      const result = await inbox.saveRetention(Number(spam), Number(other));
+      const result = await vital(() =>
+        inbox.saveRetention(Number(spam), Number(other)),
+      );
       setSpam(String(result.spam_days));
       setOther(String(result.message_days));
       setSaved(
@@ -82,7 +86,7 @@ function RetentionForm({ start }: { start: Retention }) {
         How long contact messages are kept before the daily clean-up may remove
         them. A message you mark as kept, or that has notes, is never removed
         automatically. These settings are private and take effect at once: they
-        do not need publishing.
+        do not need publishing. Saving asks for your passkey.
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
