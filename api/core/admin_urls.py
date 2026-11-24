@@ -71,6 +71,7 @@ urlpatterns = [
     path("deploy", media.site_deploy),
     path("messages", inbox.message_list),
     path("retention", inbox.retention_view),
+    path("limits", inbox.limits_view),
     path("messages/<uuid:message_id>", inbox.message),
     path("messages/<uuid:message_id>/status", inbox.message_status),
     path("messages/<uuid:message_id>/notes", inbox.message_notes),

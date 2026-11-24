@@ -1044,7 +1044,8 @@ def test_marking_spam_and_not_spam_moves_the_expiry(signed_in):
 
     signed_in.post(f"/messages/{message.id}/status", {"status": "spam"})
     message.refresh_from_db()
-    assert message.expires_at - message.created_at == timedelta(days=30)
+    # The spam period runs from when it was marked (4B-1), not from arrival.
+    assert message.expires_at - message.spam_at == timedelta(days=30)
 
     signed_in.post(f"/messages/{message.id}/not-spam")
     message.refresh_from_db()

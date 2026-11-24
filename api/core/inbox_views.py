@@ -5,7 +5,7 @@ from datetime import date
 
 from django.http import JsonResponse
 
-from core import inbox, pages, responses, retention, serializers
+from core import inbox, limits, pages, responses, retention, serializers
 from core.authz import Level, admin_route
 
 POST = ("POST",)
@@ -156,3 +156,13 @@ def retention_view(request):
             return error
         retention.save(data["spam_days"], data["message_days"])
     return JsonResponse(_retention())
+
+
+@admin_route(Level.SESSION, methods=READ_EDIT, elevate=("PATCH",))
+def limits_view(request):
+    if request.method == "PATCH":
+        data, error = _valid(serializers.Limits, request.json)
+        if error:
+            return error
+        limits.save(data)
+    return JsonResponse(limits.describe())

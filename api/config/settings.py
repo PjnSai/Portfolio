@@ -116,7 +116,10 @@ RETENTION_MESSAGE_DAYS = 365
 CONTACT_SPAM_THRESHOLD = 100
 CONTACT_PER_ADDRESS_PER_HOUR = 5
 CONTACT_PER_EMAIL_PER_DAY = 3
+# Messages that are not spam, a day. Spam that is stored has its own cap; past
+# it, spam is answered as received but not stored.
 CONTACT_DAILY_CAP = 25
+CONTACT_SPAM_DAILY_CAP = 20
 CONTACT_MIN_SECONDS = 3
 CONTACT_MAX_LINKS = 2
 # Cloudflare Turnstile (core.turnstile). With no secret key the form is

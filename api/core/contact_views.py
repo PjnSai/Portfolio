@@ -11,6 +11,7 @@ from django.utils.module_loading import import_string
 from django.views.decorators.csrf import csrf_exempt
 
 from core import contact, ratelimit, responses, turnstile
+from core import limits as contact_limits
 from core.guard import UNAVAILABLE
 
 log = logging.getLogger(__name__)
@@ -72,26 +73,38 @@ def _checked(token):
 
 
 def _accept(data, values, address):
-    contact.count_attempt(address)
+    limits = contact_limits.effective()
+    contact.count_attempt(address, limits)
     if not _checked(data.get("turnstile")):
         _logged("bad_challenge")
         return responses.bad_challenge()
-    contact.count_sender(values["email"])
+    contact.count_email(values["email"], limits)
     seconds = contact.seconds_open(data.get("elapsed"))
     repeated = not contact.claim_body(values["body"])
-    score, outcome = contact.spam_score(
-        values, data.get("website", ""), seconds, repeated
-    )
+    # From here on, a message that is not stored gives its body's marker back,
+    # so sending it again later is not taken for a repeat.
     try:
-        message = contact.store(values, address, score, spam=outcome is not None)
+        score, outcome = contact.spam_score(
+            values, data.get("website", ""), seconds, repeated, limits
+        )
+        spam = outcome is not None
+        if not contact.count_daily(spam, limits):
+            _release(values, repeated)
+            _logged("spam_dropped")
+            return responses.contact_sent()
+        message = contact.store(values, address, score, spam=spam)
     except Exception:
-        # A retry of a message that was never stored is not a repeat.
-        if not repeated:
-            with suppress(*UNAVAILABLE):
-                contact.release_body(values["body"])
+        _release(values, repeated)
         raise
     _logged(outcome or "stored", message)
     return responses.contact_sent()
+
+
+def _release(values, repeated):
+    # A repeat's marker belongs to the message stored earlier, so it stays.
+    if not repeated:
+        with suppress(*UNAVAILABLE):
+            contact.release_body(values["body"])
 
 
 def _unavailable(error):
