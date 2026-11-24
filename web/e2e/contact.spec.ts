@@ -7,6 +7,15 @@ import { stubTurnstile, withAddress } from "./fixtures/form";
 // Cloudflare's dummy behaviour, so these tests need no network; the one test
 // with the real script runs only with TURNSTILE_LIVE=1 (see the end).
 
+/** True only when the URL's host is exactly Cloudflare's challenge host. */
+const isCloudflare = (url: string) => {
+  try {
+    return new URL(url).hostname === "challenges.cloudflare.com";
+  } catch {
+    return false;
+  }
+};
+
 const FORM = "[data-contact-form]";
 // Each test gets its own email and message: the API allows three a day from
 // one email address and refuses to take the same text twice in a day.
@@ -97,7 +106,7 @@ test("the form code and Turnstile load only when the form is near the page or ta
   await page.waitForLoadState("networkidle");
 
   expect(
-    requests.some((url) => url.includes("challenges.cloudflare.com")),
+    requests.some(isCloudflare),
   ).toBe(false);
   const chunksBefore = requests.filter((url) =>
     url.includes("/_next/static/chunks/"),
@@ -110,9 +119,7 @@ test("the form code and Turnstile load only when the form is near the page or ta
   await expect(
     page.getByRole("button", { name: "Send message" }),
   ).toBeEnabled();
-  const cloudflare = requests.filter((url) =>
-    url.includes("challenges.cloudflare.com"),
-  );
+  const cloudflare = requests.filter(isCloudflare);
   expect(cloudflare).toEqual([
     "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit",
   ]);
@@ -129,7 +136,7 @@ test("focus alone brings the form to life, however far away it is", async ({
   await open(page);
   await page.waitForLoadState("networkidle");
   expect(
-    requests.some((url) => url.includes("challenges.cloudflare.com")),
+    requests.some(isCloudflare),
   ).toBe(false);
 
   await page.evaluate(() =>
@@ -140,7 +147,7 @@ test("focus alone brings the form to life, however far away it is", async ({
     page.getByRole("button", { name: "Send message" }),
   ).toBeEnabled();
   expect(
-    requests.some((url) => url.includes("challenges.cloudflare.com")),
+    requests.some(isCloudflare),
   ).toBe(true);
 });
 
@@ -638,7 +645,7 @@ test("the real Turnstile script runs under the page's policy with no violation",
   await reach(page);
   await fill(page);
   const loaded = page.waitForResponse((response) =>
-    response.url().includes("challenges.cloudflare.com"),
+    isCloudflare(response.url()),
   );
   await page.getByRole("button", { name: "Send message" }).click();
   await loaded;
