@@ -174,10 +174,22 @@ class ContactMessage(Base):
     # retention period runs from here. Cleared by "Not spam".
     spam_at = models.DateTimeField(null=True, blank=True)
     ip_hash = models.CharField(max_length=64, blank=True, default="")
+    # The keyed hash of the email (core.contact.email_hash), so every message
+    # from one sender can be found for "delete everything about this email".
+    email_hash = models.CharField(
+        max_length=64, blank=True, default="", db_default="", db_index=True
+    )
 
     class Meta:
         db_table = "contact_messages"
         ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        if not self.email_hash:
+            from core.contact import email_hash
+
+            self.email_hash = email_hash(self.email)
+        super().save(*args, **kwargs)
 
 
 class ContactNote(Base):

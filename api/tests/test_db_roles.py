@@ -171,3 +171,32 @@ def test_app_role_can_block_renew_and_unblock_but_never_rewrite_a_hash(roles):
         )
         assert retention.run()["blocklist_deleted"] == 1
         assert BlockedSender.objects.count() == 0
+
+
+def test_app_role_can_delete_everything_about_an_email_and_nothing_more(roles):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from core import blocklist, contact, erase
+
+    later = timezone.now() + timedelta(days=1)
+    with as_app() as cursor:
+        theirs = ContactMessage.objects.create(
+            name="A", email="a@example.com", body="Hello there.", expires_at=later
+        )
+        ContactNote.objects.create(message=theirs, text="Noted")
+        other = ContactMessage.objects.create(
+            name="B", email="b@example.com", body="Hello again.", expires_at=later
+        )
+        blocklist.block_email("a@example.com")
+
+        result = erase.run(
+            {"email_hash": contact.email_hash("a@example.com"), "also_block": False}
+        )
+
+        assert result == {"messages": 1, "notes": 1, "unblocked": 1, "blocked": False}
+        assert list(ContactMessage.objects.values_list("id", flat=True)) == [other.id]
+        denied(cursor, "TRUNCATE contact_messages")
+        denied(cursor, "TRUNCATE contact_notes")
+        denied(cursor, "DELETE FROM audit_log")
