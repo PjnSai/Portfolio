@@ -209,7 +209,21 @@ LINK_POINTS = 20
 HARD = 100
 
 
-def spam_score(values, honeypot, seconds):
+def claim_body(text):
+    """True if no stored message had this body in the last day. It takes the
+    body's marker; release_body() gives it back if the message is not stored."""
+    return bool(cache.client().set(_body_key(text), 1, nx=True, ex=DAY))
+
+
+def release_body(text):
+    cache.client().delete(_body_key(text))
+
+
+def _body_key(text):
+    return f"contact:body:{_body_hash(text)}"
+
+
+def spam_score(values, honeypot, seconds, repeated):
     """(score from 0 to 100, outcome code). The code names the first hard check
     the message fails, "spam_score" if only the points added up, else None. A
     filled honeypot, a rushed form, too many links or a repeated body each score
@@ -225,8 +239,7 @@ def spam_score(values, honeypot, seconds):
         score, code = score + HARD, code or "spam_timing"
     if links > settings.CONTACT_MAX_LINKS:
         score, code = score + HARD, code or "spam_links"
-    key = f"contact:body:{_body_hash(text)}"
-    if not cache.client().set(key, 1, nx=True, ex=DAY):
+    if repeated:
         score, code = score + HARD, code or "spam_repeat"
     score = min(score, 100)
     if code is None and score >= settings.CONTACT_SPAM_THRESHOLD:

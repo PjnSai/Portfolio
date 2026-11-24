@@ -4,6 +4,7 @@ Origin on the POST."""
 
 import json
 import logging
+from contextlib import suppress
 
 from django.conf import settings
 from django.utils.module_loading import import_string
@@ -77,8 +78,18 @@ def _accept(data, values, address):
         return responses.bad_challenge()
     contact.count_sender(values["email"])
     seconds = contact.seconds_open(data.get("elapsed"))
-    score, outcome = contact.spam_score(values, data.get("website", ""), seconds)
-    message = contact.store(values, address, score, spam=outcome is not None)
+    repeated = not contact.claim_body(values["body"])
+    score, outcome = contact.spam_score(
+        values, data.get("website", ""), seconds, repeated
+    )
+    try:
+        message = contact.store(values, address, score, spam=outcome is not None)
+    except Exception:
+        # A retry of a message that was never stored is not a repeat.
+        if not repeated:
+            with suppress(*UNAVAILABLE):
+                contact.release_body(values["body"])
+        raise
     _logged(outcome or "stored", message)
     return responses.contact_sent()
 

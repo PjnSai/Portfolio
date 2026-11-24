@@ -823,6 +823,29 @@ def test_the_form_fails_closed_without_the_database(monkeypatch):
     assert response.json() == {"detail": "Service unavailable."}
 
 
+def test_a_retry_after_the_database_failed_is_stored_as_new(monkeypatch):
+    text = "Hello, the form failed for me a moment ago, so here it is again."
+    with monkeypatch.context() as patch:
+        database_down(patch)
+        assert submit(body=text).status_code == 503
+
+    assert submit(body=text).status_code == 201
+
+    assert [(m.status, m.spam_score) for m in stored()] == [("new", 0)]
+
+
+def test_a_failed_store_keeps_an_earlier_marker_for_the_same_body(monkeypatch):
+    text = "Hello, I sent this once already and it went through fine."
+    assert submit(body=text).status_code == 201
+    with monkeypatch.context() as patch:
+        database_down(patch)
+        assert submit(body=text).status_code == 503
+
+    submit(body=text)
+
+    assert [m.status for m in stored()] == ["new", "spam"]
+
+
 # Logs hold ids and outcome codes only
 
 
