@@ -69,7 +69,7 @@ async function expectClearOfNav(page: Page, heading: string) {
 
 test("the page stays where it loads", async ({ page }) => {
   await open(page, "/");
-  await settled(page);
+  await settled(page, { javaScript: combo().js });
   expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(0);
 });
 

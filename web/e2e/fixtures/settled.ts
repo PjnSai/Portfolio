@@ -14,7 +14,20 @@ export const frames = (page: Page, count = 3) =>
 /** Nothing is left that could still move the page: fonts are in, no animation
  * or transition that ends is running (a looping one, such as the marquee,
  * never ends and moves nothing else), and frames have been drawn since. */
-export async function settled(page: Page) {
+export async function settled(page: Page, { javaScript = true } = {}) {
+  if (!javaScript) {
+    // Promises and frame callbacks never run with page script off, so wait
+    // for the load event and for the scroll position to hold still.
+    await page.waitForLoadState("load");
+    let still = 0;
+    await expect
+      .poll(async () => {
+        still = (await page.evaluate(() => window.scrollY)) === 0 ? still + 1 : 0;
+        return still;
+      })
+      .toBeGreaterThanOrEqual(5);
+    return;
+  }
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await expect
     .poll(() =>
