@@ -39,6 +39,17 @@ class SiteSettings(Timestamped):
     # part of the draft or published copies, so they never reach the public site.
     retention_spam_days = models.PositiveIntegerField(default=30)
     retention_message_days = models.PositiveIntegerField(default=365)
+    # Contact form limits (core.limits). Private, like the periods above. Null
+    # means the default in settings.py applies.
+    contact_human_daily_cap = models.PositiveSmallIntegerField(null=True, blank=True)
+    contact_spam_daily_cap = models.PositiveSmallIntegerField(null=True, blank=True)
+    contact_per_address_per_hour = models.PositiveSmallIntegerField(
+        null=True, blank=True
+    )
+    contact_per_email_per_day = models.PositiveSmallIntegerField(null=True, blank=True)
+    contact_min_seconds = models.PositiveSmallIntegerField(null=True, blank=True)
+    contact_max_links = models.PositiveSmallIntegerField(null=True, blank=True)
+    contact_spam_threshold = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "site_settings"

@@ -11,6 +11,7 @@ from django.utils.module_loading import import_string
 from django.views.decorators.csrf import csrf_exempt
 
 from core import contact, ratelimit, responses, turnstile
+from core import limits as contact_limits
 from core.guard import UNAVAILABLE
 
 log = logging.getLogger(__name__)
@@ -72,21 +73,22 @@ def _checked(token):
 
 
 def _accept(data, values, address):
-    contact.count_attempt(address)
+    limits = contact_limits.effective()
+    contact.count_attempt(address, limits)
     if not _checked(data.get("turnstile")):
         _logged("bad_challenge")
         return responses.bad_challenge()
-    contact.count_email(values["email"])
+    contact.count_email(values["email"], limits)
     seconds = contact.seconds_open(data.get("elapsed"))
     repeated = not contact.claim_body(values["body"])
     # From here on, a message that is not stored gives its body's marker back,
     # so sending it again later is not taken for a repeat.
     try:
         score, outcome = contact.spam_score(
-            values, data.get("website", ""), seconds, repeated
+            values, data.get("website", ""), seconds, repeated, limits
         )
         spam = outcome is not None
-        if not contact.count_daily(spam):
+        if not contact.count_daily(spam, limits):
             _release(values, repeated)
             _logged("spam_dropped")
             return responses.contact_sent()

@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 from rest_framework import serializers
 
-from core import theme
+from core import limits, theme
 from core.models import Media, Palette
 
 SECTION_TYPES = (
@@ -423,6 +423,30 @@ class Retention(Strict):
             value = data.get(name) if isinstance(data, dict) else None
             if isinstance(value, bool) or not isinstance(value, int):
                 if name in data:
+                    raise serializers.ValidationError({name: ["Enter a whole number."]})
+        return super().to_internal_value(data)
+
+
+class Limits(Strict):
+    """Any of the contact limits in core.limits.EDITABLE, with its bounds from
+    there; at least one. Whole numbers only."""
+
+    def get_fields(self):
+        return {
+            name: serializers.IntegerField(
+                min_value=limit.low, max_value=limit.high, required=False
+            )
+            for name, limit in limits.EDITABLE.items()
+        }
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            if not data:
+                raise serializers.ValidationError({"detail": "Change at least one."})
+            for name, value in data.items():
+                if name in limits.EDITABLE and (
+                    isinstance(value, bool) or not isinstance(value, int)
+                ):
                     raise serializers.ValidationError({name: ["Enter a whole number."]})
         return super().to_internal_value(data)
 

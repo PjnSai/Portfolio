@@ -175,17 +175,19 @@ def _over(bucket, seconds, limit):
         raise Limited(left)
 
 
-def count_attempt(address):
-    _over(
-        f"address:{address_hash(address)}", HOUR, settings.CONTACT_PER_ADDRESS_PER_HOUR
-    )
+# Each takes the limits in force (core.limits.effective()), read once per
+# submission.
 
 
-def count_email(email):
-    _over(f"email:{_email_hash(email)}", DAY, settings.CONTACT_PER_EMAIL_PER_DAY)
+def count_attempt(address, values):
+    _over(f"address:{address_hash(address)}", HOUR, values["per_address_per_hour"])
 
 
-def count_daily(spam):
+def count_email(email, values):
+    _over(f"email:{_email_hash(email)}", DAY, values["per_email_per_day"])
+
+
+def count_daily(spam, values):
     """Count a message against the day's cap for its kind. A message that is
     not spam over its cap raises Limited. Spam has its own cap and never
     raises: False means the spam cap is full and the message is not stored,
@@ -193,8 +195,8 @@ def count_daily(spam):
     if spam:
         window, _ = _window(DAY)
         count = ratelimit.hit(f"contact:spam:{window}", DAY)
-        return count <= settings.CONTACT_SPAM_DAILY_CAP
-    _over("human", DAY, settings.CONTACT_DAILY_CAP)
+        return count <= values["spam_daily_cap"]
+    _over("human", DAY, values["human_daily_cap"])
     return True
 
 
@@ -235,7 +237,7 @@ def _body_key(text):
     return f"contact:body:{_body_hash(text)}"
 
 
-def spam_score(values, honeypot, seconds, repeated):
+def spam_score(values, honeypot, seconds, repeated, limits):
     """(score from 0 to 100, outcome code). The code names the first hard check
     the message fails, "spam_score" if only the points added up, else None. A
     filled honeypot, a rushed form, too many links or a repeated body each score
@@ -247,14 +249,14 @@ def spam_score(values, honeypot, seconds, repeated):
     score = min(KEYWORD_POINTS * keywords, KEYWORD_MAX) + LINK_POINTS * min(links, 5)
     if honeypot != "":
         score, code = score + HARD, "spam_honeypot"
-    if seconds < settings.CONTACT_MIN_SECONDS:
+    if seconds < limits["min_seconds"]:
         score, code = score + HARD, code or "spam_timing"
-    if links > settings.CONTACT_MAX_LINKS:
+    if links > limits["max_links"]:
         score, code = score + HARD, code or "spam_links"
     if repeated:
         score, code = score + HARD, code or "spam_repeat"
     score = min(score, 100)
-    if code is None and score >= settings.CONTACT_SPAM_THRESHOLD:
+    if code is None and score >= limits["spam_threshold"]:
         code = "spam_score"
     return score, code
 
