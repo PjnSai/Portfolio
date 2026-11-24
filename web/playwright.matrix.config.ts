@@ -72,7 +72,7 @@ export default defineConfig({
   ...e2e,
   testDir: "matrix",
   fullyParallel: true,
-  retries: process.env.CI ? 1 : 0,
+  retries: 0,
   reporter: process.env.CI ? "github" : [["dot"], ["json", { outputFile: "test-results/matrix.json" }]],
   projects,
   // The API runs in both cases: the owner's inbox pages read from it.

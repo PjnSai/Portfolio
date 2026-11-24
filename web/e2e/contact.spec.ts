@@ -630,6 +630,10 @@ test("the real Turnstile script runs under the page's policy with no violation",
     }
   });
   await withAddress(page);
+  const widgets: string[] = [];
+  page.on("framenavigated", (frame) => {
+    if (frame.url().startsWith("https://challenges.cloudflare.com/")) widgets.push(frame.url());
+  });
   await page.goto("/");
   await reach(page);
   await fill(page);
@@ -639,11 +643,10 @@ test("the real Turnstile script runs under the page's policy with no violation",
   await page.getByRole("button", { name: "Send message" }).click();
   await loaded;
   // The real widget ran, gave the dummy token, and the message went through.
+  // The sent panel is the defined end: the widget has finished.
   await expect(page.locator("#contact-sent")).toBeVisible({ timeout: 30_000 });
-  await page.waitForTimeout(3000);
-  expect(
-    await page.locator("iframe[src*='challenges.cloudflare.com']").count(),
-  ).toBeGreaterThanOrEqual(0);
+  // The widget's frame was loaded (the form, and the frame, are gone now).
+  expect(widgets.length).toBeGreaterThan(0);
 
   expect(violations).toEqual([]);
 });

@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import type { Combo } from "../playwright.matrix.config";
+import { frames, settled } from "../e2e/fixtures/settled";
 
 // Each project in playwright.matrix.config.ts is one browser, width, colour
 // scheme and motion setting, or a run with JavaScript off. The site is the
@@ -68,7 +69,7 @@ async function expectClearOfNav(page: Page, heading: string) {
 
 test("the page stays where it loads", async ({ page }) => {
   await open(page, "/");
-  await page.waitForTimeout(1200);
+  await settled(page);
   expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(0);
 });
 
@@ -241,7 +242,8 @@ test("the section pager works in its mode for this width", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 2, name: "About me" })).toBeFocused();
   if (motion === "reduce") {
     const first = await page.evaluate(() => Math.round(window.scrollY));
-    await page.waitForTimeout(250);
+    // A smooth scroll would have moved within these frames.
+    await frames(page);
     expect(await page.evaluate(() => Math.round(window.scrollY)), "no smooth scroll").toBe(first);
   }
   for (const heading of ["Selected work", "Work history", "Study", "Toolkit", "Contact me"]) {
