@@ -1,4 +1,5 @@
-"""Vital actions: adding or revoking a passkey, and permanent deletion.
+"""Vital actions: adding or revoking a passkey, permanent deletion, and
+deleting everything about one email (core.erase).
 
 Each one is requested with a fresh passkey confirmation, waits 24 hours, and is
 run with another fresh confirmation. The owner is told when it is requested and
@@ -14,7 +15,7 @@ from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
 
-from core import audit, content, notify, passkeys
+from core import audit, blocklist, content, erase, notify, passkeys, retention
 from core.models import (
     AdminCredential,
     ContactMessage,
@@ -30,6 +31,7 @@ WINDOW = timedelta(days=7)
 ADD_PASSKEY = "add_passkey"
 REVOKE_PASSKEY = "revoke_passkey"
 PERMANENT_DELETE = "permanent_delete"
+ERASE_SENDER = erase.KIND
 
 # Allow-list. Auth and audit tables can never be named here.
 DELETABLE = {
@@ -83,6 +85,8 @@ def clean(kind, payload):
         if not rows.exists():
             return None
         return {"entity": entity, "id": target}
+    if kind == ERASE_SENDER:
+        return erase.clean(payload)
     return None
 
 
@@ -105,13 +109,19 @@ def describe(action):
     return {
         "id": str(action.id),
         "kind": action.kind,
-        "target": action.payload,
+        "target": _shown(action),
         "state": state(action),
         "requested_at": action.requested_at.isoformat(),
         "execute_after": action.execute_after.isoformat(),
         "expires_at": action.expires_at.isoformat(),
         "cancel_path": cancel_path(action),
     }
+
+
+def _shown(action):
+    if action.kind == ERASE_SENDER:
+        return erase.shown(action.payload)
+    return action.payload
 
 
 def pending():
@@ -206,11 +216,19 @@ def run(action_id, credential=None):
         action, outcome = _claim(action_id)
         if outcome is not Outcome.OK:
             return action, outcome
+        result = None
         if action.kind == ADD_PASSKEY:
             if not _add_passkey(action, credential):
                 return action, Outcome.INVALID
         elif action.kind == REVOKE_PASSKEY:
             if not _revoke_passkey(action):
+                return action, Outcome.CONFLICT
+        elif action.kind == ERASE_SENDER:
+            try:
+                result = erase.run(action.payload)
+            except (retention.Busy, blocklist.Full):
+                return action, Outcome.CONFLICT
+            if result is None:
                 return action, Outcome.CONFLICT
         elif action.kind == PERMANENT_DELETE:
             entity = action.payload.get("entity")
@@ -225,7 +243,10 @@ def run(action_id, credential=None):
         else:
             return action, Outcome.CONFLICT
         _resolve(action, Status.EXECUTED)
-        audit.record("vital_action_executed", **_detail(action))
+        if result is None:
+            audit.record("vital_action_executed", **_detail(action))
+        else:
+            audit.record("vital_action_executed", **_detail(action), result=result)
     return action, Outcome.OK
 
 

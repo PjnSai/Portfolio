@@ -122,6 +122,8 @@ CONTACT_DAILY_CAP = 25
 CONTACT_SPAM_DAILY_CAP = 20
 CONTACT_MIN_SECONDS = 3
 CONTACT_MAX_LINKS = 2
+# How long a blocked sender stays blocked unless the owner renews it.
+BLOCKLIST_MONTHS = 12
 # Cloudflare Turnstile (core.turnstile). With no secret key the form is
 # refused (503), never open: production must set it. Development and tests use
 # Cloudflare's published dummy keys (see tests/settings.py and docker-compose).

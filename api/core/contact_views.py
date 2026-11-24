@@ -10,7 +10,7 @@ from django.conf import settings
 from django.utils.module_loading import import_string
 from django.views.decorators.csrf import csrf_exempt
 
-from core import contact, ratelimit, responses, turnstile
+from core import blocklist, contact, ratelimit, responses, turnstile
 from core import limits as contact_limits
 from core.guard import UNAVAILABLE
 
@@ -78,6 +78,11 @@ def _accept(data, values, address):
     if not _checked(data.get("turnstile")):
         _logged("bad_challenge")
         return responses.bad_challenge()
+    # Before any cap is counted, so a blocked sender uses none of them, and
+    # answered like dropped spam, so they cannot tell they are blocked.
+    if blocklist.is_blocked(values["email"]):
+        _logged("blocked_dropped")
+        return responses.contact_sent()
     contact.count_email(values["email"], limits)
     seconds = contact.seconds_open(data.get("elapsed"))
     repeated = not contact.claim_body(values["body"])

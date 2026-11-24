@@ -72,7 +72,7 @@ def address_hash(address):
     return _sign("contact-address", address)
 
 
-def _email_hash(email):
+def email_hash(email):
     return _sign("contact-email", email.strip().lower())
 
 
@@ -184,7 +184,7 @@ def count_attempt(address, values):
 
 
 def count_email(email, values):
-    _over(f"email:{_email_hash(email)}", DAY, values["per_email_per_day"])
+    _over(f"email:{email_hash(email)}", DAY, values["per_email_per_day"])
 
 
 def count_daily(spam, values):

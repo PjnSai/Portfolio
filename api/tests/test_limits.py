@@ -5,7 +5,16 @@ from datetime import timedelta
 
 import pytest
 
-from core import admin_urls, audit, limits, ratelimit, serializers, sessions, vital
+from core import (
+    admin_urls,
+    audit,
+    blocklist,
+    limits,
+    ratelimit,
+    serializers,
+    sessions,
+    vital,
+)
 from core.authz import Level
 from core.models import AuditLog, SiteSettings
 from tests import turnstile as fake
@@ -22,6 +31,7 @@ DEFAULTS = {
     "min_seconds": 3,
     "max_links": 2,
     "spam_threshold": 100,
+    "blocklist_months": 12,
 }
 BOUNDS = {
     "human_daily_cap": (1, 200),
@@ -31,6 +41,7 @@ BOUNDS = {
     "min_seconds": (0, 30),
     "max_links": (0, 10),
     "spam_threshold": (50, 100),
+    "blocklist_months": (1, 36),
 }
 
 
@@ -112,6 +123,7 @@ def test_the_fixed_limits_are_listed_with_their_current_values(signed_in):
         "session_absolute_timeout": sessions.ABSOLUTE // timedelta(minutes=1),
         "passkey_confirmation_lasts": sessions.ELEVATION // timedelta(minutes=1),
         "vital_action_wait": vital.DELAY // timedelta(minutes=1),
+        "blocklist_max_entries": blocklist.MAX_ENTRIES,
     }
     assert rows["vital_action_wait"] == {
         "name": "vital_action_wait",
@@ -368,25 +380,27 @@ def test_a_change_applies_to_the_next_submission(elevated):
     assert submit(ip="198.51.100.2", email="two@example.com").status_code == 429
 
 
-# Migration 0017
+# Migration 0017. The blocklist lifetime came later, in 0018.
+
+FIELDS_0017 = [field for field in limits.FIELDS if field.startswith("contact_")]
 
 
 def test_0017_adds_empty_limit_fields_and_reverses(at_latest):  # noqa: F811
     from tests.test_contact_migrations import columns, migrate, settle
 
     apps = migrate([("core", "0016_contact_spam_at")])
-    assert not set(limits.FIELDS) & columns("site_settings")
+    assert not set(FIELDS_0017) & columns("site_settings")
     row = apps.get_model("core", "SiteSettings").objects.create()
     settle()
 
     apps = migrate([("core", "0017_contact_limits")])
 
-    assert set(limits.FIELDS) <= columns("site_settings")
+    assert set(FIELDS_0017) <= columns("site_settings")
     found = apps.get_model("core", "SiteSettings").objects.get(id=row.id)
-    assert all(getattr(found, field) is None for field in limits.FIELDS)
+    assert all(getattr(found, field) is None for field in FIELDS_0017)
     found.delete()
     settle()
 
     migrate([("core", "0016_contact_spam_at")])
 
-    assert not set(limits.FIELDS) & columns("site_settings")
+    assert not set(FIELDS_0017) & columns("site_settings")

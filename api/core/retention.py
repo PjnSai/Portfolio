@@ -30,7 +30,13 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from core import audit, content
-from core.models import ContactMessage, ContactNote, Owner, SiteSettings
+from core.models import (
+    BlockedSender,
+    ContactMessage,
+    ContactNote,
+    Owner,
+    SiteSettings,
+)
 
 MIN_DAYS = 7
 MAX_DAYS = 3650
@@ -136,10 +142,18 @@ def _delete_batch(now, size):
     return due._raw_delete(due.db)
 
 
+def _expired_blocks(now, dry_run):
+    """Blocklist entries that no longer block. They are few (the list is
+    capped), so one statement removes them all."""
+    expired = BlockedSender.objects.filter(expires_at__lte=now)
+    return expired.count() if dry_run else expired._raw_delete(expired.db)
+
+
 def run(dry_run=False, batch_size=BATCH_SIZE):
-    """Remove every message whose time is up and which no rule keeps. One
-    transaction: if anything fails, nothing is removed and nothing recorded.
-    Returns counts only; the audit entry holds the same counts."""
+    """Remove every message whose time is up and which no rule keeps, and every
+    blocklist entry that has expired. One transaction: if anything fails,
+    nothing is removed and nothing recorded. Returns counts only; the audit
+    entry holds the same counts."""
     now = timezone.now()
     with transaction.atomic():
         _lock()
@@ -158,6 +172,7 @@ def run(dry_run=False, batch_size=BATCH_SIZE):
             "deleted": deleted,
             "exempt": expired - (deleted if dry_run else 0),
             "batches": batches,
+            "blocklist_deleted": _expired_blocks(now, dry_run),
             "dry_run": dry_run,
         }
         audit.record("retention_run", **counts)

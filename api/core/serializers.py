@@ -451,6 +451,24 @@ class Limits(Strict):
         return super().to_internal_value(data)
 
 
+class BlockNote(Strict):
+    note = Text(max_length=200, required=False, allow_blank=True)
+
+
+class Block(BlockNote):
+    """Block by an address the owner types; only its hash is kept."""
+
+    email = Text(max_length=254)
+
+    def validate_email(self, value):
+        from core import contact
+
+        cleaned, problem = contact._clean_field("email", value)
+        if problem:
+            raise serializers.ValidationError(problem)
+        return cleaned
+
+
 class Nothing(Strict):
     """A request that takes no fields."""
 

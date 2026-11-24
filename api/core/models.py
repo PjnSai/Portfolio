@@ -50,6 +50,7 @@ class SiteSettings(Timestamped):
     contact_min_seconds = models.PositiveSmallIntegerField(null=True, blank=True)
     contact_max_links = models.PositiveSmallIntegerField(null=True, blank=True)
     contact_spam_threshold = models.PositiveSmallIntegerField(null=True, blank=True)
+    blocklist_months = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "site_settings"
@@ -173,10 +174,22 @@ class ContactMessage(Base):
     # retention period runs from here. Cleared by "Not spam".
     spam_at = models.DateTimeField(null=True, blank=True)
     ip_hash = models.CharField(max_length=64, blank=True, default="")
+    # The keyed hash of the email (core.contact.email_hash), so every message
+    # from one sender can be found for "delete everything about this email".
+    email_hash = models.CharField(
+        max_length=64, blank=True, default="", db_default="", db_index=True
+    )
 
     class Meta:
         db_table = "contact_messages"
         ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        if not self.email_hash:
+            from core.contact import email_hash
+
+            self.email_hash = email_hash(self.email)
+        super().save(*args, **kwargs)
 
 
 class ContactNote(Base):
@@ -205,6 +218,21 @@ class ContactNote(Base):
 
     def delete(self, *args, **kwargs):
         raise RuntimeError("A note goes only with its message.")
+
+
+class BlockedSender(Base):
+    """A sender the owner blocked. Only the keyed hash of the email is kept
+    (core.contact.email_hash), never the address; it stops blocking at
+    expires_at and the daily job removes it then (core.blocklist)."""
+
+    email_hash = models.CharField(max_length=64, unique=True)
+    note = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = "blocked_senders"
+        ordering = ["-created_at", "id"]
 
 
 class Revision(Base):
