@@ -411,12 +411,12 @@ test("pressing Enter in a field before the form's code has arrived sends nothing
   await page.waitForLoadState("domcontentloaded");
   const before = page.url();
 
-  await page.evaluate(() => {
-    const name = document.getElementById("contact-name") as HTMLInputElement;
-    name.value = "Early Typer";
-    name.focus({ preventScroll: true });
-    name.form?.requestSubmit();
-  });
+  // What a person can do before the code arrives: focus a field, type, press
+  // Enter. The button is off until then, so the browser does not submit.
+  await page.locator("#contact-name").focus();
+  await page.keyboard.type("Early Typer");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
 
   expect(page.url()).toBe(before);
   expect(posts).toHaveLength(0);

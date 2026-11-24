@@ -34,7 +34,8 @@ function read(form: HTMLFormElement) {
 
 /** Keep the form's box as tall as it was (or let it shrink again), so nothing below moves. */
 function holdHeight(root: HTMLElement, hold: boolean) {
-  root.style.minHeight = hold ? `${root.offsetHeight}px` : "";
+  // The computed height keeps the fraction that offsetHeight rounds away.
+  root.style.minHeight = hold ? getComputedStyle(root).height : "";
 }
 
 const never = () => () => undefined;

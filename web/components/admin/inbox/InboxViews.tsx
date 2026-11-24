@@ -248,7 +248,7 @@ export function MessageRows({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Link
                 href={detailHref(base, message.id, tab, listing.page, filters)}
-                className="text-lg font-bold underline underline-offset-4"
+                className="text-lg font-bold underline underline-offset-4 [overflow-wrap:anywhere]"
               >
                 {message.name}
               </Link>
@@ -264,7 +264,7 @@ export function MessageRows({
               {scoreLabel(message.spam_score)}
               {message.kept ? " · Kept" : ""}
             </p>
-            <p className="mt-2 text-ink">{message.snippet}</p>
+            <p className="mt-2 text-ink [overflow-wrap:anywhere]">{message.snippet}</p>
           </li>
         ))}
       </ul>
@@ -333,7 +333,7 @@ export function MessageView(props: MessageViewProps) {
       <h2
         id={FOCUS_IDS.heading}
         tabIndex={-1}
-        className="mb-4 text-2xl font-extrabold tracking-tight"
+        className="mb-4 text-2xl font-extrabold tracking-tight [overflow-wrap:anywhere]"
       >
         Message from {message.name}
       </h2>

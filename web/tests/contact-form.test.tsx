@@ -68,7 +68,7 @@ describe("the form's markup", () => {
       expect(markup).toContain(`<p id="contact-${name}-error" class="contact-form__error"></p>`);
       expect(markup).toContain(`${name === "name" ? "" : ""}aria-describedby="`);
     }
-    expect(readFileSync("app/(site)/site.css", "utf8")).toMatch(/\.contact-form__error \{[^}]*min-height: 2\.8em/);
+    expect(readFileSync("app/(site)/site.css", "utf8")).toMatch(/\.contact-form__error \{[^}]*min-height: 3\.2em/);
   });
 
   it("starts with the button off, and turns it on once the form's code has taken over", () => {

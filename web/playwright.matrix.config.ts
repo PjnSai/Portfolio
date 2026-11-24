@@ -4,7 +4,7 @@ import e2e from "./playwright.config";
 // The responsive and browser matrix (SPEC 12.1): `npm run test:matrix`.
 // One build and one pair of servers serve every project, the same ones the
 // e2e run uses (playwright.config.ts). MATRIX_SKIP_BUILD=1 serves the build
-// already in out/ (for example straight after `npm run e2e`) without the API.
+// already in out/ (for example straight after `npm run e2e`) and starts the API.
 // MATRIX_BROWSERS=chromium,firefox limits the browsers.
 
 export type Combo = {
@@ -75,5 +75,6 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : [["dot"], ["json", { outputFile: "test-results/matrix.json" }]],
   projects,
-  webServer: skipBuild ? [{ ...site, command: "npm start", timeout: 30_000 }] : [api, site],
+  // The API runs in both cases: the owner's inbox pages read from it.
+  webServer: skipBuild ? [api, { ...site, command: "npm start", timeout: 30_000 }] : [api, site],
 });
