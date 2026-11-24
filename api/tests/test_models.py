@@ -14,6 +14,7 @@ TABLES = {
     "cv_files",
     "contact_messages",
     "contact_notes",
+    "blocked_senders",
     "revisions",
     "palettes",
     "audit_log",

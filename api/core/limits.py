@@ -37,6 +37,8 @@ EDITABLE = {
     "spam_threshold": Limit(
         "contact_spam_threshold", "CONTACT_SPAM_THRESHOLD", 50, 100
     ),
+    # Applies to entries added or renewed after a change; others keep their date.
+    "blocklist_months": Limit("blocklist_months", "BLOCKLIST_MONTHS", 1, 36),
 }
 FIELDS = [limit.field for limit in EDITABLE.values()]
 
@@ -82,7 +84,7 @@ def save(changes):
 def fixed():
     """Limits set in code, read where they are defined so the list cannot drift
     from what is enforced. Shown to the owner, not editable."""
-    from core import ratelimit, sessions, vital
+    from core import blocklist, ratelimit, sessions, vital
 
     def minutes(delta):
         return int(delta.total_seconds() // 60)
@@ -98,6 +100,7 @@ def fixed():
         ("session_absolute_timeout", minutes(sessions.ABSOLUTE), "minutes"),
         ("passkey_confirmation_lasts", minutes(sessions.ELEVATION), "minutes"),
         ("vital_action_wait", minutes(vital.DELAY), "minutes"),
+        ("blocklist_max_entries", blocklist.MAX_ENTRIES, "count"),
     ]
     return [{"name": name, "value": value, "unit": unit} for name, value, unit in rows]
 

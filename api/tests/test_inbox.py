@@ -78,6 +78,8 @@ def test_every_inbox_route_needs_a_signed_in_owner():
         text = str(pattern.pattern)
         if text.startswith(("messages", "retention")):
             found[text] = pattern.callback.admin_level
+    # Blocking a sender needs a confirmed passkey (tests/test_blocklist.py).
+    assert found.pop("messages/<uuid:message_id>/block") is Level.ELEVATED
     assert len(found) == 8
     assert set(found.values()) == {Level.SESSION}
 

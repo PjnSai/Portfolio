@@ -50,6 +50,7 @@ class SiteSettings(Timestamped):
     contact_min_seconds = models.PositiveSmallIntegerField(null=True, blank=True)
     contact_max_links = models.PositiveSmallIntegerField(null=True, blank=True)
     contact_spam_threshold = models.PositiveSmallIntegerField(null=True, blank=True)
+    blocklist_months = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "site_settings"
@@ -205,6 +206,21 @@ class ContactNote(Base):
 
     def delete(self, *args, **kwargs):
         raise RuntimeError("A note goes only with its message.")
+
+
+class BlockedSender(Base):
+    """A sender the owner blocked. Only the keyed hash of the email is kept
+    (core.contact.email_hash), never the address; it stops blocking at
+    expires_at and the daily job removes it then (core.blocklist)."""
+
+    email_hash = models.CharField(max_length=64, unique=True)
+    note = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = "blocked_senders"
+        ordering = ["-created_at", "id"]
 
 
 class Revision(Base):

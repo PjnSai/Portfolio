@@ -48,14 +48,17 @@ class Command(BaseCommand):
             log.error("retention outcome=database_error %s", type(error).__name__)
             raise CommandError("Database error. Nothing was deleted.") from None
         log.info(
-            "retention outcome=done deleted=%d exempt=%d batches=%d dry_run=%s",
+            "retention outcome=done deleted=%d exempt=%d batches=%d "
+            "blocklist_deleted=%d dry_run=%s",
             counts["deleted"],
             counts["exempt"],
             counts["batches"],
+            counts["blocklist_deleted"],
             counts["dry_run"],
         )
         verb = "Would delete" if dry_run else "Deleted"
         self.stdout.write(
             f"{verb} {counts['deleted']} messages; "
-            f"{counts['exempt']} past their date are kept by a rule."
+            f"{counts['exempt']} past their date are kept by a rule; "
+            f"{counts['blocklist_deleted']} expired blocklist entries."
         )

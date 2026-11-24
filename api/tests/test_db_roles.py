@@ -140,3 +140,34 @@ def test_app_role_can_manage_sections_and_items(roles):
         section.delete()
 
         assert SectionItem.objects.count() == 0
+
+
+def test_app_role_can_block_renew_and_unblock_but_never_rewrite_a_hash(roles):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from core import blocklist, retention
+    from core.models import BlockedSender
+
+    with as_app() as cursor:
+        message = ContactMessage.objects.create(
+            name="A",
+            email="a@example.com",
+            body="Hello there.",
+            expires_at=timezone.now() + timedelta(days=1),
+        )
+        entry, message = blocklist.block_message(message.id, "note")
+        assert message.status == ContactMessage.Status.SPAM
+        blocklist.renew(entry.id)
+        assert blocklist.is_blocked("a@example.com")
+        denied(cursor, "UPDATE blocked_senders SET email_hash = 'other'")
+        denied(cursor, "UPDATE blocked_senders SET created_at = now()")
+        denied(cursor, "TRUNCATE blocked_senders")
+        assert blocklist.remove(entry.id)
+
+        BlockedSender.objects.create(
+            email_hash="f" * 64, expires_at=timezone.now() - timedelta(days=1)
+        )
+        assert retention.run()["blocklist_deleted"] == 1
+        assert BlockedSender.objects.count() == 0

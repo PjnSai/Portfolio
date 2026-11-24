@@ -5,7 +5,7 @@ from datetime import date
 
 from django.http import JsonResponse
 
-from core import inbox, limits, pages, responses, retention, serializers
+from core import blocklist, inbox, limits, pages, responses, retention, serializers
 from core.authz import Level, admin_route
 
 POST = ("POST",)
@@ -136,6 +136,60 @@ def message_not_spam(request, message_id):
     if found is None:
         return responses.not_found()
     return JsonResponse(inbox.detail(found))
+
+
+@admin_route(Level.ELEVATED, methods=POST)
+def message_block(request, message_id):
+    data, error = _valid(serializers.BlockNote, request.json)
+    if error:
+        return error
+    try:
+        entry, found = blocklist.block_message(message_id, data.get("note", ""))
+    except blocklist.Full:
+        return responses.conflict("blocklist_full")
+    if found is None:
+        return responses.not_found()
+    return JsonResponse(
+        {"entry": blocklist.describe(entry), "message": inbox.detail(found)}
+    )
+
+
+@admin_route(Level.SESSION, methods=("GET", "POST"), elevate=POST)
+def blocklist_view(request):
+    if request.method == "POST":
+        data, error = _valid(serializers.Block, request.json)
+        if error:
+            return error
+        try:
+            entry, _ = blocklist.block_email(data["email"], data.get("note", ""))
+        except blocklist.Full:
+            return responses.conflict("blocklist_full")
+        return JsonResponse(blocklist.describe(entry), status=201)
+    return JsonResponse(blocklist.listing())
+
+
+@admin_route(Level.ELEVATED, methods=POST)
+def blocklist_remove(request, entry_id):
+    _, error = _valid(serializers.Nothing, request.json)
+    if error:
+        return error
+    if not blocklist.remove(entry_id):
+        return responses.not_found()
+    return JsonResponse({"removed": True})
+
+
+@admin_route(Level.ELEVATED, methods=POST)
+def blocklist_renew(request, entry_id):
+    _, error = _valid(serializers.Nothing, request.json)
+    if error:
+        return error
+    try:
+        entry = blocklist.renew(entry_id)
+    except blocklist.Full:
+        return responses.conflict("blocklist_full")
+    if entry is None:
+        return responses.not_found()
+    return JsonResponse(blocklist.describe(entry))
 
 
 def _retention():

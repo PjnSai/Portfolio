@@ -24,6 +24,8 @@ DAY = timedelta(days=1)
 NAME = "Ottoline Brackenbury"
 EMAIL = "ottoline.brackenbury@retention-example.org"
 BODY = "A private paragraph about the lighthouse restoration."
+# The job also removes expired blocklist entries in a statement of its own.
+MESSAGE_DELETE = 'DELETE FROM "contact_messages"'
 
 
 def message(expired=True, **fields):
@@ -174,7 +176,13 @@ def test_a_dry_run_deletes_nothing_and_counts():
     assert rows <= left()
     assert "Would delete 3 messages; 1 past their date" in output
     (entry,) = runs()
-    assert entry.detail == {"deleted": 3, "exempt": 1, "batches": 0, "dry_run": True}
+    assert entry.detail == {
+        "deleted": 3,
+        "exempt": 1,
+        "batches": 0,
+        "blocklist_deleted": 0,
+        "dry_run": True,
+    }
 
 
 def test_batches_remove_everything_due():
@@ -186,7 +194,13 @@ def test_batches_remove_everything_due():
 
     assert ContactMessage.objects.count() == 1
     (entry,) = runs()
-    assert entry.detail == {"deleted": 7, "exempt": 1, "batches": 3, "dry_run": False}
+    assert entry.detail == {
+        "deleted": 7,
+        "exempt": 1,
+        "batches": 3,
+        "blocklist_deleted": 0,
+        "dry_run": False,
+    }
 
 
 def test_each_batch_is_one_delete_with_no_select_of_ids_before_it():
@@ -197,7 +211,7 @@ def test_each_batch_is_one_delete_with_no_select_of_ids_before_it():
         run("--batch-size", "2")
 
     sql = [q["sql"].strip() for q in queries.captured_queries]
-    deletes = [s for s in sql if s.startswith("DELETE")]
+    deletes = [s for s in sql if s.startswith(MESSAGE_DELETE)]
     assert len(deletes) == 3
     for statement in deletes:
         assert "NOT" in statement and "kept" in statement
@@ -219,7 +233,8 @@ def test_a_batch_never_grows_past_its_size_whatever_the_plan():
     with CaptureQueriesContext(connection) as queries:
         run("--batch-size", "3")
 
-    deletes = [q for q in queries.captured_queries if q["sql"].startswith("DELETE")]
+    sql = [q["sql"] for q in queries.captured_queries]
+    deletes = [s for s in sql if s.startswith(MESSAGE_DELETE)]
     assert len(deletes) == 3
     (entry,) = runs()
     assert entry.detail["batches"] == 3
@@ -242,7 +257,13 @@ def test_nothing_due_still_records_the_run():
     run()
 
     (entry,) = runs()
-    assert entry.detail == {"deleted": 0, "exempt": 0, "batches": 1, "dry_run": False}
+    assert entry.detail == {
+        "deleted": 0,
+        "exempt": 0,
+        "batches": 1,
+        "blocklist_deleted": 0,
+        "dry_run": False,
+    }
 
 
 # Audit: counts only
@@ -258,7 +279,13 @@ def test_one_audit_entry_per_run_with_counts_only():
 
     first, second = runs()
     for entry in (first, second):
-        assert set(entry.detail) == {"deleted", "exempt", "batches", "dry_run"}
+        assert set(entry.detail) == {
+            "deleted",
+            "exempt",
+            "batches",
+            "blocklist_deleted",
+            "dry_run",
+        }
         assert all(
             isinstance(v, int) for k, v in entry.detail.items() if k != "dry_run"
         )
