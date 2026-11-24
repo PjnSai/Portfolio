@@ -10,7 +10,7 @@ type ObserverClass = new (
 
 /**
  * Fetch the form's code once: when the form is within a screen of the visible
- * page, or the moment something in it takes focus, whichever comes first. With
+ * page, or the moment something in it has or takes focus, whichever comes first. With
  * no IntersectionObserver the first focus is the only trigger. Returns a
  * function that stops watching.
  */
@@ -36,6 +36,8 @@ export function armLazyLoad(root: HTMLElement, load: () => void, Observer?: Obse
   }
   root.addEventListener("focusin", go);
   observer?.observe(root);
+  // A field may have taken focus before this code ran.
+  if (root.matches(":focus-within")) go();
   return () => {
     done = true;
     stop();

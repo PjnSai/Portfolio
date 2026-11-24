@@ -9,7 +9,7 @@
  * tests/boot-script.test.ts recomputes it from the script's text.
  */
 export const EXTRA_SCRIPT_HASHES: readonly string[] = [
-  "sha256-4mLuqMWTL7L4q9+q5xr5g0KSN1PwsgT/s/BhM/C6L1I=",
+  "sha256-iLkgYOgBGRnwpkbNeWMeKqjOGGejjapiacMzHigcCpY=",
 ];
 
 /**

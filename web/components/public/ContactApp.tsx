@@ -24,8 +24,9 @@ import {
 type Config = { apiOrigin: string; siteKey: string };
 
 function read(form: HTMLFormElement) {
-  const data = new FormData(form);
-  const text = (name: string) => String(data.get(name) ?? "");
+  // The fields have no names (see ContactForm), so they are read by id.
+  const text = (name: string) =>
+    form.querySelector<HTMLInputElement>(`#contact-${name}`)?.value ?? "";
   return {
     values: { name: text("name"), email: text("email"), reason: text("reason"), body: text("body") },
     website: text("website"),

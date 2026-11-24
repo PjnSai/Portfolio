@@ -12,7 +12,10 @@ import {
 // hooks, so the same markup is written into the page at build time and, when
 // the visitor reaches the form, taken over by ContactApp (which fetches this
 // file again, in its own chunk). Fields are not controlled: what a visitor
-// types before the form's code arrives is kept.
+// types before the form's code arrives is kept. No field has a name and the
+// form's method is POST, so a native submit before the code arrives (from a
+// script; the button is off) can never carry what was typed, least of all in
+// the address. The code reads the fields by id.
 
 export type FormState = {
   status: "idle" | "sending" | "sent";
@@ -65,7 +68,6 @@ function Field({
       </label>
       {children({
         id,
-        name,
         "aria-describedby": described,
         "aria-invalid": error ? true : undefined,
         "aria-required": required ? true : undefined,
@@ -109,6 +111,7 @@ export function ContactFormView({
     <form
       id={IDS.form}
       className="contact-form"
+      method="post"
       noValidate
       aria-labelledby="contact-form-title"
       onSubmit={onSubmit}
@@ -151,7 +154,7 @@ export function ContactFormView({
           out of the tab order and hidden from screen readers. */}
       <div className="contact-form__trap" aria-hidden="true">
         <label htmlFor="contact-website">Leave this field empty</label>
-        <input type="text" id="contact-website" name="website" tabIndex={-1} autoComplete="off" />
+        <input type="text" id="contact-website" tabIndex={-1} autoComplete="off" />
       </div>
 
       <div data-turnstile className="contact-form__turnstile" />

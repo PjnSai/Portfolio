@@ -127,7 +127,8 @@ describe("Content-Security-Policy on the page with the contact form", () => {
     expect(publicPolicy).toBe(
       [
         "default-src 'self'",
-        `script-src 'self' '${EXTRA_SCRIPT_HASHES[0]}' '${HASH}'`,
+        // Hashes are listed in sorted order.
+        `script-src 'self' ${[EXTRA_SCRIPT_HASHES[0], HASH].sort().map((h) => `'${h}'`).join(" ")}`,
         "style-src 'self'",
         `img-src 'self' data: ${API}`,
         "font-src 'self'",

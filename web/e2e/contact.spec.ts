@@ -388,12 +388,72 @@ test("a message can be written and sent with the keyboard alone, and the trap fi
   ).toBeFocused();
   expect(
     await page.evaluate(
-      () => (document.activeElement as HTMLInputElement | null)?.name,
+      () => (document.activeElement as HTMLInputElement | null)?.id,
     ),
-  ).not.toBe("website");
+  ).not.toBe("contact-website");
   await page.keyboard.press("Enter");
 
   await expect(page.locator("#contact-sent")).toBeFocused();
+});
+
+/** Hold every script of the site back, as a slow connection would, so nothing
+ * on the page (the form's loader included) has run yet. */
+async function slowCode(page: Page) {
+  await page.route("**/_next/static/**/*.js", async (route) => {
+    await new Promise((done) => setTimeout(done, 1500));
+    await route.continue();
+  });
+}
+
+/** Every request the page makes after this call that could carry what was
+ * typed: a navigation of the page (a native submit) or anything whose address
+ * or body holds the text. */
+function carriers(page: Page, text: string) {
+  const seen: string[] = [];
+  page.on("request", (request) => {
+    const navigation =
+      request.isNavigationRequest() && request.frame() === page.mainFrame();
+    const holds = `${request.url()} ${request.postData() ?? ""}`.includes(text);
+    if (navigation || holds) seen.push(`${request.method()} ${request.url()}`);
+  });
+  return seen;
+}
+
+/** The defined signal that the form's code has taken over the markup. */
+const codeArrived = (page: Page) =>
+  expect(page.getByRole("button", { name: "Send message" })).toBeEnabled({
+    timeout: 15_000,
+  });
+
+test("a script's requestSubmit() before the form's code has arrived sends no values and puts nothing in the address", async ({
+  page,
+}) => {
+  const posts = contactPosts(page);
+  await stubTurnstile(page);
+  await withAddress(page);
+  await slowCode(page);
+  // Not "load": that waits for the scripts held back above.
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const before = page.url();
+  const seen = carriers(page, "Early");
+
+  await page.evaluate(() => {
+    const name = document.getElementById("contact-name") as HTMLInputElement;
+    // Nothing has taken over the form yet: its button is still off.
+    if (!name.form?.querySelector("button[type=submit]:disabled")) {
+      throw new Error("the form's code had already arrived");
+    }
+    name.value = "Early Typer";
+    name.focus({ preventScroll: true });
+    name.form?.requestSubmit();
+  });
+  await codeArrived(page);
+
+  expect(page.url()).toBe(before);
+  expect(new URL(page.url()).search).toBe("");
+  expect(seen).toEqual([]);
+  expect(posts).toHaveLength(0);
+  await expect(page.getByLabel(/^Name/)).toHaveValue("Early Typer");
 });
 
 test("pressing Enter in a field before the form's code has arrived sends nothing and puts nothing in the address", async ({
@@ -402,25 +462,56 @@ test("pressing Enter in a field before the form's code has arrived sends nothing
   const posts = contactPosts(page);
   await stubTurnstile(page);
   await withAddress(page);
-  // Hold the form's own code back, as a slow connection would.
-  await page.route("**/_next/static/chunks/*.js", async (route) => {
-    await new Promise((done) => setTimeout(done, 1500));
-    await route.continue();
-  });
-  await page.goto("/");
-  await page.waitForLoadState("domcontentloaded");
+  await slowCode(page);
+  // Not "load": that waits for the scripts held back above.
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const before = page.url();
+  const seen = carriers(page, "Early");
 
   // What a person can do before the code arrives: focus a field, type, press
   // Enter. The button is off until then, so the browser does not submit.
   await page.locator("#contact-name").focus();
   await page.keyboard.type("Early Typer");
   await page.keyboard.press("Enter");
-  await page.waitForTimeout(300);
+  await codeArrived(page);
 
   expect(page.url()).toBe(before);
+  expect(new URL(page.url()).search).toBe("");
+  expect(seen).toEqual([]);
   expect(posts).toHaveLength(0);
   await expect(page.getByLabel(/^Name/)).toHaveValue("Early Typer");
+});
+
+test("what was typed before the form's code arrived is kept when the code takes over, and is what gets sent", async ({
+  page,
+}) => {
+  const posts = contactPosts(page);
+  await stubTurnstile(page);
+  await withAddress(page);
+  await slowCode(page);
+  // Not "load": that waits for the scripts held back above.
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByRole("button", { name: "Send message" }),
+  ).toBeDisabled();
+
+  await page.locator("#contact-name").focus();
+  await page.keyboard.type(GOOD.name);
+  await page.getByLabel(/^Email/).fill(GOOD.email);
+  await page.getByLabel(/^Message/).fill(GOOD.body);
+  await codeArrived(page);
+
+  await expect(page.getByLabel(/^Name/)).toHaveValue(GOOD.name);
+  await expect(page.getByLabel(/^Email/)).toHaveValue(GOOD.email);
+  await expect(page.getByLabel(/^Message/)).toHaveValue(GOOD.body);
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.locator("#contact-sent")).toBeVisible();
+  expect(posts).toHaveLength(1);
+  expect(JSON.parse(posts[0].postData() ?? "{}")).toMatchObject({
+    name: GOOD.name,
+    email: GOOD.email,
+    body: GOOD.body,
+  });
 });
 
 test("the form page's policy lets Turnstile and the API in, and no other page's does", async ({

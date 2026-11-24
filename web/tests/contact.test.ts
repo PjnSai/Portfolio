@@ -345,9 +345,10 @@ class FakeObserver {
   }
 }
 
-function fakeRoot() {
+function fakeRoot(focused = false) {
   const listeners = new Map<string, Set<() => void>>();
   return {
+    matches: (selector: string) => selector === ":focus-within" && focused,
     addEventListener: (type: string, fn: () => void) => listeners.set(type, (listeners.get(type) ?? new Set()).add(fn)),
     removeEventListener: (type: string, fn: () => void) => listeners.get(type)?.delete(fn),
     fire: (type: string) => [...(listeners.get(type) ?? [])].forEach((fn) => fn()),
@@ -382,6 +383,16 @@ describe("when the form's code is fetched", () => {
     FakeObserver.last.callback([{ isIntersecting: true }]);
     FakeObserver.last.callback([{ isIntersecting: true }]);
     root.fire("focusin");
+
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(FakeObserver.last.disconnected).toBe(true);
+    expect(root.count("focusin")).toBe(0);
+  });
+
+  it("fetches at once when something in the form had focus before it started watching", () => {
+    const load = vi.fn();
+    const root = fakeRoot(true);
+    armLazyLoad(root as unknown as HTMLElement, load, FakeObserver);
 
     expect(load).toHaveBeenCalledTimes(1);
     expect(FakeObserver.last.disconnected).toBe(true);

@@ -49,10 +49,19 @@ describe("the form's markup", () => {
 
   it("has a honeypot that is out of the way for people: hidden from readers, out of the tab order, no autofill", () => {
     const trap = /<div class="contact-form__trap" aria-hidden="true">([^]*?)<\/div>/.exec(html())?.[1] ?? "";
-    expect(trap).toContain('name="website"');
+    expect(trap).toContain('id="contact-website"');
     expect(trap).toContain('tabindex="-1"');
     expect(trap).toContain('autoComplete="off"');
     expect(trap).toContain("Leave this field empty");
+  });
+
+  it("posts natively and names no field, so a submit before its code arrives sends no values", () => {
+    const markup = html();
+    expect(markup).toMatch(/<form id="contact-form"[^>]* method="post"/);
+    expect(markup).not.toContain(" name=");
+    for (const id of ["name", "email", "reason", "body", "website"]) {
+      expect(markup).toContain(`id="contact-${id}"`);
+    }
   });
 
   it("has an empty status region that is live, before and after something is said", () => {
