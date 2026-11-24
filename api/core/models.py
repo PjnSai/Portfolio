@@ -35,6 +35,10 @@ class SiteSettings(Timestamped):
     deploy_called_at = models.DateTimeField(null=True, blank=True)
     deploy_result = models.CharField(max_length=10, blank=True, default="")
     deploy_pending = models.BooleanField(default=False)
+    # How long contact messages are kept (core.retention). Private: these are not
+    # part of the draft or published copies, so they never reach the public site.
+    retention_spam_days = models.PositiveIntegerField(default=30)
+    retention_message_days = models.PositiveIntegerField(default=365)
 
     class Meta:
         db_table = "site_settings"
@@ -122,26 +126,71 @@ class CvFile(Base):
         db_table = "cv_files"
 
 
-class Message(Timestamped):
-    """Contact form message. Stores the minimum: no IP address, no user agent."""
+class ContactMessage(Base):
+    """A message from the public form. The sender's address is kept only as a
+    keyed hash (core.contact.address_hash); the cleanup job removes rows after
+    expires_at unless the owner marked them kept or has written notes on them
+    (core.retention)."""
 
     class Status(models.TextChoices):
         NEW = "new"
         READ = "read"
+        REPLIED = "replied"
         ARCHIVED = "archived"
-        TRASHED = "trashed"
+        SPAM = "spam"
 
-    name = models.CharField(max_length=200)
+    class Reason(models.TextChoices):
+        HIRING = "hiring"
+        PROJECT = "project"
+        OTHER = "other"
+
+    name = models.CharField(max_length=100)
     email = models.EmailField()
     body = models.TextField()
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
-    is_spam = models.BooleanField(default=False)
-    notes = models.JSONField(default=list)
-    trashed_at = models.DateTimeField(null=True, blank=True)
+    reason = models.CharField(
+        max_length=10, choices=Reason.choices, blank=True, default=""
+    )
+    # 0 to 100: how many of the bot checks the message tripped, and how hard
+    # (core.contact.spam_score). A score of 100 or more is quarantined.
+    spam_score = models.PositiveSmallIntegerField(default=0)
+    status = models.CharField(max_length=10, choices=Status.choices, default="new")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    kept = models.BooleanField(default=False)
+    expires_at = models.DateTimeField(db_index=True)
+    ip_hash = models.CharField(max_length=64, blank=True, default="")
 
     class Meta:
-        db_table = "messages"
+        db_table = "contact_messages"
         ordering = ["-created_at"]
+
+
+class ContactNote(Base):
+    """The owner's timeline on a message. Append-only: a note is never edited,
+    and goes only when its message does (the app role has no UPDATE on it)."""
+
+    class Kind(models.TextChoices):
+        NOTE = "note"
+        RESPONDED = "responded_with_details"
+
+    message = models.ForeignKey(
+        ContactMessage, on_delete=models.CASCADE, related_name="notes"
+    )
+    text = models.TextField()
+    kind = models.CharField(max_length=30, choices=Kind.choices, default="note")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "contact_notes"
+        ordering = ["created_at", "id"]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise RuntimeError("A note cannot be edited.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise RuntimeError("A note goes only with its message.")
 
 
 class Revision(Base):

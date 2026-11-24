@@ -56,6 +56,11 @@ def _increment(name, seconds):
     return client.incr(name)
 
 
+def hit(name, seconds):
+    """Count one use of a bucket and return the count so far in its window."""
+    return _increment(name, seconds)
+
+
 def request_cap(request):
     """Seconds to wait if this client is over the per-minute cap, else None."""
     now = time.time()

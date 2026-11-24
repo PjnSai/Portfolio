@@ -3,8 +3,8 @@ from unittest import mock
 import pytest
 from django.db import OperationalError, connections
 
-from core.models import Message, PendingAction
-from tests.conftest import COOKIE
+from core.models import PendingAction
+from tests.conftest import COOKIE, new_message
 
 pytestmark = pytest.mark.django_db
 
@@ -48,7 +48,7 @@ def test_sign_in_is_refused_when_the_database_is_down(api, passkey):
 
 
 def test_vital_action_is_refused_when_the_database_is_down(elevated):
-    message = Message.objects.create(name="A", email="a@example.com", body="Hi")
+    message = new_message()
     body = {
         "kind": "permanent_delete",
         "payload": {"entity": "message", "id": str(message.id)},

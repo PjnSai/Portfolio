@@ -45,9 +45,47 @@ function boot({ mode = "fixed", ids = [A, B, E], local = new Memory(), session =
         sessionStorage: { get: () => { throw new Error("denied"); } },
       })
     : { localStorage: local, sessionStorage: session };
-  runInNewContext(BOOT_SCRIPT, { window, document: { documentElement: { dataset } } });
+  runInNewContext(BOOT_SCRIPT, { window, document: { documentElement: { dataset }, addEventListener() {} } });
   return dataset;
 }
+
+type Listener = { type: string; handler: (event: unknown) => void; capture: unknown };
+
+/** Runs the script and returns the listeners it put on the document. */
+function listeners() {
+  const found: Listener[] = [];
+  const document = {
+    documentElement: { dataset: { palette: A, paletteMode: "fixed", palettes: A } },
+    addEventListener: (type: string, handler: Listener["handler"], capture: unknown) =>
+      found.push({ type, handler, capture }),
+  };
+  runInNewContext(BOOT_SCRIPT, { window: { localStorage: new Memory(), sessionStorage: new Memory() }, document });
+  return found;
+}
+
+describe("the guard on the contact form", () => {
+  const submit = (id: string) => {
+    let prevented = false;
+    const event = { target: { id }, preventDefault: () => (prevented = true) };
+    for (const listener of listeners().filter((l) => l.type === "submit")) listener.handler(event);
+    return prevented;
+  };
+
+  it("listens for submit on the whole document, before any other code, in the capture phase", () => {
+    const submits = listeners().filter((l) => l.type === "submit");
+    expect(submits).toHaveLength(1);
+    expect(submits[0].capture).toBe(true);
+  });
+
+  it("stops the browser's own submit of the contact form, so it never leaves the page", () => {
+    expect(submit("contact-form")).toBe(true);
+  });
+
+  it("leaves every other form alone", () => {
+    expect(submit("search")).toBe(false);
+    expect(submit("")).toBe(false);
+  });
+});
 
 const stored = (entries: Record<string, string>) => {
   const memory = new Memory();

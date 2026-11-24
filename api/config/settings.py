@@ -106,6 +106,27 @@ PUBLIC_REQUESTS_PER_MINUTE = 120
 LOGIN_MAX_FAILURES = 5
 LOGIN_GLOBAL_MAX_FAILURES = 20
 
+# Contact form (core.contact). Its limits have their own Redis buckets, apart
+# from PUBLIC_REQUESTS_PER_MINUTE. The address is the client address from
+# Cf-Connecting-Ip; see ratelimit.client_address for how far that is trusted.
+# Used until the owner saves their own in the admin (core.retention).
+RETENTION_SPAM_DAYS = 30
+RETENTION_MESSAGE_DAYS = 365
+# A message scoring this many (0 to 100) from the bot checks is quarantined.
+CONTACT_SPAM_THRESHOLD = 100
+CONTACT_PER_ADDRESS_PER_HOUR = 5
+CONTACT_PER_EMAIL_PER_DAY = 3
+CONTACT_DAILY_CAP = 25
+CONTACT_MIN_SECONDS = 3
+CONTACT_MAX_LINKS = 2
+# Cloudflare Turnstile (core.turnstile). With no secret key the form is
+# refused (503), never open: production must set it. Development and tests use
+# Cloudflare's published dummy keys (see tests/settings.py and docker-compose).
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+TURNSTILE_VERIFIER = os.environ.get(
+    "TURNSTILE_VERIFIER", "core.turnstile.CloudflareVerifier"
+)
+
 # Dotted paths of classes with send(event, context), comma-separated. With none
 # configured, vital actions are refused because the owner could not be told.
 NOTIFIERS = [path for path in os.environ.get("NOTIFIERS", "").split(",") if path]

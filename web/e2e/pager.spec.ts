@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import { frames, settled } from "./fixtures/settled";
 
 // The section pager: a dot rail under 1000 px, a panel from 1000 px with every
 // label from 1280 px, and the Next section button. The seed publishes six
@@ -105,11 +106,11 @@ for (const width of WIDTHS) {
       for (const [id] of SECTIONS) {
         await page.locator(`#${id}`).evaluate((el) => el.scrollIntoView({ behavior: "instant", block: "start" }));
         await expect(page.locator(`#${id}`)).not.toHaveAttribute("data-reveal", "pending");
-        await page.waitForTimeout(100);
+        await settled(page);
         expect(await overlaps(page), id).toEqual([]);
       }
       await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" }));
-      await page.waitForTimeout(100);
+      await settled(page);
       expect(await overlaps(page), "bottom").toEqual([]);
     });
 
@@ -191,7 +192,8 @@ test.describe("reduced motion", () => {
       await home(page, width);
       await nextButton(page).click();
       const first = await page.evaluate(() => Math.round(window.scrollY));
-      await page.waitForTimeout(300);
+      // A smooth scroll would have moved within these frames.
+      await frames(page);
       expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(first);
       expect(first).toBeGreaterThan(0);
       await expect(page.getByRole("heading", { level: 2, name: "About me" })).toBeFocused();

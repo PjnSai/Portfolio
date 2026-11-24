@@ -14,6 +14,7 @@ import {
 import { Markdown, safeHref } from "@/lib/markdown";
 import type { PublicSite, SiteSection } from "@/lib/site";
 import { Button, Picture, Placeholder, SectionHeader, StatTiles, Tags } from "./bits";
+import { ContactBlock } from "./ContactBlock";
 import { Showcase } from "./Showcase";
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
@@ -247,6 +248,7 @@ function Content({ entry, site, model }: { entry: PageSection; site: PublicSite;
       return (
         <>
           <Body section={section} />
+          <ContactBlock site={site} />
           <LinkList links={model.links} />
         </>
       );

@@ -46,7 +46,11 @@ test("the privacy notice names exactly what is kept in the browser", async ({ pa
     await expect(main.locator("code", { hasText: new RegExp(`^${key}$`) })).toHaveCount(1);
   }
   await expect(main).toContainText("sets no cookies");
-  await expect(main).toContainText("The contact form and the CV download are not available yet.");
+  await expect(main).toContainText("The CV download is not available yet.");
+  // The contact form is described: what it keeps, for how long, and Turnstile.
+  for (const words of ["Contact form", "12 months", "30 days", "Cloudflare Turnstile", "challenges.cloudflare.com", "keyed hash", "needs JavaScript"]) {
+    await expect(main).toContainText(words);
+  }
 });
 
 test("every page has the footer links, and they work by keyboard", async ({ page }) => {

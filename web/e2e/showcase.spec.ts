@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import { frames } from "./fixtures/settled";
 
 // The seed (api/tests/e2e_server.py) publishes eight projects, the Ring layout
 // and the visitor layout switcher, so every layout can be tried here.
@@ -228,10 +229,21 @@ test.describe("phone", () => {
     await home(page);
     await expect(showcase(page)).toHaveAttribute("data-mode", "flat");
     await settle(page);
+    const deck = page.locator("[data-showcase-deck]");
+    await deck.evaluate((el) => {
+      el.dataset.scrollEnds = "0";
+      el.addEventListener("scrollend", () => {
+        el.dataset.scrollEnds = String(Number(el.dataset.scrollEnds) + 1);
+      });
+    });
     await page.getByRole("button", { name: "Next project" }).tap();
     await page.getByRole("button", { name: "Previous project" }).tap();
     await expect(counter(page)).toHaveText("01 / 08");
-    await page.waitForTimeout(1200);
+    // The defined end: the deck's scroll has finished back on the first card,
+    // and the in-view checks have had frames to run since.
+    await expect(deck).not.toHaveAttribute("data-scroll-ends", "0");
+    await expect.poll(() => deck.evaluate((el) => el.scrollLeft)).toBe(0);
+    await frames(page);
     await expect(counter(page)).toHaveText("01 / 08");
   });
 });

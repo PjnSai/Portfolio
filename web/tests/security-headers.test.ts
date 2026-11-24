@@ -111,3 +111,90 @@ describe("colour picker style", () => {
     expect(publicPolicy).not.toContain(hash);
   });
 });
+
+describe("Content-Security-Policy on the page with the contact form", () => {
+  const formPolicy = contentSecurityPolicy({
+    scripts: [HASH],
+    styles: [],
+    api: API,
+    admin: false,
+    form: true,
+  });
+  const base = directives(publicPolicy);
+  const withForm = directives(formPolicy);
+
+  it("leaves every other page's policy exactly as it was", () => {
+    expect(publicPolicy).toBe(
+      [
+        "default-src 'self'",
+        // Hashes are listed in sorted order.
+        `script-src 'self' ${[EXTRA_SCRIPT_HASHES[0], HASH].sort().map((h) => `'${h}'`).join(" ")}`,
+        "style-src 'self'",
+        `img-src 'self' data: ${API}`,
+        "font-src 'self'",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+      ].join("; "),
+    );
+    expect(
+      contentSecurityPolicy({ scripts: [HASH], styles: [], api: API, admin: false, form: false }),
+    ).toBe(publicPolicy);
+    expect(adminPolicy).not.toContain("challenges.cloudflare.com");
+  });
+
+  it("adds exactly three things: Turnstile's script and frame, and the API for the message", () => {
+    const changed = [...withForm.keys()].filter(
+      (name) => JSON.stringify(withForm.get(name)) !== JSON.stringify(base.get(name)),
+    );
+    expect(changed.sort()).toEqual(["connect-src", "frame-src", "script-src"]);
+    expect(withForm.get("script-src")).toEqual([
+      ...base.get("script-src")!,
+      "https://challenges.cloudflare.com",
+    ]);
+    expect(withForm.get("frame-src")).toEqual(["https://challenges.cloudflare.com"]);
+    expect(withForm.get("connect-src")).toEqual(["'self'", API]);
+    expect([...base.keys()].every((name) => withForm.has(name))).toBe(true);
+  });
+
+  it("keeps styles and everything else as strict as before", () => {
+    expect(withForm.get("style-src")).toEqual(["'self'"]);
+    for (const name of [
+      "default-src",
+      "img-src",
+      "font-src",
+      "object-src",
+      "base-uri",
+      "form-action",
+      "frame-ancestors",
+    ]) {
+      expect(withForm.get(name)).toEqual(base.get(name));
+    }
+    expect(formPolicy).not.toContain("unsafe-inline");
+    expect(formPolicy).not.toContain("unsafe-eval");
+    expect(formPolicy).not.toContain("strict-dynamic");
+    expect(formPolicy).not.toContain("nonce-");
+    expect(formPolicy).not.toContain("*");
+    expect(formPolicy).not.toContain("blob:");
+  });
+
+  it("names only Cloudflare's Turnstile origin and the API as other origins, with no wildcard", () => {
+    const origins = formPolicy.match(/https?:\/\/[^\s;]+/g) ?? [];
+    expect([...new Set(origins)].sort()).toEqual([API, "https://challenges.cloudflare.com"]);
+    // Turnstile's connect-src entry is for pre-clearance only, which is not used.
+    expect(withForm.get("connect-src")).not.toContain("https://challenges.cloudflare.com");
+  });
+
+  it("names no API origin on the form page when there is none", () => {
+    const policy = contentSecurityPolicy({
+      scripts: [],
+      styles: [],
+      api: "",
+      admin: false,
+      form: true,
+    });
+    expect(directives(policy).get("connect-src")).toEqual(["'self'"]);
+  });
+});

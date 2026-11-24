@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 import uuid
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -26,6 +27,9 @@ DATABASE_URL = os.environ.get(
 )
 MEDIA_ROOT = Path(tempfile.mkdtemp(prefix="portfolio-e2e-media-"))
 TOKEN_FILE = Path(os.environ.get("E2E_TOKEN_FILE", API / ".e2e-access-token"))
+# A signed-in session for the browser matrix, which cannot use a virtual passkey
+# in every browser. The raw token is written here; only its hash is stored.
+SESSION_FILE = Path(os.environ.get("E2E_SESSION_FILE", API / ".e2e-session-token"))
 BOOTSTRAP_TOKEN = "e2e-bootstrap-token"
 TEAM = "team.cloudflareaccess.test"
 AUDIENCE = "e2e-audience"
@@ -43,6 +47,10 @@ os.environ.update(
         "CF_ACCESS_EMAIL": EMAIL,
         "BOOTSTRAP_TOKEN_SHA256": hashlib.sha256(BOOTSTRAP_TOKEN.encode()).hexdigest(),
         "NOTIFIERS": "core.notify.LogNotifier",
+        # Cloudflare's dummy secret; the check itself is a local stand-in, so the
+        # browser suite needs no network.
+        "TURNSTILE_SECRET_KEY": "1x0000000000000000000000000000000AA",
+        "TURNSTILE_VERIFIER": "tests.turnstile.FakeVerifier",
         "DATABASE_URL": DATABASE_URL,
         "REDIS_URL": os.environ.get("E2E_REDIS_URL", "redis://127.0.0.1:6379/14"),
         "MEDIA_STORAGE": "local",
@@ -204,6 +212,78 @@ PICKS = [
 ]
 
 
+def seed_inbox_and_session():
+    """A few messages for the inbox pages, and a session the matrix can use."""
+    import hashlib
+    import secrets
+
+    from django.utils import timezone
+
+    from core import retention
+    from core.models import ContactMessage, ContactNote, Owner, Session
+
+    now = timezone.now()
+    rows = [
+        (
+            "Matrix Sender One",
+            "one@matrix.example",
+            "hiring",
+            "new",
+            0,
+            "A short message about a role.",
+        ),
+        (
+            "Matrix Sender Two With A Very Long Name That Keeps Going",
+            "a.very.long.address.that.keeps.going.and.going@a-long-domain-name.example",
+            "project",
+            "read",
+            0,
+            "A message with an unbroken word: "
+            + "x" * 90
+            + chr(10) * 2
+            + "And a second paragraph to show line breaks.",
+        ),
+        (
+            "Matrix Sender Three",
+            "three@matrix.example",
+            "",
+            "replied",
+            20,
+            "See https://one.example for details.",
+        ),
+        (
+            "Matrix Held Back",
+            "held@matrix.example",
+            "other",
+            "spam",
+            100,
+            "Cheap watches, buy now.",
+        ),
+    ]
+    for n, (name, email, reason, status, score, body) in enumerate(rows):
+        message = ContactMessage(
+            name=name,
+            email=email,
+            reason=reason,
+            status=status,
+            spam_score=score,
+            body=body,
+            created_at=now - timedelta(minutes=10 - n),
+        )
+        retention.apply(message)
+        message.save(force_insert=True)
+        if status == "replied":
+            ContactNote.objects.create(
+                message=message, text="Sent the CV.", kind="responded_with_details"
+            )
+    token = secrets.token_urlsafe(32)
+    Session.objects.create(
+        owner=Owner.objects.get(),
+        token_hash=hashlib.sha256(token.encode()).hexdigest(),
+    )
+    SESSION_FILE.write_text(token)
+
+
 def seed_published_site():
     # The site build needs published content (web/lib/site.ts) and the layout
     # tests need one section of each kind, plus the published palettes.
@@ -280,6 +360,7 @@ def main():
     call_command("migrate", verbosity=0)
     cache.client().flushdb()
     seed_published_site()
+    seed_inbox_and_session()
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     access.fetch_signing_key = lambda token: key.public_key()

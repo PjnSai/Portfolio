@@ -11,7 +11,7 @@ const apiPort = 8100;
 export default defineConfig({
   testDir: "e2e",
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
+  retries: 0,
   reporter: process.env.CI ? "github" : "list",
   // WebAuthn needs a secure context and a domain name, so not 127.0.0.1.
   use: { baseURL: `http://localhost:${port}` },

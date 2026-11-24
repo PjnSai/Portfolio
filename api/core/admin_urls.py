@@ -4,6 +4,7 @@ from django.urls import path
 
 from core import admin_views as views
 from core import content_views as content
+from core import inbox_views as inbox
 from core import media_views as media
 from core import palette_views as palettes
 
@@ -68,4 +69,12 @@ urlpatterns = [
     path("cache", media.cache_status),
     path("cache/purge", media.cache_purge),
     path("deploy", media.site_deploy),
+    path("messages", inbox.message_list),
+    path("retention", inbox.retention_view),
+    path("messages/<uuid:message_id>", inbox.message),
+    path("messages/<uuid:message_id>/status", inbox.message_status),
+    path("messages/<uuid:message_id>/notes", inbox.message_notes),
+    path("messages/<uuid:message_id>/responded", inbox.message_responded),
+    path("messages/<uuid:message_id>/keep", inbox.message_keep),
+    path("messages/<uuid:message_id>/not-spam", inbox.message_not_spam),
 ]

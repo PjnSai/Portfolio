@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import { settled } from "./fixtures/settled";
 
 // The site is built from the sections api/tests/e2e_server.py publishes:
 // a hero, About me, Selected work (eight projects), Work history, Study (empty),
@@ -359,7 +360,7 @@ test.describe("the nav never covers what it points at", () => {
       await page.goto("/");
       await expect(page.locator("[data-nav]")).toHaveAttribute("data-enhanced", "true");
       const before = await page.locator("[data-nav]").boundingBox();
-      await page.waitForTimeout(1200);
+      await settled(page);
       expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(0);
       expect((await page.locator("[data-nav]").boundingBox())?.height).toBe(before?.height);
     });

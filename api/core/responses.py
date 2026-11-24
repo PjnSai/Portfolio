@@ -61,6 +61,38 @@ def privacy_check(warnings):
     )
 
 
+def contact_sent():
+    """The one answer to a message that was saved, whether it went to the inbox
+    or to quarantine: nothing here lets a sender tell which."""
+    return JsonResponse(
+        {"detail": "Thank you. Your message has been received."},
+        status=201,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+def bad_challenge():
+    return JsonResponse(
+        {
+            "detail": "The anti-spam check did not pass. Please try again.",
+            "code": "challenge",
+        },
+        status=400,
+    )
+
+
+def contact_limited(retry_after):
+    """The same for the address, email and daily limits."""
+    return JsonResponse(
+        {
+            "detail": "Too many messages. Please try again later.",
+            "code": "rate_limited",
+        },
+        status=429,
+        headers={"Retry-After": str(max(1, int(retry_after)))},
+    )
+
+
 def too_large():
     return JsonResponse({"detail": "Too large."}, status=413)
 

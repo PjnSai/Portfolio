@@ -1,5 +1,7 @@
 // The one hand-written inline script. It runs in <head>, before the body is
-// parsed, so the page never paints in the wrong palette or theme. The root
+// parsed, so the page never paints in the wrong palette or theme, and so the
+// contact form can never be sent by the browser itself, even before any other
+// code has arrived (the form's own code sends it; see ContactForm). The root
 // layout puts the owner's choice on <html>: data-palette (the default),
 // data-palette-mode and data-palettes (the enabled ids). The text must stay
 // exactly as it is here: its SHA-256 is in EXTRA_SCRIPT_HASHES and
@@ -31,4 +33,6 @@ if(ok(v))p=v;else{var l=get(L,"palette-last");
 if(ok(l))p=ids[(ids.indexOf(l)+1)%ids.length];
 put(L,"palette-last",p);put(S,"palette-visit",p)}}
 if(p)a.palette=p;
-var t=get(L,"theme");a.theme=t==="light"||t==="dark"?t:"system"})()`;
+var t=get(L,"theme");a.theme=t==="light"||t==="dark"?t:"system";
+document.addEventListener("submit",function(e){var f=e.target;
+if(f&&f.id==="contact-form")e.preventDefault()},true)})()`;

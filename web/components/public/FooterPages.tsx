@@ -1,10 +1,10 @@
 // The words of the footer pages (SPEC 3.10). They describe what the site does
-// now; docs/PROGRESS.md lists the paragraphs Phase 4 must change when the
-// contact form and CV download go live.
+// now. The contact form is described here; the CV download is still to come
+// (docs/PROGRESS.md lists what remains).
 
 import type { ReactNode } from "react";
 import { REPORT_URL, REPOSITORY } from "@/lib/seo";
-const REVIEWED = "19 November 2026";
+const REVIEWED = "23 November 2026";
 
 function Doc({ label, title, lead, children }: { label: string; title: string; lead: string; children: ReactNode }) {
   return (
@@ -36,7 +36,8 @@ export function PrivacyPage({ name }: { name: string }) {
       <h2>Reading the site</h2>
       <p>
         The pages are plain files served through Cloudflare. The site adds no analytics, advertising, social media
-        or other tracking scripts, loads nothing from other companies, and sets no cookies.
+        or other tracking scripts, and the site itself sets no cookies. The only thing it loads from another
+        company is Cloudflare Turnstile, on the home page and only for the contact form (see below).
       </p>
       <p>
         Images come from the site&apos;s own server, which runs on Google Cloud behind Cloudflare. To stop any one
@@ -62,17 +63,56 @@ export function PrivacyPage({ name }: { name: string }) {
         any time by clearing this site&apos;s data in your browser settings.
       </p>
 
-      <h2>Contact form and CV</h2>
+      <h2>Contact form</h2>
       <p>
-        The contact form and the CV download are not available yet. Before they go live, this notice will say what
-        they keep, why, for how long, and how to have it deleted.
+        The home page has a contact form. If you send a message, the site keeps the name and email address you
+        typed, your message, the reason if you chose one, and the time. The email address is not checked, and
+        nothing is sent to it. The message is kept so that {name} can read it and reply from an ordinary email program.
+        It is shown only in the private editing area, as plain text, and is not shared.
+      </p>
+      <p>
+        <strong>How long.</strong> Messages are kept for 12 months by default. A message is kept for longer only if
+        {name} marks it to be kept or has written notes on it, and then until it is deleted. {name} can change the
+        periods, and can delete a message at any time. Deleting is a deliberate step that needs a passkey and waits
+        24 hours before it runs.
+      </p>
+      <p>
+        <strong>Checks against abuse.</strong> The form uses Cloudflare Turnstile to tell people from automated
+        scripts. Its script and frame load from challenges.cloudflare.com on the home page only, and only when you get
+        near the form or use it, so reading the site does not load them. Cloudflare receives your browser details
+        for the check and handles them under its own privacy policy. When you send a message, the server sends
+        Cloudflare the check&apos;s result token to confirm it, and not your message. The form also has a hidden
+        field that only scripts fill in, and counts how long it was open.
+      </p>
+      <p>
+        <strong>Your address.</strong> To limit abuse, the server limits each address to 5 messages an hour, each
+        email address to 3 a day, and the whole form to 25 a day. It counts them using a keyed hash of your IP
+        address and of your email address. A hash cannot be turned back into the address without a secret key kept on
+        the server. A hash of your IP address is also kept with your message, and the counts are deleted after an
+        hour or a day.
+      </p>
+      <p>
+        <strong>Messages held back.</strong> A message that fails the checks (the hidden field filled in, sent faster
+        than a person could, too many links, or an exact repeat) is not thrown away, in case a person was caught by
+        mistake. It is kept in a separate folder that {name} reviews, and deleted after 30 days unless it is moved
+        to the inbox. You are told your message was received either way.
+      </p>
+      <p>
+        <strong>Without JavaScript.</strong> The form needs JavaScript. If it is switched off, the page says so and
+        points to the professional links instead. No email address is shown on this site.
+      </p>
+
+      <h2>CV download</h2>
+      <p>
+        The CV download is not available yet. Before it goes live, this notice will say what it keeps, why, for how
+        long, and how to have it deleted.
       </p>
 
       <h2>Your rights</h2>
       <p>
         You can ask what is held about you, ask for it to be corrected or deleted, or object to how it is used.
-        Until the contact form is available, please use one of the professional profiles linked on the home page.
-        If you are not happy with the answer, you can complain to the Information Commissioner&apos;s Office at{" "}
+        To ask, send a message through the contact form on the home page, saying what you want and which email
+        address you used, or use one of the professional profiles linked there. If you are not happy with the answer, you can complain to the Information Commissioner&apos;s Office at{" "}
         <External href="https://ico.org.uk/make-a-complaint/">ico.org.uk</External>.
       </p>
     </Doc>
@@ -88,7 +128,13 @@ export function AccessibilityPage() {
     >
       <h2>What the site does</h2>
       <ul>
-        <li>Every page can be read in full with JavaScript turned off.</li>
+        <li>Every page can be read in full with JavaScript turned off. The contact form is the one thing that
+          needs it: without it the page says so and points to the professional links.</li>
+        <li>
+          The contact form has a label on every field, problems written next to the field they belong to (not
+          shown by colour alone), results read out by screen readers, and focus moved to the first problem or to
+          the confirmation. The anti-spam check is invisible and asks you to do nothing.
+        </li>
         <li>
           Everything can be used with a keyboard. A skip link leads to the main content, and focus is always visible.
         </li>
@@ -122,8 +168,8 @@ export function AccessibilityPage() {
 
       <h2>Reporting a problem</h2>
       <p>
-        If something on this site is hard to use, please say what page it was and what happened. Until the contact
-        form is available, please use one of the professional profiles linked on the home page.
+        If something on this site is hard to use, please say what page it was and what happened. You can use the
+        contact form on the home page or one of the professional profiles linked there.
       </p>
     </Doc>
   );
@@ -155,6 +201,17 @@ export function SecurityPage() {
           script allowed by its hash.
         </li>
         <li>There are no visitor accounts and no cookies on the public site.</li>
+        <li>
+          The contact form is protected by Cloudflare Turnstile, which loads on the home page only (from
+          challenges.cloudflare.com, when you get near the form), a hidden field that only scripts fill in, and
+          limits on messages per address, per email address and per day. The server checks the Turnstile result
+          itself and refuses every message if it cannot. No other page may load Turnstile, and no page may run
+          other people&apos;s scripts.
+        </li>
+        <li>
+          Messages are kept as plain text, checked for length and for characters that could change an email
+          header, and never shown as HTML.
+        </li>
         <li>
           The editing area is behind Cloudflare Access and a passkey. Important changes also need a fresh passkey
           check and a waiting period.

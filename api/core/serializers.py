@@ -388,6 +388,49 @@ class Settings(PaletteChoice):
     social_image = ImageSlot(required=False, allow_null=True)
 
 
+class InboxStatus(Strict):
+    status = serializers.ChoiceField(
+        choices=["new", "read", "replied", "archived", "spam"]
+    )
+
+
+class InboxNote(Strict):
+    text = Text(multiline=True, trim_whitespace=True, max_length=2000)
+
+
+class InboxResponse(Strict):
+    text = Text(
+        multiline=True,
+        trim_whitespace=True,
+        max_length=2000,
+        required=False,
+        allow_blank=True,
+    )
+
+
+class InboxKeep(Strict):
+    kept = Flag()
+
+
+class Retention(Strict):
+    # The same limits as core.retention.MIN_DAYS and MAX_DAYS (tested).
+    spam_days = serializers.IntegerField(min_value=7, max_value=3650)
+    message_days = serializers.IntegerField(min_value=7, max_value=3650)
+
+    def to_internal_value(self, data):
+        # Whole numbers only: not "30", 30.5 or true.
+        for name in ("spam_days", "message_days"):
+            value = data.get(name) if isinstance(data, dict) else None
+            if isinstance(value, bool) or not isinstance(value, int):
+                if name in data:
+                    raise serializers.ValidationError({name: ["Enter a whole number."]})
+        return super().to_internal_value(data)
+
+
+class Nothing(Strict):
+    """A request that takes no fields."""
+
+
 def as_json(value):
     """Validated data as plain dicts and lists, ready for a JSON column."""
     if isinstance(value, dict):

@@ -18,3 +18,8 @@ os.environ.pop("DJANGO_DEBUG", None)
 from config.settings import *  # noqa: E402, F403
 
 NOTIFIERS = ["tests.notifiers.Recorder"]
+
+# Cloudflare's published dummy secret that always passes; the verifier is a
+# local fake, so tests never call Cloudflare.
+TURNSTILE_SECRET_KEY = "1x0000000000000000000000000000000AA"
+TURNSTILE_VERIFIER = "tests.turnstile.FakeVerifier"

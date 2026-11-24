@@ -104,6 +104,7 @@ async function checkSession(): Promise<SessionState> {
 
 const NAV = [
   ["sections", "Sections"],
+  ["messages", "Messages"],
   ["media", "Media"],
   ["settings", "Settings"],
   ["trash", "Trash"],

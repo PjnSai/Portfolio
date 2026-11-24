@@ -205,3 +205,19 @@ def mature(action, **past):
     action.execute_after -= shift
     action.expires_at -= shift
     action.save()
+
+
+def new_message(**fields):
+    """A contact message as the form would store it."""
+    from django.utils import timezone
+
+    from core.models import ContactMessage
+
+    values = {
+        "name": "A",
+        "email": "a@example.com",
+        "body": "Hello there, a message.",
+        "expires_at": timezone.now() + timedelta(days=365),
+    }
+    values.update(fields)
+    return ContactMessage.objects.create(**values)

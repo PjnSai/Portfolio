@@ -6,7 +6,7 @@ from django.apps import apps
 from django.db import ProgrammingError, connection, transaction
 
 from core import audit
-from core.models import AuditLog, Message, Owner
+from core.models import AuditLog, ContactMessage, ContactNote, Owner
 
 SQL = Path(__file__).resolve().parent.parent / "db"
 
@@ -67,15 +67,23 @@ def test_app_role_cannot_change_the_schema(roles):
         denied(cursor, "SELECT * FROM django_migrations")
 
 
-def test_app_role_can_manage_messages(roles):
-    with as_app():
-        message = Message.objects.create(name="A", email="a@example.com", body="Hi")
-        message.status = Message.Status.ARCHIVED
-        message.notes = [{"at": "2026-01-01T00:00:00Z", "text": "Replied"}]
+def test_app_role_can_add_contact_notes_but_not_change_them(roles):
+    with as_app() as cursor:
+        message = ContactMessage.objects.create(
+            name="A",
+            email="a@example.com",
+            body="Hello there.",
+            expires_at="2030-01-01T00:00:00Z",
+        )
+        message.status = ContactMessage.Status.READ
         message.save()
+        ContactNote.objects.create(message=message, text="Seen")
+        denied(cursor, "UPDATE contact_notes SET text = 'changed'")
+        denied(cursor, "TRUNCATE contact_notes")
+
         message.delete()
 
-        assert Message.objects.count() == 0
+        assert ContactNote.objects.count() == 0
 
 
 def test_app_role_cannot_add_remove_or_rekey_the_owner(roles):

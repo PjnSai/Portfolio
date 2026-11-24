@@ -63,7 +63,14 @@ WITH_SESSION = cases(Level.SESSION, Level.ELEVATED)
 BEFORE_SESSION = [
     case for case in cases(Level.ACCESS) if case.values[1] in NO_SESSION_YET
 ]
-PUBLIC = cases(None)
+# The contact form is the one public route that takes a POST. It sends no
+# cookie, and the guard still needs the site's own Origin (see test_contact.py).
+PUBLIC_FORMS = {"/api/v1/contact"}
+PUBLIC = [
+    case
+    for case in cases(None)
+    if not (case.values[0] == "POST" and case.values[1] in PUBLIC_FORMS)
+]
 
 
 def send(api, method, path, **headers):
@@ -82,7 +89,9 @@ def send(api, method, path, **headers):
 def test_every_route_is_covered():
     assert all("<" not in path for path, _ in ROUTES)
     token_route = len(UNSAFE_METHODS)
+    forms = len(PUBLIC_FORMS)  # their POST is tested in test_contact.py
     covered = len(WITH_SESSION) + len(BEFORE_SESSION) + len(PUBLIC) + token_route
+    covered += forms
     assert covered == len(ROUTES) * 4
     assert len(WITH_SESSION) >= 12 * 4
     assert len(BEFORE_SESSION) == len(NO_SESSION_YET) * 4

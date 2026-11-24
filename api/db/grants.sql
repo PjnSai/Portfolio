@@ -13,9 +13,14 @@ GRANT USAGE ON SCHEMA public TO app_rw;
 -- Content the admin edits. Projects, experience, skills and the rest are
 -- rows in section_items.
 GRANT SELECT, INSERT, UPDATE, DELETE ON
-    site_settings, sections, section_items, media, cv_files, messages,
+    site_settings, sections, section_items, media, cv_files,
     revisions, palettes
 TO app_rw;
+
+-- Contact messages from the public form. A note can be added and read, never
+-- changed; it is deleted only along with its message.
+GRANT SELECT, INSERT, UPDATE, DELETE ON contact_messages TO app_rw;
+GRANT SELECT, INSERT, DELETE ON contact_notes TO app_rw;
 
 -- Auth state.
 GRANT SELECT, INSERT, UPDATE, DELETE ON

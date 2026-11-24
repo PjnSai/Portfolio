@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { apiOrigin } from "./lib/api-base";
+import { siteKeyFrom } from "./lib/public/turnstile-key";
 import { siteOrigin } from "./lib/seo";
 
 // Fails the build at once, with the reason, if SITE_ORIGIN is missing on Pages
@@ -11,7 +12,10 @@ siteOrigin(process.env);
 const nextConfig: NextConfig = {
   output: "export",
   images: { unoptimized: true },
-  env: { NEXT_PUBLIC_API_BASE_URL: apiOrigin(process.env.API_BASE_URL) },
+  env: {
+    NEXT_PUBLIC_API_BASE_URL: apiOrigin(process.env.API_BASE_URL),
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY: siteKeyFrom(process.env),
+  },
   turbopack: {
     rules: {
       "*.css": {

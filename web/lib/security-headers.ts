@@ -9,7 +9,7 @@
  * tests/boot-script.test.ts recomputes it from the script's text.
  */
 export const EXTRA_SCRIPT_HASHES: readonly string[] = [
-  "sha256-4mLuqMWTL7L4q9+q5xr5g0KSN1PwsgT/s/BhM/C6L1I=",
+  "sha256-iLkgYOgBGRnwpkbNeWMeKqjOGGejjapiacMzHigcCpY=",
 ];
 
 /**
@@ -22,6 +22,17 @@ export const ADMIN_STYLE_HASHES: readonly string[] = [
   "sha256-I2px+fnpbN4E5+Djrj7aoTIyq9yyREkuVl19f4Sye9A=",
 ];
 
+/**
+ * The one third-party origin, for the one page that holds the contact form:
+ * Cloudflare Turnstile's script and its frame, as Cloudflare documents
+ * (developers.cloudflare.com/turnstile/reference/content-security-policy).
+ * Its connect-src entry is only for pre-clearance, which is not used.
+ */
+export const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
+
+/** Present in a built page's HTML if, and only if, it carries the contact form. */
+export const CONTACT_FORM_MARKER = "data-contact-form";
+
 export type PolicyInput = {
   /** "sha256-<base64>" for each inline script on the page. */
   scripts: readonly string[];
@@ -31,6 +42,11 @@ export type PolicyInput = {
   api: string;
   /** Admin pages call the API from the browser; public pages only show its images. */
   admin: boolean;
+  /**
+   * The page carries the contact form: it may load Turnstile's script and
+   * frame, and send the message to the API. No other page gets either.
+   */
+  form?: boolean;
 };
 
 const quoted = (hashes: readonly string[]) => hashes.map((h) => ` '${h}'`).join("");
@@ -41,15 +57,17 @@ const quoted = (hashes: readonly string[]) => hashes.map((h) => ` '${h}'`).join(
  */
 export function contentSecurityPolicy(input: PolicyInput): string {
   const api = input.api ? ` ${input.api}` : "";
+  const form = input.form === true;
   const scripts = [...new Set([...EXTRA_SCRIPT_HASHES, ...input.scripts])].sort();
   const styles = [...new Set([...(input.admin ? ADMIN_STYLE_HASHES : []), ...input.styles])].sort();
   return [
     "default-src 'self'",
-    `script-src 'self'${quoted(scripts)}`,
+    `script-src 'self'${quoted(scripts)}${form ? ` ${TURNSTILE_ORIGIN}` : ""}`,
     `style-src 'self'${quoted(styles)}`,
     `img-src 'self' data:${api}`,
     "font-src 'self'",
-    `connect-src 'self'${input.admin ? api : ""}`,
+    `connect-src 'self'${input.admin || form ? api : ""}`,
+    ...(form ? [`frame-src ${TURNSTILE_ORIGIN}`] : []),
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",

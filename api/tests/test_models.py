@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.management import call_command
 from django.db import connection, models
 
-from core.models import Message
+from tests.conftest import new_message
 
 TABLES = {
     "site_settings",
@@ -12,7 +12,8 @@ TABLES = {
     "section_items",
     "media",
     "cv_files",
-    "messages",
+    "contact_messages",
+    "contact_notes",
     "revisions",
     "palettes",
     "audit_log",
@@ -61,8 +62,8 @@ def test_every_table_has_a_uuid_primary_key():
 
 @pytest.mark.django_db
 def test_ids_are_random_not_sequential():
-    first = Message.objects.create(name="A", email="a@example.com", body="A")
-    second = Message.objects.create(name="B", email="b@example.com", body="B")
+    first = new_message(name="A")
+    second = new_message(name="B")
 
     assert first.id.version == 4
     assert first.id != second.id

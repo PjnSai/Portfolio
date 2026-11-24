@@ -6,11 +6,11 @@ from django.utils import timezone
 from core.models import (
     AdminCredential,
     AuditLog,
-    Message,
+    ContactMessage,
     PendingAction,
 )
 from tests.authenticator import SoftAuthenticator
-from tests.conftest import ADMIN, age_sessions, mature
+from tests.conftest import ADMIN, age_sessions, mature, new_message
 from tests.notifiers import Recorder
 
 pytestmark = pytest.mark.django_db
@@ -18,7 +18,7 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 def message():
-    return Message.objects.create(name="A", email="a@example.com", body="Hi")
+    return new_message()
 
 
 def request_delete(api, message):
@@ -46,7 +46,7 @@ def test_request_starts_a_24_hour_wait_and_does_nothing_yet(elevated, message):
     assert body["id"] == str(action.id)
     assert body["state"] == "waiting"
     assert action.execute_after - action.requested_at == timedelta(hours=24)
-    assert Message.objects.filter(id=message.id).exists()
+    assert ContactMessage.objects.filter(id=message.id).exists()
 
 
 def test_request_sends_a_notice_with_a_cancel_link(elevated, message):
@@ -90,7 +90,7 @@ def test_cannot_run_before_the_wait_is_over(elevated, message):
     response = elevated.post(f"/vital-actions/{action_id}/execute")
 
     assert response.status_code == 409
-    assert Message.objects.filter(id=message.id).exists()
+    assert ContactMessage.objects.filter(id=message.id).exists()
 
 
 def test_cannot_run_a_minute_early(elevated, passkey, message):
@@ -110,7 +110,7 @@ def test_stolen_session_cannot_run_a_matured_action(elevated, passkey, message):
 
     assert response.status_code == 403
     assert response.json()["code"] == "elevation_required"
-    assert Message.objects.filter(id=message.id).exists()
+    assert ContactMessage.objects.filter(id=message.id).exists()
 
 
 def test_permanent_delete_removes_the_row(elevated, passkey, message):
@@ -122,7 +122,7 @@ def test_permanent_delete_removes_the_row(elevated, passkey, message):
 
     assert response.status_code == 200
     assert response.json()["state"] == "done"
-    assert not Message.objects.filter(id=message.id).exists()
+    assert not ContactMessage.objects.filter(id=message.id).exists()
     assert AuditLog.objects.filter(event="vital_action_executed").exists()
     assert elevated.get("/vital-actions").json()["actions"] == []
 
@@ -148,7 +148,7 @@ def test_cancel_needs_only_a_session_and_stops_the_action(elevated, passkey, mes
     mature(PendingAction.objects.get(), hours=24, seconds=1)
     assert elevated.elevate(passkey).status_code == 200
     assert elevated.post(f"/vital-actions/{action_id}/execute").status_code == 409
-    assert Message.objects.filter(id=message.id).exists()
+    assert ContactMessage.objects.filter(id=message.id).exists()
 
 
 def test_action_left_too_long_expires(elevated, passkey, message):
@@ -157,11 +157,11 @@ def test_action_left_too_long_expires(elevated, passkey, message):
     reconfirm(elevated, passkey)
 
     assert elevated.post(f"/vital-actions/{action_id}/execute").status_code == 409
-    assert Message.objects.filter(id=message.id).exists()
+    assert ContactMessage.objects.filter(id=message.id).exists()
 
 
 def test_messages_can_be_permanently_deleted(elevated, passkey):
-    message = Message.objects.create(name="A", email="a@example.com", body="Hi")
+    message = new_message()
     action_id = elevated.post(
         "/vital-actions/request",
         {
@@ -173,7 +173,7 @@ def test_messages_can_be_permanently_deleted(elevated, passkey):
     reconfirm(elevated, passkey)
 
     assert elevated.post(f"/vital-actions/{action_id}/execute").status_code == 200
-    assert Message.objects.count() == 0
+    assert ContactMessage.objects.count() == 0
 
 
 @pytest.mark.parametrize(

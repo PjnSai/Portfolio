@@ -19,8 +19,13 @@ class Level(enum.Enum):
     ELEVATED = "elevated"  # Passkey confirmed again in the last few minutes.
 
 
-def admin_route(level, methods=("GET",), form=False):
-    """form=True: unsafe requests carry a multipart form (an upload), not JSON."""
+def admin_route(level, methods=("GET",), form=False, elevate=()):
+    """form=True: unsafe requests carry a multipart form (an upload), not JSON.
+    elevate: methods that need Level.ELEVATED although the route's level is lower
+    (a page anyone signed in may read but only a confirmed passkey may change)."""
+    levels = {m: Level.ELEVATED if m in elevate else level for m in methods}
+    if set(elevate) - set(methods) or (elevate and level is not Level.SESSION):
+        raise ValueError("elevate names methods of a SESSION route")
 
     def decorate(view):
         @wraps(view)
@@ -30,11 +35,12 @@ def admin_route(level, methods=("GET",), form=False):
             if request.method not in methods:
                 return responses.method_not_allowed(methods)
             unsafe = request.method not in SAFE_METHODS
-            if level is not Level.ACCESS:
+            needed = levels[request.method]
+            if needed is not Level.ACCESS:
                 session = sessions.current(request)
                 if session is None:
                     return responses.not_signed_in()
-                if level is Level.ELEVATED and not sessions.is_elevated(session):
+                if needed is Level.ELEVATED and not sessions.is_elevated(session):
                     return responses.elevation_required()
                 request.admin_session = session
             if unsafe and form:
@@ -49,6 +55,7 @@ def admin_route(level, methods=("GET",), form=False):
 
         guarded.admin_level = level
         guarded.admin_methods = list(methods)
+        guarded.admin_levels = dict(levels)
         return guarded
 
     return decorate
