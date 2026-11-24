@@ -8,7 +8,8 @@ copies, so they never reach the public site.
 
 expires_at on each message says when the job may remove it. It is set when the
 message arrives, moved when the message changes between spam and not spam, and
-all of them are moved when the owner changes a period.
+all of them are moved when the owner changes a period. The spam period runs
+from spam_at, so an old message marked spam today still has the full period.
 """
 
 from datetime import timedelta
@@ -16,6 +17,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.db import transaction
 from django.db.models import F
+from django.db.models.functions import Coalesce
 
 from core import audit, content
 from core.models import ContactMessage, SiteSettings
@@ -34,23 +36,22 @@ def periods():
     return row or (settings.RETENTION_SPAM_DAYS, settings.RETENTION_MESSAGE_DAYS)
 
 
-def expires_at(created, status):
-    spam_days, message_days = periods()
-    return created + timedelta(
-        days=spam_days if status == Status.SPAM else message_days
-    )
-
-
 def apply(message):
-    """Set one message's expiry from its status and the current periods."""
-    message.expires_at = expires_at(message.created_at, message.status)
+    """Set one message's expiry from its status and the current periods. Spam
+    is counted from when it became spam, anything else from when it arrived."""
+    spam_days, message_days = periods()
+    if message.status == Status.SPAM:
+        start = message.spam_at or message.created_at
+        message.expires_at = start + timedelta(days=spam_days)
+    else:
+        message.expires_at = message.created_at + timedelta(days=message_days)
 
 
 def reapply_all():
     """After the owner changes a period, move every message's expiry."""
     spam_days, message_days = periods()
     ContactMessage.objects.filter(status=Status.SPAM).update(
-        expires_at=F("created_at") + timedelta(days=spam_days)
+        expires_at=Coalesce(F("spam_at"), F("created_at")) + timedelta(days=spam_days)
     )
     ContactMessage.objects.exclude(status=Status.SPAM).update(
         expires_at=F("created_at") + timedelta(days=message_days)

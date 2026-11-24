@@ -248,6 +248,7 @@ def spam_score(values, honeypot, seconds, repeated):
 
 
 def store(values, address, score, spam):
+    arrived = timezone.now()
     message = ContactMessage(
         name=values["name"],
         email=values["email"],
@@ -255,7 +256,8 @@ def store(values, address, score, spam):
         reason=values["reason"],
         spam_score=score,
         status=ContactMessage.Status.SPAM if spam else ContactMessage.Status.NEW,
-        created_at=timezone.now(),
+        created_at=arrived,
+        spam_at=arrived if spam else None,
         ip_hash=address_hash(address),
     )
     retention.apply(message)

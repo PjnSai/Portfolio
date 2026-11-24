@@ -137,8 +137,10 @@ def set_status(message_id, new):
         if new not in TRANSITIONS[message.status]:
             raise Refused
         old, message.status = message.status, new
+        if new == Status.SPAM:
+            message.spam_at = timezone.now()
         retention.apply(message)
-        message.save(update_fields=["status", "expires_at"])
+        message.save(update_fields=["status", "spam_at", "expires_at"])
         audit.record("message_status", id=str(message.id), to=new, **{"from": old})
         return message
 
@@ -192,7 +194,8 @@ def not_spam(message_id):
         if message.status != Status.SPAM:
             raise Refused
         message.status = Status.NEW
+        message.spam_at = None
         retention.apply(message)
-        message.save(update_fields=["status", "expires_at"])
+        message.save(update_fields=["status", "spam_at", "expires_at"])
         audit.record("message_not_spam", id=str(message.id))
         return message

@@ -158,6 +158,9 @@ class ContactMessage(Base):
     read_at = models.DateTimeField(null=True, blank=True)
     kept = models.BooleanField(default=False)
     expires_at = models.DateTimeField(db_index=True)
+    # When it became spam: on arrival, or when the owner marked it. The spam
+    # retention period runs from here. Cleared by "Not spam".
+    spam_at = models.DateTimeField(null=True, blank=True)
     ip_hash = models.CharField(max_length=64, blank=True, default="")
 
     class Meta:
