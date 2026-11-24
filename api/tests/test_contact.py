@@ -728,12 +728,16 @@ def test_the_global_cap_answers_like_the_other_limits(settings):
     assert response.json()["code"] == "rate_limited"
 
 
-def test_quarantined_messages_count_towards_the_daily_cap(settings):
+def test_quarantined_messages_do_not_count_towards_the_daily_cap(settings):
+    # Owner decision (4B-1): the daily cap counts only messages that are not
+    # spam; stored spam has its own cap (tests/test_contact_caps.py).
     settings.CONTACT_DAILY_CAP = 2
     submit(ip="203.0.113.1", website="x")
     submit(ip="203.0.113.2", website="x")
 
-    assert submit(ip="203.0.113.3").status_code == 429
+    assert submit(ip="203.0.113.3").status_code == 201
+    assert submit(ip="203.0.113.4").status_code == 201
+    assert submit(ip="203.0.113.5").status_code == 429
 
 
 def test_quarantined_messages_count_towards_the_address_limit():

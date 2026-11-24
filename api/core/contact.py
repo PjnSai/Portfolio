@@ -181,9 +181,21 @@ def count_attempt(address):
     )
 
 
-def count_sender(email):
+def count_email(email):
     _over(f"email:{_email_hash(email)}", DAY, settings.CONTACT_PER_EMAIL_PER_DAY)
-    _over("global", DAY, settings.CONTACT_DAILY_CAP)
+
+
+def count_daily(spam):
+    """Count a message against the day's cap for its kind. A message that is
+    not spam over its cap raises Limited. Spam has its own cap and never
+    raises: False means the spam cap is full and the message is not stored,
+    though the sender is told it was received."""
+    if spam:
+        window, _ = _window(DAY)
+        count = ratelimit.hit(f"contact:spam:{window}", DAY)
+        return count <= settings.CONTACT_SPAM_DAILY_CAP
+    _over("human", DAY, settings.CONTACT_DAILY_CAP)
+    return True
 
 
 # Bot checks
