@@ -16,11 +16,21 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import F
+from django.db.models import (
+    BooleanField,
+    Exists,
+    F,
+    Func,
+    OuterRef,
+    Q,
+    Subquery,
+    Value,
+)
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 
 from core import audit, content
-from core.models import ContactMessage, SiteSettings
+from core.models import ContactMessage, ContactNote, Owner, SiteSettings
 
 MIN_DAYS = 7
 MAX_DAYS = 3650
@@ -56,6 +66,102 @@ def reapply_all():
     ContactMessage.objects.exclude(status=Status.SPAM).update(
         expires_at=F("created_at") + timedelta(days=message_days)
     )
+
+
+# The daily job (manage.py run_retention).
+
+# Any fixed number, the same in every run, so two runs cannot overlap.
+LOCK_KEY = 4_820_190_416
+BATCH_SIZE = 500
+
+
+def rules(now):
+    """Every rule a message must meet to be removed. They all sit in the one
+    DELETE statement, so nothing can change between choosing a row and
+    removing it. Phase 4B-3 adds "not linked to a contact" as one more line."""
+    return (
+        Q(expires_at__lte=now),
+        Q(kept=False),
+        ~Exists(ContactNote.objects.filter(message=OuterRef("pk"))),
+    )
+
+
+class _InBatch(Func):
+    """id = ANY(ARRAY(subquery)). Postgres runs an ARRAY subquery once. With
+    id IN (subquery) it may run the subquery again for each row it deletes,
+    and since rows already deleted are skipped, a batch could grow past its
+    size."""
+
+    template = "%(expressions)s)"
+    arg_joiner = " = ANY(ARRAY"
+    output_field = BooleanField()
+
+
+class Busy(Exception):
+    """Another run holds the lock."""
+
+
+def _lock():
+    """Take the job's advisory lock for this transaction, or raise Busy. Asked
+    through the one owner row, which always exists, so it is a single value."""
+    taken = (
+        Owner.objects.annotate(
+            taken=Func(
+                Value(LOCK_KEY),
+                function="pg_try_advisory_xact_lock",
+                output_field=BooleanField(),
+            )
+        )
+        .values_list("taken", flat=True)
+        .first()
+    )
+    if taken is not True:
+        raise Busy
+
+
+def _delete_batch(now, size):
+    """One DELETE statement. The inner select picks a batch, skipping any row
+    another transaction holds (such as one getting a note); the outer WHERE
+    checks every rule again on the row as it is when it is deleted.
+    QuerySet.delete() would first select the rows to find their notes, which
+    is the gap this avoids; a message with notes is never deleted, so there is
+    nothing to cascade."""
+    batch = (
+        ContactMessage.objects.filter(*rules(now))
+        .order_by("expires_at", "id")
+        .select_for_update(skip_locked=True)
+        .values("id")[:size]
+    )
+    due = ContactMessage.objects.filter(*rules(now), _InBatch(F("id"), Subquery(batch)))
+    return due._raw_delete(due.db)
+
+
+def run(dry_run=False, batch_size=BATCH_SIZE):
+    """Remove every message whose time is up and which no rule keeps. One
+    transaction: if anything fails, nothing is removed and nothing recorded.
+    Returns counts only; the audit entry holds the same counts."""
+    now = timezone.now()
+    with transaction.atomic():
+        _lock()
+        deleted = batches = 0
+        if dry_run:
+            deleted = ContactMessage.objects.filter(*rules(now)).count()
+        else:
+            while True:
+                removed = _delete_batch(now, batch_size)
+                batches += 1
+                deleted += removed
+                if removed < batch_size:
+                    break
+        expired = ContactMessage.objects.filter(expires_at__lte=now).count()
+        counts = {
+            "deleted": deleted,
+            "exempt": expired - (deleted if dry_run else 0),
+            "batches": batches,
+            "dry_run": dry_run,
+        }
+        audit.record("retention_run", **counts)
+    return counts
 
 
 def save(spam_days, message_days):

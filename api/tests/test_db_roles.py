@@ -86,6 +86,31 @@ def test_app_role_can_add_contact_notes_but_not_change_them(roles):
         assert ContactNote.objects.count() == 0
 
 
+def test_app_role_can_run_the_retention_job_but_not_change_the_audit_log(roles):
+    from datetime import timedelta
+
+    from django.core.management import call_command
+    from django.utils import timezone
+
+    past = timezone.now() - timedelta(days=1)
+    with as_app() as cursor:
+        gone = ContactMessage.objects.create(
+            name="A", email="a@example.com", body="Hello there.", expires_at=past
+        )
+        noted = ContactMessage.objects.create(
+            name="B", email="b@example.com", body="Hello again.", expires_at=past
+        )
+        ContactNote.objects.create(message=noted, text="Keep")
+
+        call_command("run_retention")
+
+        assert set(ContactMessage.objects.values_list("id", flat=True)) == {noted.id}
+        assert AuditLog.objects.filter(event="retention_run").count() == 1
+        denied(cursor, "UPDATE audit_log SET detail = '{}'")
+        denied(cursor, "DELETE FROM audit_log WHERE event = 'retention_run'")
+    assert gone.id not in set(ContactMessage.objects.values_list("id", flat=True))
+
+
 def test_app_role_cannot_add_remove_or_rekey_the_owner(roles):
     with as_app() as cursor:
         denied(cursor, "INSERT INTO admin_owner (id) VALUES (gen_random_uuid())")
