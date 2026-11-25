@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ADMIN, useAdmin } from "@/components/admin/AdminApp";
+import { BlockPanel } from "@/components/admin/inbox/BlockPanel";
 import { ContactPanel } from "@/components/admin/inbox/ContactPanel";
 import {
   FOCUS_IDS,
@@ -430,6 +431,15 @@ function Detail({
           setChanged({ ...current, contact_id: contactId });
           setDone("Saved as a contact.");
         }}
+      />
+      <BlockPanel
+        message={current}
+        onBlocked={(updated) =>
+          applyDetail(
+            updated,
+            "Sender blocked. This message was moved to spam.",
+          )
+        }
       />
     </>
   );
