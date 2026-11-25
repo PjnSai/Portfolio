@@ -42,9 +42,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       MEDIA_STORAGE: local
       MEDIA_ROOT: /media
+      CV_ROOT: /cv
       CACHE_PURGER: core.purge.LogPurger
       SITE_DEPLOYER: core.deploy.LogDeployer
-    volumes: [media-data:/media]
+    volumes: [media-data:/media, cv-data:/cv]
     ports: ["127.0.0.1:8000:8000"]
     depends_on:
       db: { condition: service_healthy }
@@ -80,3 +81,4 @@ services:
 volumes:
   db-data:
   media-data:
+  cv-data:

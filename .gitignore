@@ -9,3 +9,4 @@ __pycache__/
 .e2e-access-token
 .e2e-session-token
 .media/
+.cv/

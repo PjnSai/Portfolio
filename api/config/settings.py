@@ -150,6 +150,10 @@ DATA_UPLOAD_MAX_NUMBER_FILES = 1
 MEDIA_STORAGE = os.environ.get("MEDIA_STORAGE", "local")
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / ".media"))
 GCS_MEDIA_BUCKET = os.environ.get("GCS_MEDIA_BUCKET", "")
+# CV files: private, in a folder beside the media root in development and a
+# bucket of their own in production (core.storage.cv_backend).
+CV_ROOT = Path(os.environ.get("CV_ROOT", MEDIA_ROOT.parent / ".cv"))
+GCS_CV_BUCKET = os.environ.get("GCS_CV_BUCKET", "")
 
 # Dotted path of a class with purge(). The default only logs.
 CACHE_PURGER = os.environ.get("CACHE_PURGER", "core.purge.LogPurger")
