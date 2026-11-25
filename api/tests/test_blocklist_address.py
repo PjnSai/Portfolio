@@ -287,10 +287,8 @@ def test_finding_and_counting_is_one_statement():
 
 
 @pytest.mark.parametrize("email", [BLOCKED, OTHER])
-def test_a_failing_counter_does_not_change_the_answer(monkeypatch, caplog, email):
-    caplog.set_level(logging.INFO)
+def test_a_failing_block_check_answers_503_and_stores_nothing(monkeypatch, email):
     block()
-    accepted = submit(email="first.person@example.org", ip="198.51.100.9")
     real = QuerySet.update
 
     def fails(self, **values):
@@ -302,12 +300,8 @@ def test_a_failing_counter_does_not_change_the_answer(monkeypatch, caplog, email
 
     response = submit(email=email)
 
-    assert response.status_code == accepted.status_code == 201
-    assert response.content == accepted.content
-    assert response["Content-Type"] == accepted["Content-Type"]
-    assert len(stored()) == 1
-    lines = [r.getMessage() for r in caplog.records if r.name.startswith("core")]
-    assert lines[-1] == "contact outcome=block_check_failed"
+    assert response.status_code == 503
+    assert len(stored()) == 0
 
 
 def test_no_email_or_hash_in_logs_or_audit(elevated, caplog):
