@@ -1,15 +1,19 @@
-"""python -m devmode check | serve [--port N] | seed [--reset]
+"""python -m devmode check | serve [--port N] | seed [--reset | --if-new] | drop
 
 check  runs the guards only and says whether local mode may start.
 serve  starts the API on 127.0.0.1 with the stand-in Access gate.
 seed   adds the SAMPLE content that is missing; --reset removes the content
-       first (the owner, passkeys, sessions and audit log are kept).
+       first (the owner, passkeys, sessions and audit log are kept);
+       --if-new seeds only a database this run had to create.
+drop   deletes the dev database and the local media and CV files, so the
+       next start begins from nothing (a new first passkey is needed).
 """
 
 import argparse
 import hashlib
 import os
 import secrets
+import shutil
 import sys
 from urllib.parse import urlsplit
 
@@ -48,21 +52,12 @@ def prepare(bootstrap_sha256=""):
 
 
 def create_database():
-    import psycopg
     from django.conf import settings
     from psycopg import sql
 
-    db = settings.DATABASES["default"]
-    name = db["NAME"]
+    name = settings.DATABASES["default"]["NAME"]
     guards.enforce([] if name.endswith("_dev") else [f"{name!r} does not end in _dev"])
-    with psycopg.connect(
-        host=db["HOST"],
-        port=db["PORT"] or None,
-        user=db["USER"],
-        password=db["PASSWORD"],
-        dbname="postgres",
-        autocommit=True,
-    ) as connection:
+    with _server_connection() as connection:
         found = connection.execute(
             "SELECT 1 FROM pg_database WHERE datname = %s", [name]
         ).fetchone()
@@ -71,6 +66,22 @@ def create_database():
             connection.execute(
                 sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name))
             )
+    return not found
+
+
+def _server_connection():
+    import psycopg
+    from django.conf import settings
+
+    db = settings.DATABASES["default"]
+    return psycopg.connect(
+        host=db["HOST"],
+        port=db["PORT"] or None,
+        user=db["USER"],
+        password=db["PASSWORD"],
+        dbname="postgres",
+        autocommit=True,
+    )
 
 
 def migrate_and_grant():
@@ -132,13 +143,38 @@ def seed(args):
     from devmode import seed as samples
 
     samples.require_dev_database(settings.DATABASES["default"]["NAME"])
-    create_database()
+    created = create_database()
     migrate_and_grant()
+    if args.if_new and not created:
+        say("The dev database was already there: seed left it alone.")
+        return
     if args.reset:
         say("Removing content, CV files, media, messages, counts and alerts.")
     added = samples.run(reset=args.reset)
     for part, done in added.items():
         say(f"{part}: {'added' if done else 'already there, left alone'}")
+
+
+def drop(args):
+    prepare()
+    from django.conf import settings
+    from psycopg import sql
+
+    from devmode import seed as samples
+
+    name = settings.DATABASES["default"]["NAME"]
+    samples.require_dev_database(name)
+    say(f"Deleting database {name} and the files in {config.STATE}.")
+    with _server_connection() as connection:
+        connection.execute(
+            sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                sql.Identifier(name)
+            )
+        )
+    for folder in ("media", "cv"):
+        shutil.rmtree(config.STATE / folder, ignore_errors=True)
+    config.BOOTSTRAP_FILE.unlink(missing_ok=True)
+    say("Done. The next start creates a new database with the sample content.")
 
 
 def main(argv=None):
@@ -150,8 +186,11 @@ def main(argv=None):
     run.add_argument("--port", type=int, default=config.API_PORT)
     run.set_defaults(func=serve, action="start")
     fill = commands.add_parser("seed")
-    fill.add_argument("--reset", action="store_true")
+    once = fill.add_mutually_exclusive_group()
+    once.add_argument("--reset", action="store_true")
+    once.add_argument("--if-new", action="store_true")
     fill.set_defaults(func=seed, action="seed")
+    commands.add_parser("drop").set_defaults(func=drop, action="drop")
     args = parser.parse_args(argv)
     try:
         args.func(args)
@@ -160,6 +199,16 @@ def main(argv=None):
         return 2
     except KeyboardInterrupt:
         return 0
+    except Exception as error:
+        # psycopg's or Django's: both mean the server did not answer.
+        if type(error).__name__ != "OperationalError":
+            raise
+        print(
+            "Cannot reach Postgres for the dev database. Is the container "
+            "portfolio-test-db running? Check with .\\scripts\\dev.ps1 status",
+            file=sys.stderr,
+        )
+        return 3
     return 0
 
 

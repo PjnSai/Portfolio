@@ -21,7 +21,7 @@ def code(text):
     return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
 
 
-ALL = ["dev-web.ps1", "dev-common.ps1"]
+ALL = ["dev.ps1", "dev-web.ps1", "dev-common.ps1"]
 
 
 @pytest.mark.parametrize("name", ALL)
@@ -54,3 +54,26 @@ def test_the_build_is_never_a_pages_build():
     body = script("dev-web.ps1")
     assert 'CF_PAGES = $null' in body
 
+
+def test_the_start_script_uses_the_test_containers():
+    body = script("dev.ps1")
+    assert '"portfolio-test-db"' in body
+    assert '"portfolio-test-redis"' in body
+
+
+def test_the_start_script_never_chooses_where_the_api_binds():
+    """The launcher binds to 127.0.0.1 and refuses anything else; the script
+    passes no host, so it cannot ask for one."""
+    body = code(script("dev.ps1"))
+    assert "devmode" in body and "serve" in body
+    assert "--host" not in body
+
+
+@pytest.mark.parametrize("action", ["start", "stop", "reset", "status", "refresh"])
+def test_the_start_script_has_each_action(action):
+    assert f'"{action}"' in script("dev.ps1")
+
+
+def test_a_full_reset_asks_first():
+    body = code(script("dev.ps1"))
+    assert "Read-Host" in body

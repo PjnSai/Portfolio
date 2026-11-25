@@ -346,3 +346,16 @@ def test_the_launcher_refuses_to_bind_elsewhere():
 def test_the_launcher_check_passes_in_a_clean_environment():
     result = run_launcher("check")
     assert result.returncode == 0, result.stderr
+
+
+def test_dropping_refuses_a_database_not_ending_in_dev():
+    url = "postgres://postgres:postgres@127.0.0.1:55432/portfolio_e2e"
+    result = run_launcher("drop", DEV_DATABASE_URL=url)
+    assert result.returncode != 0
+    assert "_dev" in result.stderr
+
+
+def test_dropping_refuses_production_values_too():
+    result = run_launcher("drop", PAGES_DEPLOY_HOOK_URL="https://x")
+    assert result.returncode != 0
+    assert "PAGES_DEPLOY_HOOK_URL" in result.stderr
