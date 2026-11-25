@@ -46,13 +46,13 @@ def test_the_site_is_built_against_the_dev_api():
 def test_the_site_is_served_on_localhost_only():
     body = script("dev-web.ps1")
     assert 'HOSTNAME = "localhost"' in body
-    assert "0.0.0.0" not in body
+    assert "0.0.0.0" not in body  # noqa: S104
 
 
 def test_the_build_is_never_a_pages_build():
     """CF_PAGES makes the build demand production settings; it is cleared."""
     body = script("dev-web.ps1")
-    assert 'CF_PAGES = $null' in body
+    assert "CF_PAGES = $null" in body
 
 
 def test_the_start_script_uses_the_test_containers():
