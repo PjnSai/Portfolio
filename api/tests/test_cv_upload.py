@@ -3,10 +3,11 @@ limit of ten, the owner's download and deleting a version."""
 
 import hashlib
 import io
+import time
 
 import pytest
 
-from core import storage
+from core import cv, storage
 from core.models import AuditLog, CvVersion, PendingAction
 from tests import pdfs
 from tests.conftest import ADMIN, age_sessions, mature
@@ -395,3 +396,19 @@ def test_a_pending_delete_shows_no_storage_key(elevated):
     body = elevated.get("/vital-actions").content.decode()
 
     assert CvVersion.objects.get().storage_key not in body
+
+
+def test_a_file_made_of_stream_markers_is_checked_quickly():
+    """Many 'stream' lines and no end marker must not make the check slow: the
+    scan for stream bodies has to take time proportional to the file size."""
+    data = b"stream\n" * 700_000
+    started = time.monotonic()
+    cv._outside_streams(data)
+    assert time.monotonic() - started < 2
+
+
+def test_stream_bodies_are_cut_out_and_unclosed_ones_are_kept():
+    assert cv._outside_streams(b"a stream\nBIN\x00endstream b") == (
+        b"a stream endstream b"
+    )
+    assert b"/JS" in cv._outside_streams(b"x stream\n /JS with no end")

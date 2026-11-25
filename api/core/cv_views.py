@@ -85,10 +85,16 @@ def _upload(request):
         cv.check(data, upload.name, upload.content_type)
         media.count_upload()
         item = cv.add(data)
-    except cv.TooLarge as error:
-        return _field_error(str(error), status=413)
-    except cv.Rejected as error:
-        return _field_error(str(error))
+    except cv.TooLarge:
+        return _field_error(cv.too_big_message(), status=413)
+    except cv.Empty:
+        return _field_error(cv.EMPTY)
+    except cv.Encrypted:
+        return _field_error(cv.ENCRYPTED)
+    except cv.Active:
+        return _field_error(cv.ACTIVE)
+    except cv.Rejected:
+        return _field_error(cv.NOT_A_PDF)
     except cv.Full:
         return JsonResponse({"detail": cv.FULL, "code": "cv_versions_full"}, status=409)
     except media.OverCap:

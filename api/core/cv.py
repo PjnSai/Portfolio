@@ -55,12 +55,26 @@ ACTIVE_NAMES = frozenset(
 # Stream bodies are page content, fonts and images: binary, and full of byte
 # runs that look like names by chance. Names that matter sit in dictionaries
 # outside them.
-STREAM = re.compile(rb"stream\r?\n.*?endstream", re.DOTALL)
+STREAM_START = re.compile(rb"stream\r?\n")
+STREAM_END = b"endstream"
 NAME = re.compile(rb"/([^\x00\t\n\x0c\r ()<>\[\]{}/%]+)")
 ESCAPE = re.compile(rb"#([0-9A-Fa-f]{2})")
 
 
 class Rejected(ValueError):
+    """The file is not an acceptable PDF. The subclasses say why; the view
+    answers with a fixed message for each, never with text from the error."""
+
+
+class Empty(Rejected):
+    pass
+
+
+class Encrypted(Rejected):
+    pass
+
+
+class Active(Rejected):
     pass
 
 
@@ -68,12 +82,38 @@ class TooLarge(ValueError):
     pass
 
 
+def too_big_message():
+    return TOO_BIG.format(settings.CV_MAX_BYTES // (1024 * 1024))
+
+
 class Full(Exception):
     pass
 
 
+def _outside_streams(data):
+    """The bytes with every stream body cut out. One pass with find(), so the
+    time grows with the file size however the file is built; a lazy regex
+    over 'stream' runs repeated would take quadratic time."""
+    parts = []
+    pos = 0
+    while True:
+        start = STREAM_START.search(data, pos)
+        if start is None:
+            parts.append(data[pos:])
+            break
+        end = data.find(STREAM_END, start.end())
+        if end == -1:
+            # No end marker: keep the rest in view rather than hide it.
+            parts.append(data[pos:])
+            break
+        parts.append(data[pos : start.start()])
+        parts.append(b"stream endstream")
+        pos = end + len(STREAM_END)
+    return b"".join(parts)
+
+
 def _names(data):
-    outside = STREAM.sub(b"stream endstream", data)
+    outside = _outside_streams(data)
     return {
         ESCAPE.sub(lambda m: bytes([int(m.group(1), 16)]), name)
         for name in NAME.findall(outside)
@@ -84,22 +124,22 @@ def check(data, filename, content_type):
     """Raise Rejected or TooLarge unless this is a plain, unencrypted PDF whose
     declared type and name agree with its bytes."""
     if not data:
-        raise Rejected(EMPTY)
+        raise Empty
     if len(data) > settings.CV_MAX_BYTES:
-        raise TooLarge(TOO_BIG.format(settings.CV_MAX_BYTES // (1024 * 1024)))
+        raise TooLarge
     if content_type != CONTENT_TYPE or not str(filename).lower().endswith(".pdf"):
-        raise Rejected(NOT_A_PDF)
+        raise Rejected
     tail = data[-TAIL:]
     if not data.startswith(b"%PDF-") or b"%%EOF" not in tail:
-        raise Rejected(NOT_A_PDF)
+        raise Rejected
     # Every PDF ends with a pointer to its cross-reference table.
     if b"startxref" not in tail:
-        raise Rejected(NOT_A_PDF)
+        raise Rejected
     names = _names(data)
     if b"Encrypt" in names:
-        raise Rejected(ENCRYPTED)
+        raise Encrypted
     if names & ACTIVE_NAMES:
-        raise Rejected(ACTIVE)
+        raise Active
 
 
 def add(data):
