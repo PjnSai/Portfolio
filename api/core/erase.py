@@ -1,10 +1,11 @@
 """Delete everything about one email (SPEC 5.8a (e)): a vital action the owner
-starts from a message, for a deletion request.
+starts from a message or a contact, for a deletion request.
 
 The pending action holds the keyed hash of the email and counts, never the
 address or any text. When it runs, the messages are found again by that hash,
 so a message that arrived during the wait goes too, and kept messages and
-messages with notes go as well: the owner asked for it. It runs under the
+messages with notes go as well: the owner asked for it, and so does the saved
+contact for that email. It runs under the
 retention job's lock, in batches of single DELETE statements, inside one
 savepoint, so a failure part way leaves everything as it was.
 """
@@ -15,11 +16,12 @@ from django.db import transaction
 from django.db.models import F, Q, Subquery
 
 from core import blocklist, retention
-from core.models import BlockedSender, ContactMessage, ContactNote
+from core.models import BlockedSender, Contact, ContactMessage, ContactNote
 
 KIND = "erase_sender"
 BATCH_SIZE = 500
-FIELDS = {"message", "also_block"}
+# Exactly one of these names what the owner started from.
+TARGETS = {"message": ContactMessage, "contact": Contact}
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 HASH = re.compile(r"[0-9a-f]{64}")
 
@@ -34,27 +36,29 @@ def counts(email_hash):
     return {
         "messages": ContactMessage.objects.filter(email_hash=email_hash).count(),
         "notes": ContactNote.objects.filter(_notes(email_hash)).count(),
+        "contacts": Contact.objects.filter(email_hash=email_hash).count(),
     }
 
 
 def clean(payload):
-    """The payload to store, from the message the owner started on: the
-    sender's hash, the "also block" choice and what there is now. None if it
-    is not valid."""
-    if set(payload) != FIELDS:
+    """The payload to store, from the message or contact the owner started
+    on: the sender's hash, the "also block" choice and what there is now. None
+    if it is not valid."""
+    named = [name for name in TARGETS if name in payload]
+    if len(named) != 1 or set(payload) != {named[0], "also_block"}:
         return None
-    target, also_block = payload["message"], payload["also_block"]
+    target, also_block = payload[named[0]], payload["also_block"]
     if not isinstance(target, str) or not UUID.fullmatch(target):
         return None
     if not isinstance(also_block, bool):
         return None
-    message = ContactMessage.objects.filter(id=target).first()
-    if message is None or not message.email_hash:
+    row = TARGETS[named[0]].objects.filter(id=target).first()
+    if row is None or not row.email_hash:
         return None
     return {
-        "email_hash": message.email_hash,
+        "email_hash": row.email_hash,
         "also_block": also_block,
-        **counts(message.email_hash),
+        **counts(row.email_hash),
     }
 
 
@@ -105,9 +109,13 @@ def run(payload, batch_size=None):
             unblocked = gone._raw_delete(gone.db)
         notes = _batched(ContactNote, _notes(email_hash), batch_size)
         messages = _batched(ContactMessage, Q(email_hash=email_hash), batch_size)
+        # Only the sender's own messages can be linked to it, and they are gone.
+        contact = Contact.objects.filter(email_hash=email_hash)
+        contacts = contact._raw_delete(contact.db)
     return {
         "messages": messages,
         "notes": notes,
+        "contacts": contacts,
         "unblocked": unblocked,
         "blocked": also_block,
     }

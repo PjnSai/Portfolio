@@ -195,7 +195,13 @@ def test_app_role_can_delete_everything_about_an_email_and_nothing_more(roles):
             {"email_hash": contact.email_hash("a@example.com"), "also_block": False}
         )
 
-        assert result == {"messages": 1, "notes": 1, "unblocked": 1, "blocked": False}
+        assert result == {
+            "messages": 1,
+            "notes": 1,
+            "contacts": 0,
+            "unblocked": 1,
+            "blocked": False,
+        }
         assert list(ContactMessage.objects.values_list("id", flat=True)) == [other.id]
         denied(cursor, "TRUNCATE contact_messages")
         denied(cursor, "TRUNCATE contact_notes")

@@ -6,6 +6,8 @@ import django.db.models.deletion
 import django.utils.timezone
 from django.db import migrations, models
 
+SETTLE = "SET CONSTRAINTS ALL IMMEDIATE"
+
 
 class Migration(migrations.Migration):
     dependencies = [
@@ -13,6 +15,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Postgres will not alter contact_messages while foreign-key checks are
+        # still queued in the same transaction (a message deleted just before),
+        # so they are run first, going forward and (last line) going back.
+        migrations.RunSQL(SETTLE, migrations.RunSQL.noop),
         migrations.CreateModel(
             name="Contact",
             fields=[
@@ -54,4 +60,5 @@ class Migration(migrations.Migration):
                 to="core.contact",
             ),
         ),
+        migrations.RunSQL(migrations.RunSQL.noop, SETTLE),
     ]
