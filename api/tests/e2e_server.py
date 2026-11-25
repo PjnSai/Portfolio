@@ -401,7 +401,7 @@ def access_token(key):
 
 def seed_abuse_and_alerts():
     """Abuse counts on days before today (the browser tests add to today's
-    row, so the seeded days stay exact), and alerts: one unseen, one seen and
+    row, so the seeded days stay exact), and alerts: two unseen, one seen and
     22 older seen ones so the alerts page has a second page."""
     from datetime import timedelta
 
@@ -425,6 +425,11 @@ def seed_abuse_and_alerts():
         created_at=now - timedelta(hours=2),
         kind="rate_limit_storm",
         summary="100 requests refused by a rate limit in 10 minutes.",
+    )
+    Alert.objects.create(
+        created_at=now - timedelta(hours=3),
+        kind="error_spike",
+        summary="20 server errors in 5 minutes (keyboard test).",
     )
     Alert.objects.create(
         created_at=now - timedelta(days=1),

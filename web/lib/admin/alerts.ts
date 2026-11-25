@@ -35,14 +35,17 @@ const list = z.object({
 
 export type Alert = z.infer<typeof alert>;
 export type AlertList = z.infer<typeof list>;
-export type AlertQuery = { unseenOnly?: boolean; before?: string };
+export type AlertQuery = { unseenOnly?: boolean; before?: string; limit?: number };
+
+/** How many alerts the page asks for at a time. */
+export const PAGE_SIZE = 20;
 
 export function alertsApi(client: AdminApi) {
   return {
-    list: async ({ unseenOnly, before }: AlertQuery) =>
+    list: async ({ unseenOnly, before, limit }: AlertQuery) =>
       checked(
         list,
-        await client.get("/alerts", { unseen: unseenOnly ? 1 : undefined, before }),
+        await client.get("/alerts", { unseen: unseenOnly ? 1 : undefined, before, limit }),
       ),
     /** The unseen count, through the smallest page. */
     count: async () => checked(list, await client.get("/alerts", { limit: 1 })).unseen,
