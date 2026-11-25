@@ -38,7 +38,7 @@ export const FIELD_ORDER: readonly FieldName[] = ["name", "email", "reason", "bo
 const EMAIL_BAD = /[\s"<>,;()[\]\\]/;
 /** Control characters and the marks that hide or reorder text, as numbers so no
  * invisible character sits in this file. Mirrors api/core/contact.py. */
-const HIDDEN = new RegExp(
+export const HIDDEN = new RegExp(
   `[${[
     [0x00, 0x08],
     [0x0b, 0x1f],
@@ -63,7 +63,7 @@ export function tidy(values: Values): Values {
   };
 }
 
-function emailProblem(email: string): string {
+export function emailProblem(email: string): string {
   const at = email.indexOf("@");
   const ok =
     email.length > 0 &&
