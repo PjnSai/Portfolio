@@ -1,10 +1,10 @@
 """How long contact messages are kept (SPEC 5.8a, 6.2).
 
 Spam goes after 30 days by default, other messages after 12 months. A message
-the owner marked kept, or has written notes on, is never removed by the daily
-job (Phase 4B); only the owner deletes it. Both periods are set by the owner in
-the admin and stored on the settings row, apart from the draft and published
-copies, so they never reach the public site.
+the owner marked kept, has written notes on or linked to a contact is never
+removed by the daily job; only the owner deletes it. Both periods are set by
+the owner in the admin and stored on the settings row, apart from the draft and
+published copies, so they never reach the public site.
 
 expires_at on each message says when the job may remove it. It is set when the
 message arrives, moved when the message changes between spam and not spam, and
@@ -84,11 +84,12 @@ BATCH_SIZE = 500
 def rules(now):
     """Every rule a message must meet to be removed. They all sit in the one
     DELETE statement, so nothing can change between choosing a row and
-    removing it. Phase 4B-3 adds "not linked to a contact" as one more line."""
+    removing it."""
     return (
         Q(expires_at__lte=now),
         Q(kept=False),
         ~Exists(ContactNote.objects.filter(message=OuterRef("pk"))),
+        Q(contact__isnull=True),
     )
 
 

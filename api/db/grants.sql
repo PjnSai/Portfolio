@@ -22,10 +22,15 @@ TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON contact_messages TO app_rw;
 GRANT SELECT, INSERT, DELETE ON contact_notes TO app_rw;
 
--- Blocked senders: only the keyed hash of an email. The hash is never changed
--- once stored; renewing moves the expiry and the owner may edit the note.
+-- Contacts the owner keeps. Deleting one unlinks its messages.
+GRANT SELECT, INSERT, UPDATE, DELETE ON contacts TO app_rw;
+
+-- Blocked senders: the keyed hash of an email, and the address only if the
+-- owner chose to keep it. Neither is changed once stored; renewing moves the
+-- expiry, the owner may edit the note, and the form counts hits.
 GRANT SELECT, INSERT, DELETE ON blocked_senders TO app_rw;
-GRANT UPDATE (expires_at, note) ON blocked_senders TO app_rw;
+GRANT UPDATE (expires_at, note, hit_count, last_hit_at) ON blocked_senders
+TO app_rw;
 
 -- Auth state.
 GRANT SELECT, INSERT, UPDATE, DELETE ON

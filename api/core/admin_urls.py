@@ -3,6 +3,7 @@
 from django.urls import path
 
 from core import admin_views as views
+from core import contacts_views as contacts
 from core import content_views as content
 from core import inbox_views as inbox
 from core import media_views as media
@@ -82,4 +83,9 @@ urlpatterns = [
     path("messages/<uuid:message_id>/keep", inbox.message_keep),
     path("messages/<uuid:message_id>/not-spam", inbox.message_not_spam),
     path("messages/<uuid:message_id>/block", inbox.message_block),
+    path("contacts", contacts.contact_list),
+    path("contacts/<uuid:contact_id>", contacts.contact),
+    path("contacts/<uuid:contact_id>/link", contacts.contact_link),
+    path("contacts/<uuid:contact_id>/unlink", contacts.contact_unlink),
+    path("contacts/<uuid:contact_id>/delete", contacts.contact_delete),
 ]

@@ -79,8 +79,9 @@ def _accept(data, values, address):
         _logged("bad_challenge")
         return responses.bad_challenge()
     # Before any cap is counted, so a blocked sender uses none of them, and
-    # answered like dropped spam, so they cannot tell they are blocked.
-    if blocklist.is_blocked(values["email"]):
+    # answered like dropped spam, so they cannot tell they are blocked. If the
+    # check itself fails the error reaches the handler: 503, nothing stored.
+    if blocklist.hit(values["email"]):
         _logged("blocked_dropped")
         return responses.contact_sent()
     contact.count_email(values["email"], limits)

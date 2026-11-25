@@ -168,7 +168,15 @@ def test_a_plain_session_can_read_the_list(signed_in):
     assert body["max_entries"] == 500
     assert body["active"] == 1
     assert body["entries"] == [blocklist.describe(entry)]
-    assert set(body["entries"][0]) == {"id", "note", "created_at", "expires_at"}
+    assert set(body["entries"][0]) == {
+        "id",
+        "email",
+        "note",
+        "created_at",
+        "expires_at",
+        "hit_count",
+        "last_hit_at",
+    }
 
 
 def test_the_list_never_shows_the_email_or_hash(elevated):

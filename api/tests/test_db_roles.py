@@ -195,8 +195,70 @@ def test_app_role_can_delete_everything_about_an_email_and_nothing_more(roles):
             {"email_hash": contact.email_hash("a@example.com"), "also_block": False}
         )
 
-        assert result == {"messages": 1, "notes": 1, "unblocked": 1, "blocked": False}
+        assert result == {
+            "messages": 1,
+            "notes": 1,
+            "contacts": 0,
+            "unblocked": 1,
+            "blocked": False,
+        }
         assert list(ContactMessage.objects.values_list("id", flat=True)) == [other.id]
         denied(cursor, "TRUNCATE contact_messages")
         denied(cursor, "TRUNCATE contact_notes")
         denied(cursor, "DELETE FROM audit_log")
+
+
+def test_app_role_can_keep_contacts_and_nothing_more(roles):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from core import retention
+    from core.models import Contact
+
+    past = timezone.now() - timedelta(days=1)
+    with as_app() as cursor:
+        person = Contact.objects.create(name="A", email="a@example.com")
+        message = ContactMessage.objects.create(
+            name="A",
+            email="a@example.com",
+            body="Hello there.",
+            expires_at=past,
+            contact=person,
+        )
+        person.notes = "Met at the careers fair."
+        person.save()
+
+        assert retention.run()["deleted"] == 0
+        person.delete()
+        assert ContactMessage.objects.get(id=message.id).contact_id is None
+        denied(cursor, "TRUNCATE contacts")
+        denied(cursor, "ALTER TABLE contacts ADD COLUMN extra text")
+        denied(cursor, "ALTER TABLE contact_messages DROP COLUMN contact_id")
+
+
+def test_app_role_counts_hits_but_never_rewrites_an_address(roles):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from core import blocklist, contact, erase
+    from core.models import BlockedSender
+
+    with as_app() as cursor:
+        entry, _ = blocklist.block_email("a@example.com", keep_address=True)
+        assert blocklist.hit("a@example.com")
+        entry.refresh_from_db()
+        assert (entry.email, entry.hit_count) == ("a@example.com", 1)
+        denied(cursor, "UPDATE blocked_senders SET email = 'b@example.com'")
+        denied(cursor, "UPDATE blocked_senders SET email = NULL")
+        denied(cursor, "UPDATE blocked_senders SET email_hash = 'other'")
+        cursor.execute("UPDATE blocked_senders SET note = 'n', last_hit_at = now()")
+
+        erase.run(
+            {"email_hash": contact.email_hash("a@example.com"), "also_block": True}
+        )
+
+        entry = BlockedSender.objects.get()
+        assert (entry.email, entry.hit_count) == (None, 1)
+        assert entry.expires_at > timezone.now() + timedelta(days=1)

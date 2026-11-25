@@ -101,11 +101,17 @@ def test_the_stored_action_holds_the_hash_and_counts_only(elevated, first):
         "also_block": False,
         "messages": 2,
         "notes": 1,
+        "contacts": 0,
     }
     stored = json.dumps(list(PendingAction.objects.values()), default=str)
     for private in (EMAIL, NAME, BODY, NOTE, str(first.id)):
         assert private not in stored
-    assert body["target"] == {"also_block": False, "messages": 2, "notes": 1}
+    assert body["target"] == {
+        "also_block": False,
+        "messages": 2,
+        "notes": 1,
+        "contacts": 0,
+    }
     assert contact.email_hash(EMAIL) not in json.dumps(body)
 
 
@@ -225,6 +231,7 @@ def test_messages_that_arrive_during_the_wait_go_too(elevated, passkey, first):
     assert entry.detail["result"] == {
         "messages": 2,
         "notes": 1,
+        "contacts": 0,
         "unblocked": 0,
         "blocked": False,
     }
@@ -330,10 +337,12 @@ def test_no_audit_entry_holds_an_email_or_text(elevated, passkey, first):
         "also_block": True,
         "messages": 1,
         "notes": 1,
+        "contacts": 0,
     }
     assert executed.detail["result"] == {
         "messages": 1,
         "notes": 1,
+        "contacts": 0,
         "unblocked": 0,
         "blocked": True,
     }
