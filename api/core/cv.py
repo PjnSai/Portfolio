@@ -183,6 +183,43 @@ def read(item):
     return storage.cv_backend().read(item.storage_key)
 
 
+# The two switches. Both are on until the owner changes them, and each change
+# is a vital action (core.vital), turning off as much as turning on: one kind,
+# whose payload holds both values.
+
+SWITCHES = "cv_switches"
+
+
+def switches():
+    """{"view", "request"}. Reading them never creates the settings row."""
+    row = SiteSettings.objects.values_list(
+        "cv_view_enabled", "cv_request_enabled"
+    ).first()
+    view, request = row or (True, True)
+    return {"view": view, "request": request}
+
+
+def clean_switches(payload):
+    if not isinstance(payload, dict) or set(payload) != {"view", "request"}:
+        return None
+    if not all(isinstance(payload[name], bool) for name in payload):
+        return None
+    return {"view": payload["view"], "request": payload["request"]}
+
+
+def set_switches(payload):
+    """Run by the vital action, inside its transaction."""
+    from core import content
+
+    row = content.site_settings()
+    SiteSettings.objects.filter(id=row.id).update(
+        cv_view_enabled=payload["view"], cv_request_enabled=payload["request"]
+    )
+    audit.record(
+        "cv_switches_changed", view=payload["view"], request=payload["request"]
+    )
+
+
 WORD = re.compile(r"[^A-Za-z0-9]+")
 
 

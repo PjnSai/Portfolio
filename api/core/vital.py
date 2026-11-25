@@ -1,6 +1,6 @@
 """Vital actions: adding or revoking a passkey, permanent deletion (content,
-messages and CV versions), and deleting everything about one email
-(core.erase).
+messages and CV versions), deleting everything about one email (core.erase)
+and changing the CV switches (core.cv).
 
 Each one is requested with a fresh passkey confirmation, waits 24 hours, and is
 run with another fresh confirmation. The owner is told when it is requested and
@@ -34,6 +34,7 @@ ADD_PASSKEY = "add_passkey"
 REVOKE_PASSKEY = "revoke_passkey"
 PERMANENT_DELETE = "permanent_delete"
 ERASE_SENDER = erase.KIND
+CV_SWITCHES = cv.SWITCHES
 
 # Allow-list. Auth and audit tables can never be named here.
 DELETABLE = {
@@ -92,6 +93,8 @@ def clean(kind, payload):
         return {"entity": entity, "id": target}
     if kind == ERASE_SENDER:
         return erase.clean(payload)
+    if kind == CV_SWITCHES:
+        return cv.clean_switches(payload)
     return None
 
 
@@ -235,6 +238,8 @@ def run(action_id, credential=None):
                 return action, Outcome.CONFLICT
             if result is None:
                 return action, Outcome.CONFLICT
+        elif action.kind == CV_SWITCHES:
+            cv.set_switches(action.payload)
         elif action.kind == PERMANENT_DELETE:
             entity = action.payload.get("entity")
             model = DELETABLE.get(entity)

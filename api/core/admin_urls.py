@@ -92,4 +92,5 @@ urlpatterns = [
     path("cv/versions", cv.versions),
     path("cv/versions/<uuid:version_id>/live", cv.version_live),
     path("cv/versions/<uuid:version_id>/file", cv.version_file),
+    path("cv/switches", cv.switches),
 ]

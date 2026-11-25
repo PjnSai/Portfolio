@@ -4,7 +4,7 @@ import logging
 
 from django.http import JsonResponse, StreamingHttpResponse
 
-from core import cv, media, responses, storage
+from core import cv, media, responses, storage, vital
 from core.authz import Level, admin_route
 from core.models import CvVersion
 
@@ -111,3 +111,13 @@ def version_file(request, version_id):
         log.error("cv storage failed: %s", type(error).__name__)
         return responses.unavailable()
     return pdf_response(data, "attachment")
+
+
+@admin_route(Level.SESSION)
+def switches(request):
+    """The switches in force and any change waiting out its 24 hours. A change
+    is asked for through /vital-actions/request, kind cv_switches."""
+    waiting = vital.pending().filter(kind=cv.SWITCHES).order_by("requested_at")
+    return JsonResponse(
+        {**cv.switches(), "pending": [vital.describe(action) for action in waiting]}
+    )
