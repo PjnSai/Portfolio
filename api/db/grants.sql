@@ -13,9 +13,21 @@ GRANT USAGE ON SCHEMA public TO app_rw;
 -- Content the admin edits. Projects, experience, skills and the rest are
 -- rows in section_items.
 GRANT SELECT, INSERT, UPDATE, DELETE ON
-    site_settings, sections, section_items, media, cv_files,
+    site_settings, sections, section_items, media,
     revisions, palettes
 TO app_rw;
+
+-- CV versions: the file's key, size and hash are never changed once stored;
+-- only which version is live changes.
+GRANT SELECT, INSERT, DELETE ON cv_versions TO app_rw;
+GRANT UPDATE (is_live) ON cv_versions TO app_rw;
+
+-- CV view log: appended by the public route, read by the owner, and removed
+-- by the daily job once its rows are counted into cv_day_counts. The counts
+-- are added to, never removed.
+GRANT SELECT, INSERT, DELETE ON cv_views TO app_rw;
+GRANT SELECT, INSERT ON cv_day_counts TO app_rw;
+GRANT UPDATE (count) ON cv_day_counts TO app_rw;
 
 -- Contact messages from the public form. A note can be added and read, never
 -- changed; it is deleted only along with its message.
