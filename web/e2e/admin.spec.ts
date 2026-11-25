@@ -10,6 +10,9 @@ import {
   type Response,
   test,
 } from "@playwright/test";
+import { abuseTests } from "./abuse-tests";
+import { accessTests } from "./access-tests";
+import { alertsTests } from "./alerts-tests";
 import { contactsTests } from "./contacts-tests";
 import { cvAdminTests } from "./cv-admin-tests";
 import { inboxTests } from "./inbox-tests";
@@ -623,3 +626,6 @@ test("the admin fits a phone screen", async () => {
 inboxTests(() => page);
 contactsTests(() => page);
 cvAdminTests(() => page);
+abuseTests(() => page);
+alertsTests(() => page);
+accessTests(() => page);

@@ -51,6 +51,13 @@ export function flattenErrors(errors: unknown): Record<string, string[]> {
 /** The owner closed the passkey confirmation without using it. */
 export class Cancelled extends Error {}
 
+/** The API answered, but not in the shape this page was built for. */
+export class UnexpectedAnswer extends Error {
+  constructor() {
+    super("Unexpected answer");
+  }
+}
+
 /** Plain words for the API's named refusals (409 with a code). */
 const CONFLICTS: Record<string, string> = {
   contact_exists: "There is already a saved contact for this email address.",
@@ -63,6 +70,9 @@ const CONFLICTS: Record<string, string> = {
 export function describeError(error: unknown): string {
   if (error instanceof Cancelled) {
     return "Nothing was done: the passkey confirmation was closed.";
+  }
+  if (error instanceof UnexpectedAnswer) {
+    return "The server's answer was not what this page expected, so nothing is shown. Reload, and tell the developer if it happens again.";
   }
   if (!(error instanceof ApiError)) {
     if (error instanceof DOMException && error.name === "NotAllowedError") {

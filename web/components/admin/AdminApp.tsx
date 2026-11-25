@@ -11,9 +11,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { alertsApi } from "@/lib/admin/alerts";
 import { api, ApiError, Cancelled, describeError } from "@/lib/admin/api";
 import { shortDate } from "@/lib/admin/time";
 import { signWithPasskey } from "@/lib/admin/webauthn";
+import { UnseenBadge } from "./security/AlertViews";
 import { Button, Notice } from "./ui";
 
 export const ADMIN = "/desk";
@@ -37,6 +39,10 @@ type Admin = {
   refreshPending: () => Promise<void>;
   /** Check again how the last cache purge and site build went (after a publish). */
   refreshCache: () => Promise<void>;
+  /** The alerts nobody has marked seen: null while not known or when it could not be read. */
+  unseenAlerts: number | null;
+  /** Read the unseen count again (the Alerts page does this on load and after Mark seen). */
+  refreshAlerts: () => Promise<void>;
   /** Run a call that may need a fresh passkey confirmation. */
   vital: <T>(call: () => Promise<T>) => Promise<T>;
 };
@@ -68,7 +74,19 @@ type SessionState = {
   pending: PendingAction[];
   purgeFailedAt: string | null;
   deploy: DeployStatus | null;
+  unseenAlerts: number | null;
 };
+
+const alertsClient = alertsApi(api);
+
+/** The unseen count, or null if it cannot be read: that must not look like "none". */
+async function fetchUnseen(): Promise<number | null> {
+  try {
+    return await alertsClient.count();
+  } catch {
+    return null;
+  }
+}
 
 async function fetchPending() {
   return (await api.get<{ actions: PendingAction[] }>("/vital-actions")).actions;
@@ -85,12 +103,13 @@ async function fetchDeploy() {
 async function checkSession(): Promise<SessionState> {
   try {
     await api.get("/session");
-    const [pending, purgeFailedAt, deploy] = await Promise.all([
+    const [pending, purgeFailedAt, deploy, unseenAlerts] = await Promise.all([
       fetchPending(),
       fetchPurgeFailedAt(),
       fetchDeploy(),
+      fetchUnseen(),
     ]);
-    return { status: "signed-in", pending, purgeFailedAt, deploy };
+    return { status: "signed-in", pending, purgeFailedAt, deploy, unseenAlerts };
   } catch (error) {
     const signedOut = error instanceof ApiError && error.status === 401;
     return {
@@ -98,6 +117,7 @@ async function checkSession(): Promise<SessionState> {
       pending: [],
       purgeFailedAt: null,
       deploy: null,
+      unseenAlerts: null,
     };
   }
 }
@@ -108,6 +128,9 @@ const NAV = [
   ["contacts", "Contacts"],
   ["blocklist", "Blocklist"],
   ["cv", "CV"],
+  ["abuse", "Abuse"],
+  ["alerts", "Alerts"],
+  ["access", "Access"],
   ["media", "Media"],
   ["settings", "Settings"],
   ["trash", "Trash"],
@@ -122,6 +145,7 @@ export function AdminApp({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<PendingAction[]>([]);
   const [purgeFailedAt, setPurgeFailedAt] = useState<string | null>(null);
   const [deploy, setDeploy] = useState<DeployStatus | null>(null);
+  const [unseenAlerts, setUnseenAlerts] = useState<number | null>(null);
   const [asking, setAsking] = useState(false);
   const answer = useRef<{ resolve: () => void; reject: (e: Error) => void }>(null);
 
@@ -135,11 +159,16 @@ export function AdminApp({ children }: { children: ReactNode }) {
     setDeploy(deployed);
   }, []);
 
+  const refreshAlerts = useCallback(async () => {
+    setUnseenAlerts(await fetchUnseen());
+  }, []);
+
   const apply = useCallback((state: SessionState) => {
     setStatus(state.status);
     setPending(state.pending);
     setPurgeFailedAt(state.purgeFailedAt);
     setDeploy(state.deploy);
+    setUnseenAlerts(state.unseenAlerts);
   }, []);
 
   useEffect(() => {
@@ -167,7 +196,16 @@ export function AdminApp({ children }: { children: ReactNode }) {
     [],
   );
 
-  const admin = { status, pending, refresh, refreshPending, refreshCache, vital };
+  const admin = {
+    status,
+    pending,
+    refresh,
+    refreshPending,
+    refreshCache,
+    unseenAlerts,
+    refreshAlerts,
+    vital,
+  };
   const open = pathname === `${ADMIN}/setup`;
 
   return (
@@ -190,6 +228,7 @@ export function AdminApp({ children }: { children: ReactNode }) {
                     className={here ? "font-bold underline underline-offset-4" : ""}
                   >
                     {label}
+                    {path === "alerts" && <UnseenBadge count={unseenAlerts} />}
                   </Link>
                 );
               })}
