@@ -51,6 +51,15 @@ export function flattenErrors(errors: unknown): Record<string, string[]> {
 /** The owner closed the passkey confirmation without using it. */
 export class Cancelled extends Error {}
 
+/** Plain words for the API's named refusals (409 with a code). */
+const CONFLICTS: Record<string, string> = {
+  contact_exists: "There is already a saved contact for this email address.",
+  different_sender:
+    "That message is from a different email address, so it cannot be linked to this contact.",
+  blocklist_full:
+    "The blocklist is full. Remove an entry you no longer need, then try again.",
+};
+
 export function describeError(error: unknown): string {
   if (error instanceof Cancelled) {
     return "Nothing was done: the passkey confirmation was closed.";
@@ -75,7 +84,7 @@ export function describeError(error: unknown): string {
     case 404:
       return "That no longer exists.";
     case 409:
-      return "That is not possible right now.";
+      return CONFLICTS[error.code ?? ""] ?? "That is not possible right now.";
     case 413:
       return "That file is too large. Use an image under 8 MB.";
     case 429:

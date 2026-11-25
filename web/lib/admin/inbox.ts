@@ -16,6 +16,7 @@ export type MessageSummary = {
   spam_score: number;
   created_at: string;
   kept: boolean;
+  contact_id: string | null;
   snippet: string;
 };
 
@@ -60,6 +61,7 @@ export type MessageDetail = {
   created_at: string;
   read_at: string | null;
   kept: boolean;
+  contact_id: string | null;
   expires_at: string;
   notes: Note[];
 };
@@ -75,7 +77,7 @@ export const NOTE_MAX = 2000;
 
 /** A pending deletion of this message, from the list of waiting vital actions. */
 export function pendingDeletion<
-  T extends { kind: string; target: Record<string, string> },
+  T extends { kind: string; target: Record<string, string | number | boolean> },
 >(pending: readonly T[], id: string): T | undefined {
   return pending.find(
     (action) =>

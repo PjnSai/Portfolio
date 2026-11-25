@@ -466,3 +466,24 @@ def test_an_edit_that_changes_nothing_writes_no_entry(signed_in):
     signed_in.patch(f"/contacts/{person.id}", {"organisation": ORG})
 
     assert not AuditLog.objects.filter(event="contact_changed").exists()
+
+
+# The contact link on messages
+
+
+def test_messages_name_their_contact_and_never_a_hash(signed_in):
+    person = the_contact(signed_in, **GOOD)
+    linked = person.messages.get()
+    loose = new_message(email="someone.else@contacts-example.org")
+
+    listing = signed_in.get("/messages", {"status": "all"})
+    rows = {row["id"]: row for row in listing.json()["results"]}
+    assert rows[str(linked.id)]["contact_id"] == str(person.id)
+    assert rows[str(loose.id)]["contact_id"] is None
+
+    one = signed_in.get(f"/messages/{linked.id}")
+    other = signed_in.get(f"/messages/{loose.id}")
+    assert one.json()["contact_id"] == str(person.id)
+    assert other.json()["contact_id"] is None
+    for response in (listing, one, other):
+        no_hash_in(response)

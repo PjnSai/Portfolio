@@ -197,6 +197,7 @@ def test_the_list_shows_what_the_owner_needs_and_no_more(signed_in):
         "spam_score",
         "created_at",
         "kept",
+        "contact_id",
         "snippet",
     }
     assert row["id"] == str(message.id)
@@ -375,6 +376,7 @@ def test_the_first_view_marks_it_read(signed_in):
         "created_at",
         "read_at",
         "kept",
+        "contact_id",
         "expires_at",
         "notes",
     }

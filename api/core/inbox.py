@@ -34,6 +34,10 @@ def snippet(body):
     return " ".join(body.split())[:SNIPPET]
 
 
+def contact_id(message):
+    return str(message.contact_id) if message.contact_id else None
+
+
 def summary(message):
     return {
         "id": str(message.id),
@@ -44,6 +48,7 @@ def summary(message):
         "spam_score": message.spam_score,
         "created_at": message.created_at.isoformat(),
         "kept": message.kept,
+        "contact_id": contact_id(message),
         "snippet": snippet(message.body),
     }
 
@@ -69,6 +74,7 @@ def detail(message):
         "created_at": message.created_at.isoformat(),
         "read_at": message.read_at.isoformat() if message.read_at else None,
         "kept": message.kept,
+        "contact_id": contact_id(message),
         "expires_at": message.expires_at.isoformat(),
         "notes": [describe_note(note) for note in message.notes.all()],
     }

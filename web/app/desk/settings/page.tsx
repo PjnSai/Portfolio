@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { useAdmin } from "@/components/admin/AdminApp";
 import { ContentForm, type SaveResult } from "@/components/admin/ContentForm";
+import { LimitsCard } from "@/components/admin/inbox/LimitsCard";
 import { RetentionCard } from "@/components/admin/inbox/RetentionCard";
 import { PaletteList } from "@/components/admin/palettes/PaletteList";
 import { privacyWarnings, PublishBar, type Warning } from "@/components/admin/PublishBar";
@@ -123,6 +124,13 @@ export default function SettingsPage() {
           Message retention
         </h2>
         <RetentionCard />
+      </section>
+
+      <section aria-labelledby="limits-title" className="mb-12">
+        <h2 id="limits-title" className="mb-4 text-2xl font-extrabold">
+          Contact form limits
+        </h2>
+        <LimitsCard />
       </section>
 
     </>
