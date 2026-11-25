@@ -1300,6 +1300,12 @@ html[data-theme] .contact__wrap {
   padding: 0;
   border: 0;
 }
+.cv .contact-form__status {
+  min-height: 3.5em;
+}
+.cv .contact-form__error {
+  min-height: 1.6em;
+}
 
 /* The CV viewer: pages drawn onto canvases inside the detail sheet's box. */
 .cv-viewer[open] {

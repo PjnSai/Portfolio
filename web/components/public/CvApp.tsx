@@ -4,6 +4,7 @@
 
 import { type ComponentType, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { CvRequest } from "@/components/public/CvRequest";
 import { CvSectionView } from "@/components/public/CvSection";
 import type { CvViewerProps } from "@/components/public/CvViewer";
 import { type Checker, createChecker, loadTurnstile } from "@/lib/public/contact";
@@ -104,6 +105,7 @@ function CvApp({ config, root }: { config: Config; root: HTMLElement }) {
         note={note}
         busy={note === "Checking that you are human…" || viewer !== null}
         onView={() => void startView()}
+        request={status?.canRequest ? <CvRequest origin={config.apiOrigin} getToken={getToken} instant={status.instantDownload} /> : null}
         turnstile={<div data-turnstile className="cv__turnstile" />}
       />
       {View && viewer ? (

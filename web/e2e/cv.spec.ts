@@ -260,3 +260,213 @@ test.describe("the switches", () => {
     expect(requests.some((url) => /pdf\.worker/.test(url))).toBe(false);
   });
 });
+
+// The request form ----------------------------------------------------------
+
+let counter = 0;
+const run = Date.now().toString(36);
+const fresh = () => {
+  counter += 1;
+  return { name: "Taylor Tester", email: `cv.${run}.${counter}@example.com`, note: `Note ${counter} from ${run}.` };
+};
+
+async function fill(page: Page, values = fresh()) {
+  await page.getByLabel(/^Your name/).fill(values.name);
+  await page.getByLabel(/^Your email/).fill(values.email);
+  await page.getByLabel(/^Note/).fill(values.note);
+  return values;
+}
+
+const requestButton = (page: Page) => page.getByRole("button", { name: "Request a copy" });
+const sentPanel = (page: Page) => page.locator("#cv-request-sent");
+const RECEIVED = "Thank you. Your message has been received.";
+
+function requestPosts(page: Page) {
+  const bodies: Record<string, unknown>[] = [];
+  page.on("request", (request) => {
+    if (request.url() === `${API}/api/v1/cv/request` && request.method() === "POST") {
+      bodies.push(JSON.parse(request.postData() ?? "{}"));
+    }
+  });
+  return bodies;
+}
+
+test.describe("the request form", () => {
+  test("the viewer text alternative leads to it", async ({ page }) => {
+    await open(page);
+    await viewButton(page).click();
+    const dialog = page.locator(DIALOG);
+    await expect(dialog.locator("canvas")).toHaveCount(2);
+    await dialog.getByRole("link", { name: "request one" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByLabel(/^Your name/)).toBeFocused();
+  });
+
+  test("finds a missing email before anything is sent, and says where", async ({ page }) => {
+    const posts = requestPosts(page);
+    await open(page);
+    await requestButton(page).click();
+    await expect(page.getByLabel(/^Your email/)).toBeFocused();
+    await expect(page.getByLabel(/^Your email/)).toHaveAttribute("aria-invalid", "true");
+    await expect(page.getByRole("status").filter({ hasText: "There is a problem with Email." })).toBeVisible();
+    await expect(page.locator("#cv-request-email-error")).toContainText("Enter a valid email address.");
+    expect(posts).toHaveLength(0);
+  });
+
+  test("sends the request, says it was received and offers the download for a minute", async ({ page }) => {
+    const problems = consoleProblems(page);
+    const posts = requestPosts(page);
+    await open(page);
+    await fill(page);
+    await requestButton(page).click();
+    const sent = sentPanel(page);
+    await expect(sent).toBeVisible();
+    await expect(sent).toBeFocused();
+    await expect(sent).toContainText(RECEIVED);
+    await expect(sent).toContainText("The link works for a minute.");
+    const download = sent.getByRole("link", { name: "Download the CV" });
+    await expect(download).toHaveAttribute("href", /\/api\/v1\/cv\/file\//);
+
+    expect(posts).toHaveLength(1);
+    expect(Object.keys(posts[0]).sort()).toEqual(["elapsed", "email", "name", "note", "turnstile", "website"]);
+    expect(posts[0].website).toBe("");
+
+    // The anchor downloads a PDF without leaving the page.
+    const before = page.url();
+    const [file] = await Promise.all([page.waitForEvent("download"), download.click()]);
+    expect(file.suggestedFilename()).toMatch(/\.pdf$/);
+    expect(page.url()).toBe(before);
+    expect(problems).toEqual([]);
+  });
+
+  test("shows only the received message when the answer has no link", async ({ page }) => {
+    await open(page);
+    await stubPost(page, "request", 201, { detail: "Received." });
+    await fill(page);
+    await requestButton(page).click();
+    await expect(sentPanel(page)).toContainText(RECEIVED);
+    await expect(page.getByRole("link", { name: "Download the CV" })).toHaveCount(0);
+    await expect(sentPanel(page)).not.toContainText("minute");
+  });
+
+  test("looks the same whatever the API says about the sender", async ({ page }) => {
+    const texts: string[] = [];
+    for (const body of [{}, { stored: false }, { status: "spam" }, { blocked: true, detail: "You are blocked." }]) {
+      await open(page);
+      await stubPost(page, "request", 201, body);
+      await fill(page);
+      await requestButton(page).click();
+      await expect(sentPanel(page)).toBeVisible();
+      texts.push(await sentPanel(page).innerText());
+      await page.unroute(`${API}/api/v1/cv/request`);
+    }
+    expect(new Set(texts).size).toBe(1);
+    expect(texts[0]).not.toMatch(/block|spam|held/i);
+  });
+
+  test("only a link of the documented shape makes a download button", async ({ page }) => {
+    await open(page);
+    await stubPost(page, "request", 201, { url: "https://evil.example/cv.pdf", expires_in: 60 });
+    await fill(page);
+    await requestButton(page).click();
+    await expect(sentPanel(page)).toContainText(RECEIVED);
+    await expect(page.getByRole("link", { name: "Download the CV" })).toHaveCount(0);
+  });
+
+  test("takes the download button away when its minute is up", async ({ page }) => {
+    await page.clock.install();
+    await open(page);
+    await fill(page);
+    await requestButton(page).click();
+    await expect(page.getByRole("link", { name: "Download the CV" })).toBeVisible();
+    await page.clock.fastForward(61_000);
+    await expect(page.getByRole("link", { name: "Download the CV" })).toHaveCount(0);
+    await expect(sentPanel(page)).toContainText("The download link has expired.");
+  });
+
+  for (const [status, headers, text] of [
+    [403, {}, "Requests for the CV are not available at the moment."],
+    [429, { "Retry-After": "1800" }, "try again in about 30 minutes"],
+    [503, {}, "The request could not be sent right now."],
+    [500, {}, "The request could not be sent. Check your connection"],
+  ] as const) {
+    test(`a ${status} is said in plain words, keeps what was typed and shows no raw text`, async ({ page }) => {
+      await open(page);
+      await stubPost(page, "request", status, { detail: "RAW API TEXT", code: "raw" }, headers);
+      const values = await fill(page);
+      await requestButton(page).click();
+      await expect(page.getByRole("status").filter({ hasText: text })).toBeVisible();
+      await expect(page.locator("#cv")).not.toContainText("RAW API TEXT");
+      await expect(page.getByLabel(/^Your email/)).toHaveValue(values.email);
+      await expect(sentPanel(page)).toHaveCount(0);
+      await expect(requestButton(page)).toBeEnabled();
+    });
+  }
+
+  test("shows the API field errors by the fields", async ({ page }) => {
+    await open(page);
+    await stubPost(page, "request", 400, {
+      detail: "Some fields need changing.",
+      errors: { email: ["Enter a valid email address."], note: ["Use 500 characters or fewer."] },
+    });
+    await fill(page);
+    await requestButton(page).click();
+    await expect(page.locator("#cv-request-email-error")).toContainText("Enter a valid email address.");
+    await expect(page.locator("#cv-request-note-error")).toContainText("Use 500 characters or fewer.");
+    await expect(page.getByLabel(/^Your email/)).toBeFocused();
+  });
+
+  test("a failed check sends nothing and says so", async ({ page }) => {
+    const posts = requestPosts(page);
+    await open(page, { fail: true });
+    await fill(page);
+    await requestButton(page).click();
+    await expect(page.getByRole("status").filter({ hasText: "The anti-spam check could not run." })).toBeVisible();
+    expect(posts).toHaveLength(0);
+  });
+
+  test("can be filled and sent with the keyboard alone, skipping the trap field", async ({ page }) => {
+    await open(page);
+    await page.getByLabel(/^Your name/).focus();
+    await page.keyboard.type("Keyboard Tester");
+    await page.keyboard.press("Tab");
+    await page.keyboard.type(fresh().email);
+    await page.keyboard.press("Tab");
+    await expect(page.getByLabel(/^Note/)).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(requestButton(page)).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(sentPanel(page)).toContainText(RECEIVED);
+  });
+
+  test("a bot that fills the trap field is answered like anyone else", async ({ page }) => {
+    await open(page);
+    await fill(page);
+    await page.locator("#cv-request-website").fill("https://spam.example", { force: true });
+    await requestButton(page).click();
+    await expect(sentPanel(page)).toContainText(RECEIVED);
+  });
+
+  test("tells the visitor about the link only when the status says one follows", async ({ page }) => {
+    await stubStatus(page, { can_view: false, can_request: true, instant_download: true });
+    await open(page);
+    await expect(page.locator("#cv-request")).toContainText("a link to download the CV appears for a minute");
+    await page.unroute(`${API}/api/v1/cv`);
+    await stubStatus(page, { can_view: false, can_request: true });
+    await page.reload();
+    await reachCv(page);
+    await expect(page.locator("#cv-request-form")).toBeVisible();
+    await expect(page.locator("#cv-request")).not.toContainText("download");
+  });
+
+  test("has no accessibility violations, idle or sent", async ({ page }, info) => {
+    test.skip(info.project.name !== "chromium", "the matrix runs the other browsers");
+    await open(page);
+    await expect(requestButton(page)).toBeVisible();
+    expect((await new AxeBuilder({ page }).include("#cv").analyze()).violations).toEqual([]);
+    await fill(page);
+    await requestButton(page).click();
+    await expect(sentPanel(page)).toBeVisible();
+    expect((await new AxeBuilder({ page }).include("#cv").analyze()).violations).toEqual([]);
+  });
+});
