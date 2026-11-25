@@ -26,6 +26,7 @@ DATABASE_URL = os.environ.get(
     "E2E_DATABASE_URL", "postgres://postgres:postgres@127.0.0.1:5432/portfolio_e2e"
 )
 MEDIA_ROOT = Path(tempfile.mkdtemp(prefix="portfolio-e2e-media-"))
+CV_ROOT = Path(tempfile.mkdtemp(prefix="portfolio-e2e-cv-"))
 TOKEN_FILE = Path(os.environ.get("E2E_TOKEN_FILE", API / ".e2e-access-token"))
 # A signed-in session for the browser matrix, which cannot use a virtual passkey
 # in every browser. The raw token is written here; only its hash is stored.
@@ -55,6 +56,7 @@ os.environ.update(
         "REDIS_URL": os.environ.get("E2E_REDIS_URL", "redis://127.0.0.1:6379/14"),
         "MEDIA_STORAGE": "local",
         "MEDIA_ROOT": str(MEDIA_ROOT),
+        "CV_ROOT": str(CV_ROOT),
         "CACHE_PURGER": "core.purge.LogPurger",
     }
 )
@@ -397,6 +399,45 @@ def access_token(key):
     return jwt.encode(claims, key, algorithm="RS256", headers={"kid": "e2e"})
 
 
+def seeded_pdf(pages=2):
+    """A small, plain PDF of text pages (no scripts, no fonts embedded)."""
+    objects = [b"<< /Type /Catalog /Pages 2 0 R >>"]
+    kids = " ".join(f"{3 + 2 * n} 0 R" for n in range(pages))
+    objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {pages} >>".encode())
+    font = 3 + 2 * pages
+    for n in range(pages):
+        objects.append(
+            (
+                f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                f"/Contents {4 + 2 * n} 0 R "
+                f"/Resources << /Font << /F1 {font} 0 R >> >> >>"
+            ).encode()
+        )
+        text = f"BT /F1 24 Tf 72 700 Td (Seeded CV page {n + 1} of {pages}) Tj ET"
+        body = f"<< /Length {len(text)} >>\nstream\n{text}\nendstream"
+        objects.append(body.encode())
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+    start = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    for offset in offsets:
+        out += f"{offset:010d} 00000 n \n".encode()
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n".encode()
+    out += f"startxref\n{start}\n%%EOF\n".encode()
+    return bytes(out)
+
+
+def seed_cv():
+    """One live CV, so the public viewer, request and download have a file."""
+    from core import cv
+
+    cv.set_live(cv.add(seeded_pdf()).id)
+
+
 def main():
     import django
     from cryptography.hazmat.primitives.asymmetric import rsa
@@ -420,6 +461,7 @@ def main():
     cache.client().flushdb()
     seed_published_site()
     seed_inbox_and_session()
+    seed_cv()
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     access.fetch_signing_key = lambda token: key.public_key()

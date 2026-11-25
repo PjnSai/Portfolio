@@ -1250,6 +1250,120 @@ html[data-theme] .contact__wrap {
   text-decoration: underline;
 }
 
+/* The CV block closes the page after the last section. It is empty, with no
+   height, until the browser has asked the API what is switched on. */
+.cv {
+  --fg: var(--c-ink);
+  --ground: var(--c-bg);
+  display: grid;
+  gap: var(--s-3);
+  max-width: 44rem;
+  margin-block: var(--s-6);
+  margin-inline: auto;
+  padding: var(--s-3);
+  background: var(--ground);
+  color: var(--fg);
+  border: var(--line) solid var(--fg);
+  border-radius: var(--radius-card);
+  font-size: var(--t-body);
+}
+.cv__title {
+  margin: 0;
+  font-size: var(--t-h3);
+  line-height: 1.2;
+}
+.cv__updated,
+.cv__status {
+  margin: 0;
+  font-size: var(--t-small);
+}
+.cv__status:empty {
+  display: none;
+}
+.cv__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.cv__actions .btn,
+.cv .contact-form__send {
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+.cv__actions .btn:disabled {
+  cursor: not-allowed;
+  border-style: dashed;
+}
+.cv .contact-form,
+.cv .contact-sent {
+  padding: 0;
+  border: 0;
+}
+.cv .contact-form__status {
+  min-height: 3.5em;
+}
+.cv .contact-form__error {
+  min-height: 1.6em;
+}
+
+/* The CV viewer: pages drawn onto canvases inside the detail sheet's box. */
+.cv-viewer[open] {
+  display: flex;
+  flex-direction: column;
+}
+.cv-viewer .sheet__inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-height: 0;
+}
+.cv-viewer__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.cv-viewer__title {
+  margin: 0;
+  font-size: var(--t-h3);
+  line-height: 1.2;
+}
+.cv-viewer__bar .btn,
+.cv-viewer__problem .btn {
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+.cv-viewer__status,
+.cv-viewer__alt,
+.cv-viewer__problem p {
+  margin: 0;
+  font-size: var(--t-small);
+}
+.cv-viewer__alt a {
+  color: inherit;
+  text-decoration: underline;
+}
+.cv-viewer__problem {
+  display: grid;
+  gap: var(--s-2);
+  justify-items: start;
+}
+.cv-viewer__scroll {
+  display: grid;
+  gap: var(--s-2);
+  max-height: calc(100dvh - 14rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.cv-viewer__page {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: var(--line) solid var(--c-ink);
+}
+
 /* Gallery */
 
 .gallery {

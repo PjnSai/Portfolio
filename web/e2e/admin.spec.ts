@@ -11,6 +11,7 @@ import {
   test,
 } from "@playwright/test";
 import { contactsTests } from "./contacts-tests";
+import { cvAdminTests } from "./cv-admin-tests";
 import { inboxTests } from "./inbox-tests";
 
 // One owner, one browser, one passkey: the steps build on each other.
@@ -621,3 +622,4 @@ test("the admin fits a phone screen", async () => {
 
 inboxTests(() => page);
 contactsTests(() => page);
+cvAdminTests(() => page);

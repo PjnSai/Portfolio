@@ -18,9 +18,26 @@ export type MessageSummary = {
   kept: boolean;
   contact_id: string | null;
   snippet: string;
+  /** Always sent by the API; a missing one is read as an ordinary message. */
+  kind?: MessageKind;
 };
 
 export type Reason = "hiring" | "project" | "other";
+
+/** A request for the CV may come with no name. */
+export const NO_NAME = "No name given";
+
+export function senderName(name: string): string {
+  return name.trim() || NO_NAME;
+}
+
+/** A message from the contact form, or a request for a copy of the CV. */
+export type MessageKind = "message" | "cv_request";
+
+export const KIND_LABEL: Record<MessageKind, string> = {
+  message: "Message",
+  cv_request: "CV request",
+};
 
 export const REASON_LABEL: Record<Reason | "none", string> = {
   hiring: "Hiring",
@@ -35,6 +52,8 @@ export type Filters = {
   reason: "" | Reason | "none";
   since: string;
   until: string;
+  /** Only CV requests; left out for everything. */
+  kind?: "cv_request";
 };
 
 export const NO_FILTERS: Filters = { q: "", reason: "", since: "", until: "" };
@@ -64,6 +83,7 @@ export type MessageDetail = {
   contact_id: string | null;
   expires_at: string;
   notes: Note[];
+  kind?: MessageKind;
 };
 
 export type Retention = {
@@ -170,6 +190,7 @@ function query(
   if (filters.reason) params.set("reason", filters.reason);
   if (filters.since) params.set("since", filters.since);
   if (filters.until) params.set("until", filters.until);
+  if (filters.kind) params.set("kind", filters.kind);
   if (page > 1) params.set("page", String(page));
   return params;
 }
@@ -214,11 +235,14 @@ export function filtersFrom(get: (name: string) => string | null): Filters {
         : "",
     since: day("since"),
     until: day("until"),
+    ...(get("kind") === "cv_request" ? { kind: "cv_request" as const } : {}),
   };
 }
 
 export function hasFilters(filters: Filters): boolean {
-  return Boolean(filters.q || filters.reason || filters.since || filters.until);
+  return Boolean(
+    filters.q || filters.reason || filters.since || filters.until || filters.kind,
+  );
 }
 
 /** What a tab's count is: the inbox is everything except spam. */
@@ -248,6 +272,7 @@ export function inboxApi(client: AdminApi) {
         reason: filters.reason || undefined,
         since: filters.since || undefined,
         until: filters.until || undefined,
+        kind: filters.kind,
         page: page > 1 ? page : undefined,
       });
     },

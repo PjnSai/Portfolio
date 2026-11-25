@@ -14,6 +14,7 @@ const rules = parseRules(readFileSync(join(ROOT, "_headers"), "utf8"));
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json",
   ".xml": "application/xml; charset=utf-8",

@@ -33,6 +33,12 @@ export const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 /** Present in a built page's HTML if, and only if, it carries the contact form. */
 export const CONTACT_FORM_MARKER = "data-contact-form";
 
+/**
+ * Present in a built page's HTML if, and only if, it carries the CV block, which
+ * uses Turnstile and the API in the same way as the contact form.
+ */
+export const CV_BLOCK_MARKER = "data-cv-block";
+
 export type PolicyInput = {
   /** "sha256-<base64>" for each inline script on the page. */
   scripts: readonly string[];

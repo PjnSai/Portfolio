@@ -6,13 +6,18 @@ import {
   eraseSummary,
   isEraseTarget,
 } from "@/lib/admin/erase";
+import { CV_ENTITY, isSwitches, SWITCHES_KIND, switchesLine } from "@/lib/admin/cv";
 import { shortDate, timeLeft } from "@/lib/admin/time";
 
 /** What a waiting action is, in words. Never the raw kind for one we know. */
 export function describeAction(action: PendingAction): string {
   switch (action.kind) {
     case "permanent_delete":
-      return `Delete a ${action.target.entity ?? "record"} for good`;
+      return action.target.entity === CV_ENTITY
+        ? "Delete a CV version for good"
+        : `Delete a ${action.target.entity ?? "record"} for good`;
+    case SWITCHES_KIND:
+      return "Change the CV switches";
     case "add_passkey":
       return `Add a passkey called “${action.target.name}”`;
     case "revoke_passkey":
@@ -44,6 +49,11 @@ export function PendingRow({
       {action.kind === ERASE_KIND && isEraseTarget(action.target) && (
         <p data-testid="erase-summary" className="mt-1 text-sm">
           {eraseSummary(action.target)}
+        </p>
+      )}
+      {action.kind === SWITCHES_KIND && isSwitches(action.target) && (
+        <p data-testid="cv-summary" className="mt-1 text-sm">
+          {switchesLine(action.target)}
         </p>
       )}
       <p className="mb-4 text-sm text-muted">

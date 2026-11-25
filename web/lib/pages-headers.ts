@@ -9,6 +9,7 @@ import {
   ADMIN_PATH,
   ASSET_CACHE,
   CONTACT_FORM_MARKER,
+  CV_BLOCK_MARKER,
   contentSecurityPolicy,
   isPrivatePath,
   PAGE_CACHE,
@@ -38,9 +39,15 @@ function hashes(html: string, pattern: RegExp): string[] {
   return [...found];
 }
 
-/** Only the home page can hold the contact form, and only if it was built with it. */
+/**
+ * Only the home page can hold the contact form or the CV block, and only if it
+ * was built with one: both use Turnstile and the API.
+ */
 export function hasContactForm(page: Page): boolean {
-  return page.route === "/" && page.html.includes(CONTACT_FORM_MARKER);
+  return (
+    page.route === "/" &&
+    (page.html.includes(CONTACT_FORM_MARKER) || page.html.includes(CV_BLOCK_MARKER))
+  );
 }
 
 function policyOf(pages: Page[], api: string, admin: boolean): string {
