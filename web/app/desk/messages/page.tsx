@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ADMIN, useAdmin } from "@/components/admin/AdminApp";
+import { ContactPanel } from "@/components/admin/inbox/ContactPanel";
 import {
   FOCUS_IDS,
   InboxFilters,
@@ -421,6 +422,14 @@ function Detail({
             "delete",
           )
         }
+      />
+      <ContactPanel
+        message={current}
+        contactsBase={`${ADMIN}/contacts`}
+        onSaved={(contactId) => {
+          setChanged({ ...current, contact_id: contactId });
+          setDone("Saved as a contact.");
+        }}
       />
     </>
   );
