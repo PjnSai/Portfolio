@@ -1,6 +1,5 @@
 // The words of the footer pages (SPEC 3.10). They describe what the site does
-// now. The contact form is described here; the CV download is still to come
-// (docs/PROGRESS.md lists what remains).
+// now. The contact form and the CV are described here.
 
 import type { ReactNode } from "react";
 import { PRIVACY_EMAIL } from "@/lib/public/privacy-email";
@@ -131,10 +130,28 @@ export function PrivacyPage({ name, email = PRIVACY_EMAIL }: { name: string; ema
         data-request address below, and only once it has been set.
       </p>
 
-      <h2>CV download</h2>
+      <h2>The CV</h2>
       <p>
-        The CV download is not available yet. Before it goes live, this notice will say what it keeps, why, for how
-        long, and how to have it deleted.
+        When {name} has switched them on, the site can show the CV in a pop-up, and you can ask for a copy. Only the
+        public CV is used: professional details, with no phone number, address or personal email address. Each part
+        can be switched off at any time, and then the site says nothing about a CV.
+      </p>
+      <p>
+        <strong>Viewing.</strong> You pass the same anti-spam check as the contact form. The site then gets a link that
+        works for one minute, reads the file with it, and draws the pages in the pop-up. There is no download button
+        in the pop-up and no lasting address for the file. Each view is logged with the time, which version it was,
+        the country Cloudflare reports (two letters, kept only when known) and the name of your browser, shortened to
+        200 characters. No IP address and no email address is kept with it. After 90 days these rows are counted into
+        a total for each day and removed. The totals hold no personal data. The pop-up only stops casual saving:
+        anyone who can see the CV can still save it another way.
+      </p>
+      <p>
+        <strong>Asking for a copy.</strong> The request form asks for your email address, with an optional name and
+        a short note. It is kept as a message, marked as a CV request, and everything above applies to it unchanged:
+        the same checks and limits, the same periods, blocking, deletion and rights. {name} replies by hand, and may
+        send a fuller CV by email. The site sends no email. If instant download is switched on, you also get a
+        download link that works for one minute. It is given to everyone who passes the check and the limits, whether
+        or not the request was kept, so that the form never shows whether a sender was blocked or held back.
       </p>
 
       <h2>Your rights</h2>
@@ -175,12 +192,16 @@ export function AccessibilityPage() {
     >
       <h2>What the site does</h2>
       <ul>
-        <li>Every page can be read in full with JavaScript turned off. The contact form is the one thing that
-          needs it: without it the page says so and points to the professional links.</li>
+        <li>Every page can be read in full with JavaScript turned off. The contact form and the CV pop-up need it:
+          without it the contact form says so and points to the professional links.</li>
         <li>
           The contact form has a label on every field, problems written next to the field they belong to (not
           shown by colour alone), results read out by screen readers, and focus moved to the first problem or to
           the confirmation. The anti-spam check is invisible and asks you to do nothing.
+        </li>
+        <li>
+          The CV pop-up draws each page as an image, so it says so, and offers an accessible copy by request. It
+          moves focus in, keeps it inside, closes with the Escape key and puts focus back where it was.
         </li>
         <li>
           Everything can be used with a keyboard. A skip link leads to the main content, and focus is always visible.
@@ -209,6 +230,10 @@ export function AccessibilityPage() {
         <li>
           Automated checks find only some problems. Hand testing with a screen reader (NVDA), at 200% zoom and on a
           real phone has not been done yet; it is planned before the site launches.
+        </li>
+        <li>
+          The CV pop-up shows the CV as page images, which a screen reader cannot read. An accessible copy is sent
+          on request.
         </li>
         <li>Project images and their descriptions are added by hand, so a missing or weak description is possible.</li>
       </ul>
@@ -254,6 +279,11 @@ export function SecurityPage() {
           limits on messages per address, per email address and per day. The server checks the Turnstile result
           itself and refuses every message if it cannot. No other page may load Turnstile, and no page may run
           other people&apos;s scripts.
+        </li>
+        <li>
+          The CV has no lasting address. After the same check, the site gets a link that works for one minute, and
+          every link is refused if the owner has switched that part off. The file is sent with headers that keep it
+          out of caches and search results, and the view log holds no address or email.
         </li>
         <li>
           Messages are kept as plain text, checked for length and for characters that could change an email

@@ -12,6 +12,8 @@ import {
   detailHref,
   type Filters,
   hasFilters,
+  KIND_LABEL,
+  type MessageKind,
   MOVE_LABEL,
   type MessageDetail,
   type MessageList,
@@ -23,6 +25,7 @@ import {
   NOTE_MAX,
   REASON_LABEL,
   scoreLabel,
+  senderName,
   STATUS_LABEL,
   type Tab,
   TABS,
@@ -48,6 +51,19 @@ function StatusChip({ status }: { status: MessageSummary["status"] }) {
       className={`rounded-md border px-2 py-0.5 font-mono text-xs uppercase tracking-wide ${tone}`}
     >
       {STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+/** Marks a request for a copy of the CV. An ordinary message has no badge. */
+function KindBadge({ kind }: { kind?: MessageKind }) {
+  if (kind !== "cv_request") return null;
+  return (
+    <span
+      data-testid="kind-badge"
+      className="rounded-md border border-ink bg-ink px-2 py-0.5 font-mono text-xs uppercase tracking-wide text-paper"
+    >
+      {KIND_LABEL.cv_request}
     </span>
   );
 }
@@ -112,8 +128,15 @@ export function InboxFilters({
   onApply: (filters: Filters) => void;
 }) {
   const [draft, setDraft] = useState(filters);
-  const set = (name: keyof Filters, value: string) =>
-    setDraft({ ...draft, [name]: value });
+  const set = (name: keyof Filters, value: string) => {
+    if (name === "kind") {
+      const next = { ...draft };
+      delete next.kind;
+      setDraft(value === "cv_request" ? { ...next, kind: "cv_request" } : next);
+    } else {
+      setDraft({ ...draft, [name]: value });
+    }
+  };
   const backwards = Boolean(
     draft.since && draft.until && draft.since > draft.until,
   );
@@ -156,7 +179,17 @@ export function InboxFilters({
           <option value="none">{REASON_LABEL.none}</option>
         </select>
       </label>
-      <div className="hidden lg:block" />
+      <label className="block">
+        <Label>Show</Label>
+        <select
+          className={INPUT}
+          value={draft.kind ?? ""}
+          onChange={(event) => set("kind", event.target.value)}
+        >
+          <option value="">All messages</option>
+          <option value="cv_request">{KIND_LABEL.cv_request}s</option>
+        </select>
+      </label>
       <label className="block">
         <Label>Received from</Label>
         <input
@@ -250,9 +283,12 @@ export function MessageRows({
                 href={detailHref(base, message.id, tab, listing.page, filters)}
                 className="text-lg font-bold underline underline-offset-4 [overflow-wrap:anywhere]"
               >
-                {message.name}
+                {senderName(message.name)}
               </Link>
-              <StatusChip status={message.status} />
+              <span className="flex flex-wrap items-center gap-2">
+                <KindBadge kind={message.kind} />
+                <StatusChip status={message.status} />
+              </span>
             </div>
             <p className="mt-1 flex flex-wrap items-center gap-2 break-all text-sm">
               {message.email} <Unverified />
@@ -335,7 +371,7 @@ export function MessageView(props: MessageViewProps) {
         tabIndex={-1}
         className="mb-4 text-2xl font-extrabold tracking-tight [overflow-wrap:anywhere]"
       >
-        Message from {message.name}
+        {message.name.trim() ? `Message from ${message.name}` : "Message with no name given"}
       </h2>
 
       {spam && (
@@ -350,7 +386,7 @@ export function MessageView(props: MessageViewProps) {
           <dt>
             <Label>From</Label>
           </dt>
-          <dd>{message.name}</dd>
+          <dd>{senderName(message.name)}</dd>
         </div>
         <div>
           <dt>
@@ -364,6 +400,16 @@ export function MessageView(props: MessageViewProps) {
           </dt>
           <dd>{shortDate(message.created_at)}</dd>
         </div>
+        {message.kind === "cv_request" && (
+          <div>
+            <dt>
+              <Label>Type</Label>
+            </dt>
+            <dd>
+              <KindBadge kind={message.kind} />
+            </dd>
+          </div>
+        )}
         <div>
           <dt>
             <Label>Status</Label>

@@ -18,7 +18,7 @@ import {
   TAG_MAX,
   TAGS_MAX,
 } from "@/lib/admin/contacts";
-import { type MessageSummary, STATUS_LABEL } from "@/lib/admin/inbox";
+import { type MessageSummary, senderName, STATUS_LABEL } from "@/lib/admin/inbox";
 import { shortDate } from "@/lib/admin/time";
 
 /** A day as the owner reads it, from a YYYY-MM-DD string. */
@@ -160,7 +160,7 @@ export function ContactRows({
               href={contactHref(base, contact.id, listing.page, filters)}
               className="text-lg font-bold underline underline-offset-4 [overflow-wrap:anywhere]"
             >
-              {contact.name}
+              {senderName(contact.name)}
             </Link>
             <p className="mt-1 break-all text-sm">
               {contact.organisation ? `${contact.organisation} · ` : ""}
@@ -354,7 +354,7 @@ export function ContactIdentity({ contact }: { contact: ContactDetail }) {
   return (
     <dl className="mb-6 grid gap-x-6 gap-y-2 sm:grid-cols-[auto_1fr]">
       <dt className="font-mono text-xs uppercase tracking-wide text-muted">Name</dt>
-      <dd className="[overflow-wrap:anywhere]">{contact.name}</dd>
+      <dd className="[overflow-wrap:anywhere]">{senderName(contact.name)}</dd>
       <dt className="font-mono text-xs uppercase tracking-wide text-muted">
         Email (cannot be changed)
       </dt>

@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { API, formHeaders, nextAddress, turnstileToken } from "./fixtures/contact";
+import { API, formHeaders, nextAddress, sendMessage, turnstileToken } from "./fixtures/contact";
 import { scriptedPdf, seededPdf } from "./fixtures/cv";
 
 // The CV page of the admin suite. It runs inside admin.spec.ts, after the owner
@@ -55,6 +55,18 @@ async function visit(request: import("@playwright/test").APIRequestContext, kind
   const { url } = (await answer.json()) as { url: string };
   const file = await request.get(`${API}${url}`, { headers });
   expect(file.status()).toBe(200);
+}
+
+const run = Date.now().toString(36);
+const REQUESTER = `cvreq.${run}@example.com`;
+const NOTE = "Please send the accessible copy.";
+
+async function askForCopy(request: import("@playwright/test").APIRequestContext) {
+  const answer = await request.post(`${API}/api/v1/cv/request`, {
+    headers: formHeaders(nextAddress()),
+    data: { email: REQUESTER, name: "", note: NOTE, website: "", elapsed: 5000, turnstile: turnstileToken() },
+  });
+  expect(answer.status()).toBe(201);
 }
 
 export function cvAdminTests(getPage: () => Page) {
@@ -327,6 +339,80 @@ export function cvAdminTests(getPage: () => Page) {
           await noHorizontalScroll(page, width);
           const found = await new AxeBuilder({ page }).analyze();
           expect(found.violations, `${width}px ${scheme}`).toEqual([]);
+        }
+      }
+      await page.emulateMedia({ colorScheme: null });
+    });
+
+    test("a CV request has a badge in the list and the detail, the filter narrows to it, and replying works as for any message", async ({
+      request,
+    }) => {
+      const page = getPage();
+      await askForCopy(request);
+      await sendMessage(request, {
+        name: "Ordinary Person",
+        email: `ordinary.${run}@example.com`,
+        reason: "other",
+        body: `An ordinary message for the filter test (${run}).`,
+      });
+      const list = `/desk/messages?q=${run}`;
+      await page.goto(list);
+      const messageRows = page.getByTestId("message-row");
+      await expect(messageRows).toHaveCount(2);
+      await expect(page.getByTestId("kind-badge")).toHaveCount(1);
+      const cvRow = messageRows.filter({ has: page.getByTestId("kind-badge") });
+      await expect(cvRow).toContainText("CV request");
+      await expect(cvRow.getByRole("link", { name: "No name given" })).toBeVisible();
+      await expect(cvRow).toContainText("Request for a copy of the CV.");
+      await expect(messageRows.filter({ hasText: "Ordinary Person" }).getByTestId("kind-badge")).toHaveCount(0);
+
+      // The filter: all, or CV requests only. It keeps the address, the folders and the search.
+      await page.getByLabel("Show").selectOption("cv_request");
+      await page.getByRole("button", { name: "Apply" }).click();
+      await expect(page).toHaveURL(/kind=cv_request/);
+      await expect(messageRows).toHaveCount(1);
+      await expect(page.getByTestId("kind-badge")).toHaveCount(1);
+      await expect(page.getByRole("link", { name: /^Inbox/ })).toHaveAttribute("href", /kind=cv_request/);
+      await page.reload();
+      await expect(messageRows).toHaveCount(1);
+      await expect(page.getByLabel("Show")).toHaveValue("cv_request");
+      await page.getByRole("button", { name: "Clear filters" }).click();
+      await expect(page).not.toHaveURL(/kind=/);
+      await expect(page.getByLabel("Show")).toHaveValue("");
+      await page.goto(`${list}&kind=nonsense`);
+      await expect(messageRows).toHaveCount(2);
+
+      // The detail shows the badge, the fixed line and the note, and a reply by email.
+      await page.goto(`${list}&kind=cv_request`);
+      await page.getByRole("link", { name: "No name given" }).click();
+      await expect(page.getByRole("heading", { name: "Message with no name given" })).toBeFocused();
+      await expect(page.getByTestId("kind-badge")).toBeVisible();
+      await expect(page.getByText("Request for a copy of the CV.", { exact: false }).first()).toBeVisible();
+      await expect(page.getByText(NOTE)).toBeVisible();
+      await expect(page.getByRole("link", { name: "Reply by email" })).toHaveAttribute(
+        "href",
+        new RegExp(`^mailto:${REQUESTER.replace(/[.+]/g, "\\$&")}\\?subject=`),
+      );
+      // The Back link keeps the filter.
+      await expect(page.getByRole("link", { name: /^Back to/ })).toHaveAttribute("href", /kind=cv_request/);
+    });
+
+    test("the filtered list and a CV request have no accessibility violations at 390 and 1280 px, light and dark", async () => {
+      const page = getPage();
+      for (const width of [390, 1280]) {
+        for (const scheme of ["light", "dark"] as const) {
+          await page.setViewportSize({ width, height: 900 });
+          await page.emulateMedia({ colorScheme: scheme });
+          await page.goto(`/desk/messages?q=${run}&kind=cv_request`);
+          await expect(page.getByTestId("kind-badge").first()).toBeVisible();
+          await noHorizontalScroll(page, width);
+          let found = await new AxeBuilder({ page }).analyze();
+          expect(found.violations, `list ${width}px ${scheme}`).toEqual([]);
+          await page.getByRole("link", { name: "No name given" }).click();
+          await expect(page.getByRole("heading", { name: "Message with no name given" })).toBeVisible();
+          await noHorizontalScroll(page, width);
+          found = await new AxeBuilder({ page }).analyze();
+          expect(found.violations, `detail ${width}px ${scheme}`).toEqual([]);
         }
       }
       await page.emulateMedia({ colorScheme: null });
