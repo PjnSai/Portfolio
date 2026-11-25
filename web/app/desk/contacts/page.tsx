@@ -178,6 +178,15 @@ function Detail({
   const heading = useRef<HTMLHeadingElement>(null);
   const back = contactsHref(BASE, page, filters);
 
+  // Put focus on the heading once, when the contact has loaded.
+  const focused = useRef(false);
+  const loadedId = contact?.id;
+  useEffect(() => {
+    if (loadedId === undefined || focused.current) return;
+    focused.current = true;
+    heading.current?.focus();
+  }, [loadedId]);
+
   const shown = form ?? formFrom(contact);
 
   async function run<T>(call: () => Promise<T>, then: (result: T) => void) {

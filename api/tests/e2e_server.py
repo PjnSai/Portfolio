@@ -276,12 +276,69 @@ def seed_inbox_and_session():
             ContactNote.objects.create(
                 message=message, text="Sent the CV.", kind="responded_with_details"
             )
+    seed_contacts_and_blocks(now)
     token = secrets.token_urlsafe(32)
     Session.objects.create(
         owner=Owner.objects.get(),
         token_hash=hashlib.sha256(token.encode()).hexdigest(),
     )
     SESSION_FILE.write_text(token)
+
+
+def seed_contacts_and_blocks(now):
+    """Two saved contacts (one with long values, its follow-up due) linked to
+    seeded messages, and two blocklist entries (one with a kept address and a
+    long note), so the matrix has something to look at on those pages."""
+    from datetime import date
+
+    from core import contact as contact_hash
+    from core.models import BlockedSender, Contact, ContactMessage
+
+    long_email = "a.very.long.address.that.keeps.going.and.going@a-long-domain-name.example"
+    people = [
+        (
+            "Matrix Sender Two With A Very Long Name That Keeps Going",
+            long_email,
+            "Organisation " + "y" * 80,
+            ["recruiter", "a-very-long-tag-name-that-keeps-going"],
+            "Notes with an unbroken word: " + "z" * 120,
+            date(2026, 1, 1),
+        ),
+        (
+            "Matrix Sender Three",
+            "three@matrix.example",
+            "Halverton Recruitment",
+            ["spring"],
+            "Met at the careers fair.",
+            None,
+        ),
+    ]
+    for name, email, organisation, tags, notes, follow_up in people:
+        found = Contact.objects.create(
+            name=name,
+            email=email,
+            organisation=organisation,
+            tags=tags,
+            notes=notes,
+            follow_up=follow_up,
+        )
+        ContactMessage.objects.filter(
+            email_hash=contact_hash.email_hash(email)
+        ).update(contact=found)
+    kept = "long.blocked.address.that.keeps.going@a-long-domain-name.example"
+    for email, keep, note, hits in [
+        ("hash.only@matrix.example", None, "Kept sending offers", 4),
+        (kept, kept, "n" * 190, 0),
+    ]:
+        BlockedSender.objects.create(
+            email_hash=contact_hash.email_hash(email),
+            email=keep,
+            note=note,
+            created_at=now - timedelta(days=30),
+            expires_at=now + timedelta(days=335),
+            hit_count=hits,
+            last_hit_at=now - timedelta(days=2) if hits else None,
+        )
 
 
 def seed_published_site():

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { Fragment, useCallback, useState } from "react";
 import { useAdmin } from "@/components/admin/AdminApp";
 import { Button, INPUT, Label, Notice } from "@/components/admin/ui";
 import { api, describeError } from "@/lib/admin/api";
@@ -35,6 +35,8 @@ export function LimitsCard() {
 
 function LimitsForm({ start }: { start: Limits }) {
   const { vital } = useAdmin();
+  // What the server holds now: it changes with each save.
+  const [current, setCurrent] = useState<Limits>(start);
   const [texts, setTexts] = useState<LimitTexts>(() => textsFrom(start));
   const [errors, setErrors] = useState<Partial<Record<LimitName, string>>>({});
   const [saved, setSaved] = useState("");
@@ -44,7 +46,7 @@ function LimitsForm({ start }: { start: Limits }) {
     event.preventDefault();
     setSaved("");
     setFailed("");
-    const checked = checkLimits(texts, start);
+    const checked = checkLimits(texts, current);
     setErrors(checked.errors);
     if (Object.keys(checked.errors).length) return;
     if (!Object.keys(checked.changes).length) {
@@ -53,6 +55,7 @@ function LimitsForm({ start }: { start: Limits }) {
     }
     try {
       const result = await vital(() => client.save(checked.changes));
+      setCurrent(result);
       setTexts(textsFrom(result));
       setSaved("Limits saved. They apply from the next message.");
     } catch (failure) {
@@ -62,7 +65,7 @@ function LimitsForm({ start }: { start: Limits }) {
 
   return (
     <LimitsFormView
-      limits={start}
+      limits={current}
       texts={texts}
       errors={errors}
       saved={saved}
@@ -147,10 +150,10 @@ export function LimitsFormView({
         </p>
         <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[1fr_auto]">
           {limits.fixed.map((row) => (
-            <div key={row.name} className="contents">
+            <Fragment key={row.name}>
               <dt>{FIXED_LABEL[row.name] ?? row.name.replaceAll("_", " ")}</dt>
               <dd className="font-mono">{fixedText(row)}</dd>
-            </div>
+            </Fragment>
           ))}
         </dl>
       </section>

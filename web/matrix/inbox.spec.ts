@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { API } from "../e2e/fixtures/contact";
+import { settled } from "../e2e/fixtures/settled";
 import type { Combo } from "../playwright.matrix.config";
 
 // The owner's inbox in every browser, width, colour scheme and motion setting.
@@ -134,4 +136,106 @@ test("a held-back message offers Not spam and no reply", async ({ page }) => {
     page.getByText("held back by the spam checks").first(),
   ).toBeVisible();
   await noSidewaysScroll(page, "held-back message");
+});
+
+// The contacts, blocklist and limits pages. The e2e API seeds two saved contacts
+// (one with long values and a follow-up that is due) and two blocks (one with a
+// kept address and a long note). As above, nothing here changes anything: forms
+// are opened, never sent.
+
+/** axe at the widths the matrix checks colour at, in the project's scheme. */
+async function noViolations(page: Page, label: string) {
+  if (![390, 1280].includes(combo().width)) return;
+  // Let the page finish loading before axe reads it.
+  await expect(page.getByText("Loading…")).toHaveCount(0);
+  await page.waitForLoadState("networkidle");
+  await settled(page);
+  const found = await new AxeBuilder({ page }).analyze();
+  expect(found.violations, label).toEqual([]);
+}
+
+test("the contacts list and its filters fit the screen", async ({ page }) => {
+  await page.goto("/desk/contacts");
+  await expect(page.getByRole("heading", { level: 1, name: "Contacts" })).toBeVisible();
+  await expect(
+    page.getByRole("search", { name: "Search and filter contacts" }),
+  ).toBeVisible();
+  const list = page.getByTestId("contact-row");
+  await expect(list.first()).toBeVisible();
+  expect(await list.count()).toBeGreaterThanOrEqual(2);
+  await noSidewaysScroll(page, "contacts");
+  await noViolations(page, "contacts");
+
+  await page.goto("/desk/contacts?due=1");
+  await expect(list).toHaveCount(1);
+  await expect(list.first()).toContainText("Matrix Sender Two");
+  await expect(list.first()).toContainText("due");
+  await noSidewaysScroll(page, "contacts due");
+});
+
+test("a contact with a long name, address, organisation and notes fits", async ({
+  page,
+}) => {
+  await page.goto("/desk/contacts");
+  await page.getByRole("link", { name: /Matrix Sender Two/ }).click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: /^Matrix Sender Two/ }),
+  ).toBeVisible();
+  await expect(page.getByText("Email (cannot be changed)")).toBeVisible();
+  await expect(page.getByLabel(/^Organisation/)).toBeVisible();
+  await expect(page.getByTestId("linked-message")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Delete this contact" })).toBeVisible();
+  await expect(page.getByTestId("erase-warning")).toBeVisible();
+  await noSidewaysScroll(page, "contact");
+  await noViolations(page, "contact");
+});
+
+test("the blocklist, with a kept address and a long note, fits", async ({
+  page,
+}) => {
+  await page.goto("/desk/blocklist");
+  await expect(page.getByRole("heading", { level: 1, name: "Blocklist" })).toBeVisible();
+  await expect(page.getByTestId("blocklist-size")).toContainText(/\d+ of 500 places in use/);
+  const rows = page.getByTestId("block-row");
+  expect(await rows.count()).toBeGreaterThanOrEqual(2);
+  await expect(rows.filter({ hasText: "Address not kept" })).toHaveCount(1);
+  await expect(page.getByText("long.blocked.address.that.keeps.going")).toBeVisible();
+  await expect(
+    page.getByRole("form", { name: "Block an address" }).getByLabel(/^Keep the address/),
+  ).not.toBeChecked();
+  await noSidewaysScroll(page, "blocklist");
+  await noViolations(page, "blocklist");
+});
+
+test("the limits card in settings fits and lists the fixed limits", async ({
+  page,
+}) => {
+  await page.goto("/desk/settings");
+  const card = page.getByRole("region", { name: "Contact form limits" });
+  await expect(card.getByLabel("Months a block lasts")).toBeVisible();
+  await noViolations(page, "limits");
+  await expect(card.getByRole("textbox")).toHaveCount(8);
+  await expect(card.getByText("Fixed limits")).toBeVisible();
+  await expect(card.getByText("Wait before a vital action can run")).toBeVisible();
+  await noSidewaysScroll(page, "limits");
+});
+
+test("a message offers its contact, Block sender and delete everything, and fits", async ({
+  page,
+}) => {
+  await page.goto("/desk/messages");
+  await page.getByRole("link", { name: /Matrix Sender Three/ }).click();
+  await expect(page.getByRole("link", { name: "Open the contact" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Block sender" })).toBeVisible();
+  await expect(page.getByTestId("erase-warning")).toBeVisible();
+  await noSidewaysScroll(page, "message with a contact");
+
+  await page.goto("/desk/messages");
+  await page.getByRole("link", { name: /Matrix Sender One/ }).click();
+  await page.getByRole("button", { name: "Save as contact" }).click();
+  await page.getByRole("button", { name: "Block sender" }).click();
+  await expect(page.getByRole("form", { name: "Save as contact" })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Block sender" })).toBeVisible();
+  await noSidewaysScroll(page, "message with the forms open");
+  await noViolations(page, "message with the forms open");
 });
