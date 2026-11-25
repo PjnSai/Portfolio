@@ -391,7 +391,7 @@ export function cvAdminTests(getPage: () => Page) {
       await expect(page.getByText(NOTE)).toBeVisible();
       await expect(page.getByRole("link", { name: "Reply by email" })).toHaveAttribute(
         "href",
-        new RegExp(`^mailto:${REQUESTER.replace(/[.+]/g, "\\$&")}\\?subject=`),
+        new RegExp(`^mailto:${REQUESTER.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}\\?subject=`),
       );
       // The Back link keeps the filter.
       await expect(page.getByRole("link", { name: /^Back to/ })).toHaveAttribute("href", /kind=cv_request/);

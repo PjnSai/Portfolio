@@ -46,7 +46,8 @@ describe("the block in the page", () => {
     const markup = renderToString(<CvBlock available />);
     expect(markup).toContain("data-cv-block");
     expect(markup).toContain("data-cv-root");
-    expect(markup.replace(/<[^>]*>/g, "")).toBe("");
+    // Only tags: no text sits between them.
+    expect(markup).toMatch(/^(?:<[^<>]*>)*$/);
   });
 
   it("is not in the page at all when the build has no API or no Turnstile key", () => {
