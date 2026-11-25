@@ -21,7 +21,10 @@ def batch_size(text):
 
 
 class Command(BaseCommand):
-    help = "Delete contact messages whose retention period has ended (run daily)."
+    help = (
+        "Delete contact messages whose retention period has ended, and count "
+        "then remove old CV views (run daily)."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -49,16 +52,19 @@ class Command(BaseCommand):
             raise CommandError("Database error. Nothing was deleted.") from None
         log.info(
             "retention outcome=done deleted=%d exempt=%d batches=%d "
-            "blocklist_deleted=%d dry_run=%s",
+            "blocklist_deleted=%d cv_views_deleted=%d dry_run=%s",
             counts["deleted"],
             counts["exempt"],
             counts["batches"],
             counts["blocklist_deleted"],
+            counts["cv_views_deleted"],
             counts["dry_run"],
         )
         verb = "Would delete" if dry_run else "Deleted"
         self.stdout.write(
             f"{verb} {counts['deleted']} messages; "
             f"{counts['exempt']} past their date are kept by a rule; "
-            f"{counts['blocklist_deleted']} expired blocklist entries."
+            f"{counts['blocklist_deleted']} expired blocklist entries; "
+            f"{counts['cv_views_deleted']} CV views past "
+            f"{retention.CV_VIEW_DAYS} days counted and removed."
         )

@@ -321,3 +321,22 @@ def test_app_role_can_store_a_cv_request_and_change_the_switches(roles):
         denied(cursor, "ALTER TABLE contact_messages DROP COLUMN kind")
 
     assert ContactMessage.objects.get().kind == "cv_request"
+
+
+def test_app_role_can_count_and_remove_old_cv_views(roles):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from core import retention
+    from core.models import CvDayCount, CvView
+
+    old = timezone.now() - timedelta(days=120)
+    with as_app() as cursor:
+        CvView.objects.create(version="00000000-0000-4000-8000-000000000000", at=old)
+        CvView.objects.create(version="00000000-0000-4000-8000-000000000000")
+
+        assert retention.run()["cv_views_deleted"] == 1
+        assert CvView.objects.count() == 1
+        assert CvDayCount.objects.get().count == 1
+        denied(cursor, "DELETE FROM cv_day_counts")

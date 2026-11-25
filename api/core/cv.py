@@ -19,9 +19,11 @@ import time
 from django.conf import settings
 from django.core import signing
 from django.db import transaction
+from django.db.models import Count
+from django.db.models.functions import TruncDate
 
 from core import audit, contact, ratelimit, storage
-from core.models import CvVersion, CvView, Owner, SiteSettings
+from core.models import CvDayCount, CvVersion, CvView, Owner, SiteSettings
 
 log = logging.getLogger(__name__)
 
@@ -395,3 +397,36 @@ def repeat_text(values):
     """What counts as asking again: the same email with the same note. The
     body alone would make every request without a note look like a repeat."""
     return f"cv-request\n{values['email'].lower()}\n{values['body']}"
+
+
+def describe_view(row):
+    return {
+        "id": str(row.id),
+        "at": row.at.isoformat(),
+        "version": str(row.version),
+        "country": row.country,
+        "user_agent": row.user_agent,
+    }
+
+
+def views():
+    return CvView.objects.all()
+
+
+def day_counts():
+    """Views per UTC day, newest first: the totals kept by the daily job for
+    days past the log's period, and the rows still in the log for the rest."""
+    totals = dict(CvDayCount.objects.values_list("day", "count"))
+    recent = (
+        CvView.objects.annotate(day=TruncDate("at"))
+        .values("day")
+        .annotate(n=Count("id"))
+        .values_list("day", "n")
+    )
+    for day, n in recent:
+        totals[day] = totals.get(day, 0) + n
+    days = [
+        {"day": day.isoformat(), "count": totals[day]}
+        for day in sorted(totals, reverse=True)
+    ]
+    return {"days": days, "total": sum(totals.values())}

@@ -13,7 +13,17 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
-from core import contact, cv, media, ratelimit, responses, storage, turnstile, vital
+from core import (
+    contact,
+    cv,
+    media,
+    pages,
+    ratelimit,
+    responses,
+    storage,
+    turnstile,
+    vital,
+)
 from core import contact_views as form
 from core.authz import Level, admin_route
 from core.guard import UNAVAILABLE
@@ -132,6 +142,21 @@ def switches(request):
     return JsonResponse(
         {**cv.switches(), "pending": [vital.describe(action) for action in waiting]}
     )
+
+
+@admin_route(Level.SESSION)
+def view_log(request):
+    number = pages.requested_page(request.GET)
+    if number is None:
+        return responses.bad_request()
+    return JsonResponse(pages.page_of(cv.views(), number, cv.describe_view))
+
+
+@admin_route(Level.SESSION)
+def view_days(request):
+    if request.GET:
+        return responses.bad_request()
+    return JsonResponse(cv.day_counts())
 
 
 # Public
