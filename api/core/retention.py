@@ -15,9 +15,10 @@ from spam_at, so an old message marked spam today still has the full period.
 from datetime import UTC, datetime, timedelta
 
 from django.conf import settings
-from django.db import connection, transaction
+from django.db import transaction
 from django.db.models import (
     BooleanField,
+    Count,
     Exists,
     F,
     Func,
@@ -26,7 +27,7 @@ from django.db.models import (
     Subquery,
     Value,
 )
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 
 from core import audit, content
@@ -34,6 +35,7 @@ from core.models import (
     BlockedSender,
     ContactMessage,
     ContactNote,
+    CvDayCount,
     CvView,
     Owner,
     SiteSettings,
@@ -155,14 +157,6 @@ def _expired_blocks(now, dry_run):
 # count for each day is kept. Whole UTC days only, so a day is never split
 # between the rows and its total.
 CV_VIEW_DAYS = 90
-ROLL_UP = """
-    INSERT INTO cv_day_counts (id, day, count)
-    SELECT gen_random_uuid(), day, n FROM (
-        SELECT (at AT TIME ZONE 'UTC')::date AS day, count(*) AS n
-        FROM cv_views WHERE at < %s GROUP BY 1
-    ) AS days
-    ON CONFLICT (day) DO UPDATE SET count = cv_day_counts.count + EXCLUDED.count
-"""
 
 
 def cv_view_cutoff(now):
@@ -171,15 +165,22 @@ def cv_view_cutoff(now):
 
 
 def _old_cv_views(now, dry_run):
-    """Count the old rows into cv_day_counts, then remove them in one DELETE.
-    Both run under the job's lock in its transaction; no new row can be that
-    old, so nothing arrives between the two."""
+    """Add the old rows to each day's total in cv_day_counts, then remove them
+    in one DELETE. Both run under the job's lock in its transaction, so no
+    other run adds to a total meanwhile, and no new row can be that old."""
     cutoff = cv_view_cutoff(now)
     old = CvView.objects.filter(at__lt=cutoff)
     if dry_run:
         return old.count()
-    with connection.cursor() as cursor:
-        cursor.execute(ROLL_UP, [cutoff])
+    per_day = (
+        old.annotate(day=TruncDate("at", tzinfo=UTC))
+        .values("day")
+        .annotate(n=Count("id"))
+        .values_list("day", "n")
+    )
+    for day, n in per_day:
+        if not CvDayCount.objects.filter(day=day).update(count=F("count") + n):
+            CvDayCount.objects.create(day=day, count=n)
     return old._raw_delete(old.db)
 
 
