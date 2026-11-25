@@ -1,5 +1,6 @@
-"""Vital actions: adding or revoking a passkey, permanent deletion, and
-deleting everything about one email (core.erase).
+"""Vital actions: adding or revoking a passkey, permanent deletion (content,
+messages and CV versions), and deleting everything about one email
+(core.erase).
 
 Each one is requested with a fresh passkey confirmation, waits 24 hours, and is
 run with another fresh confirmation. The owner is told when it is requested and
@@ -15,10 +16,11 @@ from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
 
-from core import audit, blocklist, content, erase, notify, passkeys, retention
+from core import audit, blocklist, content, cv, erase, notify, passkeys, retention
 from core.models import (
     AdminCredential,
     ContactMessage,
+    CvVersion,
     PendingAction,
     Section,
     SectionItem,
@@ -38,6 +40,7 @@ DELETABLE = {
     "message": ContactMessage,
     "section": Section,
     "item": SectionItem,
+    "cv_version": CvVersion,
 }
 # Content that must be in the trash first, and still be there when it runs.
 TRASH_FIRST = {"section", "item"}
@@ -82,6 +85,8 @@ def clean(kind, payload):
         rows = model.objects.filter(id=target)
         if entity in TRASH_FIRST:
             rows = rows.exclude(trashed_at=None)
+        if entity == "cv_version":
+            rows = rows.filter(is_live=False)
         if not rows.exists():
             return None
         return {"entity": entity, "id": target}
@@ -237,6 +242,10 @@ def run(action_id, credential=None):
                 return action, Outcome.CONFLICT
             if entity in TRASH_FIRST:
                 if not content.delete_for_good(entity, action.payload["id"]):
+                    return action, Outcome.CONFLICT
+            elif entity == "cv_version":
+                # Its file too, and never the live one.
+                if not cv.delete_version(action.payload["id"]):
                     return action, Outcome.CONFLICT
             else:
                 model.objects.filter(id=action.payload["id"]).delete()

@@ -5,6 +5,7 @@ from django.urls import path
 from core import admin_views as views
 from core import contacts_views as contacts
 from core import content_views as content
+from core import cv_views as cv
 from core import inbox_views as inbox
 from core import media_views as media
 from core import palette_views as palettes
@@ -88,4 +89,7 @@ urlpatterns = [
     path("contacts/<uuid:contact_id>/link", contacts.contact_link),
     path("contacts/<uuid:contact_id>/unlink", contacts.contact_unlink),
     path("contacts/<uuid:contact_id>/delete", contacts.contact_delete),
+    path("cv/versions", cv.versions),
+    path("cv/versions/<uuid:version_id>/live", cv.version_live),
+    path("cv/versions/<uuid:version_id>/file", cv.version_file),
 ]
