@@ -13,8 +13,9 @@ Stood in, on this computer only:
 - **Email and notices.** Nothing is sent. Notices go to the API log (`api\.devmode\run\api.log`).
 - **Storage.** Images and CV files are kept on disk in `api\.devmode\media` and `api\.devmode\cv`, not in Cloud Storage.
 - **Publish.** It does not rebuild anything by itself. The public site is a static build, so you rebuild it with one command (below).
+- **Database rights.** The dev API connects as the container's superuser, so the limits in `db/grants.sql` are applied but not enforced. The access review shows its superuser warning.
 
-Real: the passkey sign-in (Windows Hello), sessions, CSRF checks, the admin's security headers and CSP, rate limits, the database rights from `db/grants.sql`, and every check the API makes on what you enter.
+Real: the passkey sign-in (Windows Hello), sessions, CSRF checks, the admin's security headers and CSP, rate limits, and every check the API makes on what you enter.
 
 ## What the launcher refuses
 
