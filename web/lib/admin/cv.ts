@@ -179,3 +179,12 @@ export function cvApi(client: AdminApi) {
 }
 
 export type CvApi = ReturnType<typeof cvApi>;
+
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "24 Nov 2026" from the API's UTC day, whatever the owner's time zone. */
+export function dayText(day: string): string {
+  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(day);
+  const month = match ? SHORT_MONTHS[Number(match[2]) - 1] : undefined;
+  return match && month ? `${Number(match[3])} ${month} ${match[1]}` : day;
+}

@@ -5,7 +5,7 @@
 import { type ComponentType, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CvRequest } from "@/components/public/CvRequest";
-import { CvSectionView } from "@/components/public/CvSection";
+import { CvSectionView, SECTION_IDS } from "@/components/public/CvSection";
 import type { CvViewerProps } from "@/components/public/CvViewer";
 import { type Checker, createChecker, loadTurnstile } from "@/lib/public/contact";
 import { type CvStatus, cvShown, fetchStatus, VIEW_CHECK_FAILED_TEXT } from "@/lib/public/cv";
@@ -20,7 +20,6 @@ function CvApp({ config, root }: { config: Config; root: HTMLElement }) {
   const [note, setNote] = useState("");
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const checker = useRef<Promise<Checker> | null>(null);
-  const opener = useRef<HTMLElement | null>(null);
   const toRequest = useRef(false);
 
   useEffect(() => {
@@ -58,7 +57,6 @@ function CvApp({ config, root }: { config: Config; root: HTMLElement }) {
 
   async function startView() {
     if (note === "Checking that you are human…") return;
-    opener.current = document.activeElement as HTMLElement | null;
     setNote("Checking that you are human…");
     let token: string;
     try {
@@ -87,8 +85,10 @@ function CvApp({ config, root }: { config: Config; root: HTMLElement }) {
     if (form) {
       form.scrollIntoView({ block: "center" });
       form.querySelector<HTMLElement>("input")?.focus();
-    } else if (opener.current?.isConnected) {
-      opener.current.focus();
+    } else {
+      // The button itself, not whatever had focus: Safari does not focus a
+      // button when it is clicked.
+      document.getElementById(SECTION_IDS.view)?.focus();
     }
   }, [viewer]);
 

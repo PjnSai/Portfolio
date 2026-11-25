@@ -102,3 +102,41 @@ export function consoleProblems(page: Page): string[] {
   page.on("pageerror", (error) => seen.push(error.message));
   return seen;
 }
+
+/**
+ * A small, plain PDF of text pages, the same shape as the one the API's
+ * browser-test server seeds (no scripts, no fonts embedded).
+ */
+export function seededPdf(pages = 2, label = "Seeded CV"): Buffer {
+  const objects: string[] = ["<< /Type /Catalog /Pages 2 0 R >>"];
+  const kids = Array.from({ length: pages }, (_, n) => `${3 + 2 * n} 0 R`).join(" ");
+  objects.push(`<< /Type /Pages /Kids [${kids}] /Count ${pages} >>`);
+  const font = 3 + 2 * pages;
+  for (let n = 0; n < pages; n += 1) {
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${4 + 2 * n} 0 R /Resources << /Font << /F1 ${font} 0 R >> >> >>`,
+    );
+    const text = `BT /F1 24 Tf 72 700 Td (${label} page ${n + 1} of ${pages}) Tj ET`;
+    objects.push(`<< /Length ${text.length} >>\nstream\n${text}\nendstream`);
+  }
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  let out = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  objects.forEach((body, index) => {
+    offsets.push(out.length);
+    out += `${index + 1} 0 obj\n${body}\nendobj\n`;
+  });
+  const start = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) out += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`;
+  return Buffer.from(out, "latin1");
+}
+
+/** A PDF that carries a script, which the API refuses. */
+export function scriptedPdf(): Buffer {
+  return Buffer.from(
+    "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>\nendobj\ntrailer\n<< /Root 1 0 R >>\nstartxref\n0\n%%EOF\n",
+    "latin1",
+  );
+}

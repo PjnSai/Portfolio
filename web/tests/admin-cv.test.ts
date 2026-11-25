@@ -5,6 +5,7 @@ import {
   type CvVersion,
   checkFile,
   countryText,
+  dayText,
   cvApi,
   deleteBlocked,
   dayCountText,
@@ -239,6 +240,12 @@ describe("the view log", () => {
     expect(kindText("download")).toBe("Downloaded");
     expect(countryText("GB")).toBe("GB");
     expect(countryText("")).toBe("Unknown");
+  });
+
+  it("says a UTC day the same in every time zone", () => {
+    expect(dayText("2026-11-24")).toBe("24 Nov 2026");
+    expect(dayText("2026-01-05")).toBe("5 Jan 2026");
+    expect(dayText("nonsense")).toBe("nonsense");
   });
 
   it("says a day's count", () => {
