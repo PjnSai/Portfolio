@@ -26,6 +26,8 @@ TABLES = {
     "sessions",
     "rate_limit_blocks",
     "pending_actions",
+    "abuse_counts",
+    "alerts",
 }
 
 

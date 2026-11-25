@@ -182,6 +182,7 @@ def test_a_dry_run_deletes_nothing_and_counts():
         "batches": 0,
         "blocklist_deleted": 0,
         "cv_views_deleted": 0,
+        "abuse_counts_deleted": 0,
         "dry_run": True,
     }
 
@@ -201,6 +202,7 @@ def test_batches_remove_everything_due():
         "batches": 3,
         "blocklist_deleted": 0,
         "cv_views_deleted": 0,
+        "abuse_counts_deleted": 0,
         "dry_run": False,
     }
 
@@ -265,6 +267,7 @@ def test_nothing_due_still_records_the_run():
         "batches": 1,
         "blocklist_deleted": 0,
         "cv_views_deleted": 0,
+        "abuse_counts_deleted": 0,
         "dry_run": False,
     }
 
@@ -288,6 +291,7 @@ def test_one_audit_entry_per_run_with_counts_only():
             "batches",
             "blocklist_deleted",
             "cv_views_deleted",
+            "abuse_counts_deleted",
             "dry_run",
         }
         assert all(

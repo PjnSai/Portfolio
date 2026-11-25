@@ -21,7 +21,7 @@ import redis
 from django.conf import settings
 from django.db import DatabaseError, InterfaceError
 
-from core import access, ratelimit, responses
+from core import abuse, access, ratelimit, responses
 from core.authz import SAFE_METHODS
 
 log = logging.getLogger(__name__)
@@ -79,18 +79,18 @@ class GuardMiddleware:
     def _check(self, request):
         too_big = _body_refusal(request)
         if too_big:
-            return too_big
+            return abuse.refused(abuse.GUARD_REFUSED, too_big)
         admin = _is_admin(request.path)
         if not _same_origin(request, admin):
-            return responses.forbidden()
+            return abuse.refused(abuse.GUARD_REFUSED, responses.forbidden())
         if not admin:
             return None
         if not access.is_valid(request.headers.get(access.HEADER)):
-            return responses.forbidden()
+            return abuse.refused(abuse.GUARD_REFUSED, responses.forbidden())
         request.access_verified = True
         wait = ratelimit.request_cap(request)
         if wait:
-            return responses.too_many_requests(wait)
+            return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(wait))
         return None
 
     def process_view(self, request, view, args, kwargs):

@@ -28,6 +28,7 @@ Internet to Cloudflare; Cloudflare to Cloud Run (web, api); api to Postgres and 
 | 10 | Database and cache | T/I: SQL injection, over-privileged login. D: free-tier compute used up. R: audit rows edited. | ORM only, separate runtime and migration logins, audit table insert-only for the runtime login, public reads served from cache. | Planned: phases 1, 7 |
 | 11 | Origin and hosting | S: traffic that bypasses Cloudflare. I: verbose errors. E: container escape. | Origin lock, generic error pages, non-root read-only containers, instance cap of 2. | Containers in place; origin lock phase 7 |
 | 12 | Build and deploy pipeline | T: malicious dependency or action, tampered image. E: stolen deploy key. | Lockfile and hash-pinned installs, actions pinned to commit hashes, audits, CodeQL, Dependabot, Workload Identity Federation (no stored keys), approval on a protected environment. | Pinning, audits, CodeQL, Dependabot in place; rest phases 6, 7 |
+| 13 | Admin security pages (abuse overview, alerts, access review) | I: personal data or secrets shown. T/R: an alert dismissed to hide an attack. D: alert floods, counting used to slow the site. | Counts and fixed summaries only; secrets shown as set or not; rights read live from Postgres; dismissals audited; required notices need a notifier outside the site; once-per-window alerts with a daily cap; counting never raises. | In place (phase 5-1); admin pages in phase 5 web |
 
 ## CV abuse cases (phase 4C-1)
 
@@ -40,6 +41,20 @@ Internet to Cloudflare; Cloudflare to Cloud Run (web, api); api to Postgres and 
 - A blocked sender is told "received" and nothing is stored, as on the contact form. With instant download on they get the same download link as anyone else, so the answer never shows they are blocked; the CV is public, so this gives them nothing new. The same holds for a request flagged as spam.
 - An encrypted PDF, one with script or launch actions or attached files, a renamed non-PDF and a ZIP behind a PDF header are refused before anything is stored. The check is a heuristic; the only uploader is the owner behind a passkey.
 - The view log holds no address, email or free text; the country is only a two-letter code, and the user agent is cleaned and cut. Raw rows go after 90 days; only day totals stay.
+
+## Abuse counters, alerts and access review (phase 5-1)
+
+Routes (all need a session behind Cloudflare Access): `GET /api/v1/admin/abuse`, `GET /api/v1/admin/alerts`, `POST /api/v1/admin/alerts/<id>/seen`, `GET /api/v1/admin/access`.
+
+- I: personal data in counts, alerts or their logs. The counts table holds a day, a kind and a number; an alert holds a kind, fixed text and times. Summaries take only numbers and values from fixed lists. Tests send real addresses, emails, message text and passkey names through every trigger and check none of them appears.
+- I: secrets on the access review. It shows whether a secret is set, never its value, and no session id, token, hash or key material. A test sets every secret and checks the answer.
+- I: the access review drifting from reality. The database rights are read from Postgres for every table at request time; a test compares them with `information_schema` after `grants.sql`, and another changes a grant and checks the page follows. A superuser connection is shown as a warning.
+- D: counting as a way to slow the site. A count is one UPDATE on one row and never raises; if it fails, the answer is unchanged. The edge limit comes before it.
+- D: flooding the owner with alerts. Threshold alerts fire once per window, do not repeat inside it, and each kind is capped at 5 a day. Held-back threshold alerts go to no notifier.
+- T/R: hiding an attack by dismissing its alert. Marking seen is audited, and the database notifier never counts as telling the owner: required notices still need a notifier outside the site (log now, email later).
+- D: a notifier failure breaking an action. The database notifier is best effort in its own savepoint; a failure is logged and counted, and the action goes ahead.
+- S/E: reaching these routes without the owner. The same `admin_route` guard as every admin route (deny by default, session on each request); none of them changes access. Revoking is only through the existing routes, which the page names.
+- Not covered by the app: the scopes of the pipeline identity, the Cloudflare token and the deploy hook, the Access policy, and where the recovery key is kept. They are reviewed by hand each quarter (`docs/ACCESS.md`).
 
 ## Out of scope
 

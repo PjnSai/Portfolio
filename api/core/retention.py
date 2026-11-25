@@ -1,4 +1,5 @@
-"""How long contact messages and the CV view log are kept (SPEC 5.8a, 6.2).
+"""How long contact messages, the CV view log and the abuse counts are kept
+(SPEC 5.8a, 6.2).
 
 Spam goes after 30 days by default, other messages after 12 months. A message
 the owner marked kept, has written notes on or linked to a contact is never
@@ -30,8 +31,9 @@ from django.db.models import (
 from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 
-from core import audit, content
+from core import abuse, audit, content
 from core.models import (
+    AbuseCount,
     BlockedSender,
     ContactMessage,
     ContactNote,
@@ -184,12 +186,19 @@ def _old_cv_views(now, dry_run):
     return old._raw_delete(old.db)
 
 
+def _old_abuse_counts(now, dry_run):
+    """Abuse counts for days past their period (core.abuse.KEEP_DAYS), in one
+    DELETE."""
+    old = AbuseCount.objects.filter(day__lt=abuse.cutoff(now))
+    return old.count() if dry_run else old._raw_delete(old.db)
+
+
 def run(dry_run=False, batch_size=BATCH_SIZE):
     """Remove every message whose time is up and which no rule keeps, every
-    blocklist entry that has expired, and CV views past their period once they
-    are counted. One transaction: if anything fails, nothing is removed and
-    nothing recorded. Returns counts only; the audit entry holds the same
-    counts."""
+    blocklist entry that has expired, CV views past their period once they
+    are counted, and abuse counts past theirs. One transaction: if anything
+    fails, nothing is removed and nothing recorded. Returns counts only; the
+    audit entry holds the same counts."""
     now = timezone.now()
     with transaction.atomic():
         _lock()
@@ -210,6 +219,7 @@ def run(dry_run=False, batch_size=BATCH_SIZE):
             "batches": batches,
             "blocklist_deleted": _expired_blocks(now, dry_run),
             "cv_views_deleted": _old_cv_views(now, dry_run),
+            "abuse_counts_deleted": _old_abuse_counts(now, dry_run),
             "dry_run": dry_run,
         }
         audit.record("retention_run", **counts)

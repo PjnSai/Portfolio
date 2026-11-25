@@ -10,7 +10,7 @@ from django.conf import settings
 from django.utils.module_loading import import_string
 from django.views.decorators.csrf import csrf_exempt
 
-from core import blocklist, contact, ratelimit, responses, turnstile
+from core import abuse, blocklist, contact, ratelimit, responses, turnstile
 from core import limits as contact_limits
 from core.guard import UNAVAILABLE
 from core.models import ContactMessage
@@ -39,18 +39,28 @@ def submit(request):
     values, errors = contact.clean(data)
     if errors:
         _logged("invalid")
-        return responses.invalid(errors)
+        return abuse.refused(abuse.REJECTED_FORM, responses.invalid(errors))
     try:
         return accept(data, values, ratelimit.client_address(request))
     except contact.Limited as limit:
         _logged("rate_limited")
-        return responses.contact_limited(limit.seconds)
+        return abuse.refused(
+            abuse.RATE_LIMITED, responses.contact_limited(limit.seconds)
+        )
     except (*UNAVAILABLE, turnstile.Unavailable) as error:
         return unavailable(error)
 
 
 def read_json(request, fields=FIELDS):
-    """(the JSON object sent, None), or (None, the refusal to send)."""
+    """(the JSON object sent, None), or (None, the refusal to send). A
+    refusal is counted as a rejected form."""
+    data, refusal = _read_json(request, fields)
+    if refusal:
+        abuse.count(abuse.REJECTED_FORM)
+    return data, refusal
+
+
+def _read_json(request, fields):
     length = request.META.get("CONTENT_LENGTH") or "0"
     if not length.isdigit() or int(length) > MAX_BODY_BYTES:
         return None, responses.too_large()
@@ -90,12 +100,13 @@ def accept(
     contact.count_attempt(address, limits)
     if not passes_turnstile(data.get("turnstile")):
         _logged("bad_challenge")
-        return responses.bad_challenge()
+        return abuse.refused(abuse.TURNSTILE_FAILED, responses.bad_challenge())
     # Before any cap is counted, so a blocked sender uses none of them, and
     # answered like dropped spam, so they cannot tell they are blocked. If the
     # check itself fails the error reaches the handler: 503, nothing stored.
     if blocklist.hit(values["email"]):
         _logged("blocked_dropped")
+        abuse.count(abuse.BLOCKED_SENDER)
         return sent()
     contact.count_email(values["email"], limits)
     seconds = contact.seconds_open(data.get("elapsed"))
@@ -108,6 +119,8 @@ def accept(
             values, data.get("website", ""), seconds, repeated, limits
         )
         spam = outcome is not None
+        if spam:
+            abuse.count(abuse.kind_of_spam(outcome))
         if not contact.count_daily(spam, limits):
             _release(repeat, repeated)
             _logged("spam_dropped")

@@ -10,6 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
 from core import (
+    abuse,
     content,
     deploy,
     media,
@@ -96,7 +97,7 @@ def library(request):
     except media.Rejected as error:
         return _field_error("file", str(error))
     except media.OverCap:
-        return responses.too_many_requests(3600)
+        return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(3600))
     except STORAGE_ERRORS as error:
         log.error("media storage failed: %s", type(error).__name__)
         return responses.unavailable()
@@ -194,7 +195,7 @@ def public_file(request, name):
     that is not on the site, is a plain 404."""
     wait = ratelimit.public_cap(request)
     if wait:
-        return responses.too_many_requests(wait)
+        return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(wait))
     item = media.find_variant(name)
     if item is None or not content.is_published_media(item):
         return responses.not_found()
@@ -208,7 +209,7 @@ def public_site(request):
         return responses.bad_request()
     wait = ratelimit.public_cap(request)
     if wait:
-        return responses.too_many_requests(wait)
+        return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(wait))
     response = JsonResponse(
         content.public_site(), headers={"Cache-Control": SITE_CACHE}
     )
