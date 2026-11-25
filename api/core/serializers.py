@@ -4,6 +4,7 @@ published copies or timestamps by adding keys."""
 
 import re
 import uuid
+from datetime import date
 from urllib.parse import urlsplit
 
 from rest_framework import serializers
@@ -471,6 +472,47 @@ class Block(BlockNote):
 
 class Nothing(Strict):
     """A request that takes no fields."""
+
+
+FOLLOW_UP_FIRST = date(2000, 1, 1)
+FOLLOW_UP_LAST = date(2099, 12, 31)
+
+
+class ContactFields(Strict):
+    """What the owner may set on a contact. The name and email come from the
+    message it was made from; the email is never edited."""
+
+    organisation = Text(max_length=100, required=False, allow_blank=True)
+    tags = serializers.ListField(
+        child=Text(max_length=30), max_length=10, required=False
+    )
+    notes = Text(multiline=True, max_length=5000, required=False, allow_blank=True)
+    follow_up = serializers.DateField(required=False, allow_null=True)
+
+    def validate_tags(self, value):
+        return list(dict.fromkeys(value))
+
+    def validate_follow_up(self, value):
+        if value is not None and not FOLLOW_UP_FIRST <= value <= FOLLOW_UP_LAST:
+            raise serializers.ValidationError("Choose a date from 2000 to 2099.")
+        return value
+
+
+class ContactCreate(ContactFields):
+    message = Id()
+
+
+class ContactEdit(ContactFields):
+    name = Text(max_length=100, required=False)
+
+    def validate(self, data):
+        if not data:
+            raise serializers.ValidationError({"detail": "Change at least one field."})
+        return data
+
+
+class ContactLink(Strict):
+    message = Id()
 
 
 def as_json(value):
