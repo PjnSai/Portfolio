@@ -108,6 +108,7 @@ const NAV = [
   ["contacts", "Contacts"],
   ["blocklist", "Blocklist"],
   ["cv", "CV"],
+  ["abuse", "Abuse"],
   ["media", "Media"],
   ["settings", "Settings"],
   ["trash", "Trash"],

@@ -399,6 +399,48 @@ def access_token(key):
     return jwt.encode(claims, key, algorithm="RS256", headers={"kid": "e2e"})
 
 
+def seed_abuse_and_alerts():
+    """Abuse counts on days before today (the browser tests add to today's
+    row, so the seeded days stay exact), and alerts: one unseen, one seen and
+    22 older seen ones so the alerts page has a second page."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from core import abuse
+    from core.models import AbuseCount, Alert
+
+    today = abuse.today()
+    for days_ago, kind, count in [
+        (3, abuse.SPAM, 2),
+        (3, abuse.TURNSTILE_FAILED, 4),
+        (5, abuse.SPAM, 1),
+        (40, abuse.RATE_LIMITED, 6),
+    ]:
+        AbuseCount.objects.create(
+            day=today - timedelta(days=days_ago), kind=kind, count=count
+        )
+    now = timezone.now()
+    Alert.objects.create(
+        created_at=now - timedelta(hours=2),
+        kind="rate_limit_storm",
+        summary="100 requests refused by a rate limit in 10 minutes.",
+    )
+    Alert.objects.create(
+        created_at=now - timedelta(days=1),
+        kind="failed_sign_ins",
+        summary="5 failed sign-ins or passkey confirmations in 15 minutes.",
+        seen_at=now - timedelta(hours=20),
+    )
+    for n in range(22):
+        Alert.objects.create(
+            created_at=now - timedelta(days=2, minutes=n),
+            kind="error_spike",
+            summary=f"20 server errors in 5 minutes (older alert {n + 1}).",
+            seen_at=now - timedelta(days=1),
+        )
+
+
 def seed_cv():
     """One live CV, so the public viewer, request and download have a file."""
     from core import cv
@@ -431,6 +473,7 @@ def main():
     seed_published_site()
     seed_inbox_and_session()
     seed_cv()
+    seed_abuse_and_alerts()
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     access.fetch_signing_key = lambda token: key.public_key()
