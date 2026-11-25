@@ -200,3 +200,32 @@ def test_app_role_can_delete_everything_about_an_email_and_nothing_more(roles):
         denied(cursor, "TRUNCATE contact_messages")
         denied(cursor, "TRUNCATE contact_notes")
         denied(cursor, "DELETE FROM audit_log")
+
+
+def test_app_role_can_keep_contacts_and_nothing_more(roles):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from core import retention
+    from core.models import Contact
+
+    past = timezone.now() - timedelta(days=1)
+    with as_app() as cursor:
+        person = Contact.objects.create(name="A", email="a@example.com")
+        message = ContactMessage.objects.create(
+            name="A",
+            email="a@example.com",
+            body="Hello there.",
+            expires_at=past,
+            contact=person,
+        )
+        person.notes = "Met at the careers fair."
+        person.save()
+
+        assert retention.run()["deleted"] == 0
+        person.delete()
+        assert ContactMessage.objects.get(id=message.id).contact_id is None
+        denied(cursor, "TRUNCATE contacts")
+        denied(cursor, "ALTER TABLE contacts ADD COLUMN extra text")
+        denied(cursor, "ALTER TABLE contact_messages DROP COLUMN contact_id")

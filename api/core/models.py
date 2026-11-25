@@ -138,11 +138,36 @@ class CvFile(Base):
         db_table = "cv_files"
 
 
+class Contact(Timestamped):
+    """A sender the owner chose to keep a record of (core.contacts). One per
+    email, found by the same keyed hash as the messages. Deleting one never
+    deletes a message: its messages are unlinked."""
+
+    name = models.CharField(max_length=100)
+    email = models.EmailField(max_length=254)
+    email_hash = models.CharField(max_length=64, unique=True)
+    organisation = models.CharField(max_length=100, blank=True, default="")
+    tags = models.JSONField(default=list)
+    notes = models.TextField(blank=True, default="")
+    follow_up = models.DateField(null=True, blank=True)
+
+    class Meta:
+        db_table = "contacts"
+        ordering = ["name", "id"]
+
+    def save(self, *args, **kwargs):
+        if not self.email_hash:
+            from core.contact import email_hash
+
+            self.email_hash = email_hash(self.email)
+        super().save(*args, **kwargs)
+
+
 class ContactMessage(Base):
     """A message from the public form. The sender's address is kept only as a
     keyed hash (core.contact.address_hash); the cleanup job removes rows after
-    expires_at unless the owner marked them kept or has written notes on them
-    (core.retention)."""
+    expires_at unless the owner marked them kept, has written notes on them or
+    linked them to a contact (core.retention)."""
 
     class Status(models.TextChoices):
         NEW = "new"
@@ -178,6 +203,14 @@ class ContactMessage(Base):
     # from one sender can be found for "delete everything about this email".
     email_hash = models.CharField(
         max_length=64, blank=True, default="", db_default="", db_index=True
+    )
+    # A message linked to a contact is never removed by the daily job.
+    contact = models.ForeignKey(
+        Contact,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="messages",
     )
 
     class Meta:
