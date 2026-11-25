@@ -15,7 +15,7 @@ Stood in, on this computer only:
 - **Publish.** It does not rebuild anything by itself. The public site is a static build, so you rebuild it with one command (below).
 - **Database rights.** The dev API connects as the container's superuser, so the limits in `db/grants.sql` are applied but not enforced. The access review shows its superuser warning.
 
-Real: the passkey sign-in (Windows Hello), sessions, CSRF checks, the admin's security headers and CSP, rate limits, and every check the API makes on what you enter.
+Real: the passkey sign-in (your browser or Windows asks you to confirm), sessions, CSRF checks, the admin's security headers and CSP, rate limits, and every check the API makes on what you enter.
 
 ## What the launcher refuses
 
@@ -67,10 +67,10 @@ Logs are in `api\.devmode\run`: `api.log`, `web.log` and `web-build.log`.
 
 1. Open http://localhost:3000/desk/setup in Edge or Chrome. (Use `localhost`, not `127.0.0.1`: passkeys need a name.)
 2. Paste the set-up token that `start` printed. It is also in `api\.devmode\bootstrap-token`.
-3. Choose **Create passkey** and confirm with Windows Hello.
+3. Choose **Create passkey** and confirm when your browser or Windows asks (PIN, fingerprint or face). Chrome may offer to save it in Google Password Manager; Windows Hello is the other common place.
 4. The page shows a recovery key once. This is a local one, for the local database only; keep it until you reset everything. Tick the box and choose **Continue to sign in**.
 
-The local passkey is saved in Windows Hello for "localhost". It is separate from any passkey for the live site.
+The local passkey is saved wherever your browser put it (Google Password Manager in Chrome, or Windows Hello) for "localhost". It is separate from any passkey for the live site.
 
 ## 4. Sign in afterwards
 
@@ -125,7 +125,7 @@ Asks you to type `yes`, then replaces the content, CV versions, media, messages,
 .\scripts\dev.ps1 reset -Everything
 ```
 
-Asks you to type `yes`, stops local mode, then deletes the database `portfolio_dev`, `api\.devmode\media`, `api\.devmode\cv` and the set-up token. The next `start` begins from nothing, and you make a new first passkey. You can delete the old "localhost" passkey in Windows Settings, Accounts, Passkeys.
+Asks you to type `yes`, stops local mode, then deletes the database `portfolio_dev`, `api\.devmode\media`, `api\.devmode\cv` and the set-up token. The next `start` begins from nothing, and you make a new first passkey. You can delete the old "localhost" passkey where it was saved: in Chrome at `chrome://settings/passkeys` (Google Password Manager), or in Windows Settings, Accounts, Passkeys (Windows Hello).
 
 Neither touches the test databases (`portfolio`, `portfolio_e2e`) or the live site.
 
