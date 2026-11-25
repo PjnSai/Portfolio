@@ -41,6 +41,7 @@ def contact_id(message):
 def summary(message):
     return {
         "id": str(message.id),
+        "kind": message.kind,
         "name": message.name,
         "email": message.email,
         "status": message.status,
@@ -65,6 +66,7 @@ def describe_note(note):
 def detail(message):
     return {
         "id": str(message.id),
+        "kind": message.kind,
         "name": message.name,
         "email": message.email,
         "body": message.body,
@@ -80,11 +82,14 @@ def detail(message):
     }
 
 
-def listing(status, search="", reason=None, since=None, until=None):
+def listing(status, search="", reason=None, since=None, until=None, kind=None):
     """The rows for a tab, narrowed by a search over name, email and message, a
-    reason ("none" for messages with no reason) and the days they arrived
-    (inclusive, UTC). No tab means the main inbox: everything but spam."""
+    reason ("none" for messages with no reason), the days they arrived
+    (inclusive, UTC) and the kind (a message or a CV request). No tab means the
+    main inbox: everything but spam."""
     rows = ContactMessage.objects.all()
+    if kind:
+        rows = rows.filter(kind=kind)
     if status is None:
         rows = rows.exclude(status=Status.SPAM)
     elif status != "all":

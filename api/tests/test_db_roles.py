@@ -262,3 +262,94 @@ def test_app_role_counts_hits_but_never_rewrites_an_address(roles):
         entry = BlockedSender.objects.get()
         assert (entry.email, entry.hit_count) == (None, 1)
         assert entry.expires_at > timezone.now() + timedelta(days=1)
+
+
+def test_app_role_can_add_and_switch_cv_versions_but_never_rewrite_one(roles):
+    from core.models import CvVersion
+
+    with as_app() as cursor:
+        first = CvVersion.objects.create(
+            storage_key="cv/" + "a" * 32 + ".pdf", size=10, sha256="a" * 64
+        )
+        second = CvVersion.objects.create(
+            storage_key="cv/" + "b" * 32 + ".pdf", size=20, sha256="b" * 64
+        )
+        CvVersion.objects.filter(id=first.id).update(is_live=True)
+        CvVersion.objects.filter(id=first.id).update(is_live=False)
+        CvVersion.objects.filter(id=second.id).update(is_live=True)
+        denied(cursor, "UPDATE cv_versions SET storage_key = 'cv/x.pdf'")
+        denied(cursor, "UPDATE cv_versions SET sha256 = 'other'")
+        denied(cursor, "UPDATE cv_versions SET size = 1")
+        denied(cursor, "UPDATE cv_versions SET created_at = now()")
+        denied(cursor, "TRUNCATE cv_versions")
+        first.delete()
+
+        assert list(CvVersion.objects.values_list("id", flat=True)) == [second.id]
+
+
+def test_app_role_can_append_to_the_cv_view_log_but_never_change_it(roles):
+    from core.models import CvDayCount, CvView
+
+    with as_app() as cursor:
+        CvView.objects.create(
+            version="00000000-0000-4000-8000-000000000000", country="GB"
+        )
+        denied(cursor, "UPDATE cv_views SET country = 'FR'")
+        denied(cursor, "UPDATE cv_views SET at = now()")
+        denied(cursor, "TRUNCATE cv_views")
+        CvView.objects.all().delete()
+
+        CvDayCount.objects.create(day="2026-01-01", count=1)
+        cursor.execute("UPDATE cv_day_counts SET count = count + 1")
+        denied(cursor, "UPDATE cv_day_counts SET day = '2026-01-02'")
+        denied(cursor, "DELETE FROM cv_day_counts")
+        denied(cursor, "TRUNCATE cv_day_counts")
+
+        assert CvDayCount.objects.get().count == 2
+
+
+def test_app_role_can_store_a_cv_request_and_change_the_switches(roles):
+    with as_app() as cursor:
+        ContactMessage.objects.create(
+            name="",
+            email="a@example.com",
+            body="A request for the CV.",
+            kind=ContactMessage.Kind.CV_REQUEST,
+            expires_at="2030-01-01T00:00:00Z",
+        )
+        cursor.execute("UPDATE site_settings SET cv_view_enabled = false")
+        denied(cursor, "ALTER TABLE contact_messages DROP COLUMN kind")
+
+    assert ContactMessage.objects.get().kind == "cv_request"
+
+
+def test_app_role_can_change_instant_download_and_log_a_download(roles):
+    from core.models import CvView
+
+    with as_app() as cursor:
+        cursor.execute("UPDATE site_settings SET cv_instant_download_enabled = false")
+        CvView.objects.create(
+            version="00000000-0000-4000-8000-000000000000", kind="download"
+        )
+        denied(cursor, "UPDATE cv_views SET kind = 'view'")
+
+    assert CvView.objects.get().kind == "download"
+
+
+def test_app_role_can_count_and_remove_old_cv_views(roles):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from core import retention
+    from core.models import CvDayCount, CvView
+
+    old = timezone.now() - timedelta(days=120)
+    with as_app() as cursor:
+        CvView.objects.create(version="00000000-0000-4000-8000-000000000000", at=old)
+        CvView.objects.create(version="00000000-0000-4000-8000-000000000000")
+
+        assert retention.run()["cv_views_deleted"] == 1
+        assert CvView.objects.count() == 1
+        assert CvDayCount.objects.get().count == 1
+        denied(cursor, "DELETE FROM cv_day_counts")

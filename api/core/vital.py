@@ -1,5 +1,6 @@
-"""Vital actions: adding or revoking a passkey, permanent deletion, and
-deleting everything about one email (core.erase).
+"""Vital actions: adding or revoking a passkey, permanent deletion (content,
+messages and CV versions), deleting everything about one email (core.erase)
+and changing the CV switches (core.cv).
 
 Each one is requested with a fresh passkey confirmation, waits 24 hours, and is
 run with another fresh confirmation. The owner is told when it is requested and
@@ -15,10 +16,11 @@ from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
 
-from core import audit, blocklist, content, erase, notify, passkeys, retention
+from core import audit, blocklist, content, cv, erase, notify, passkeys, retention
 from core.models import (
     AdminCredential,
     ContactMessage,
+    CvVersion,
     PendingAction,
     Section,
     SectionItem,
@@ -32,12 +34,14 @@ ADD_PASSKEY = "add_passkey"
 REVOKE_PASSKEY = "revoke_passkey"
 PERMANENT_DELETE = "permanent_delete"
 ERASE_SENDER = erase.KIND
+CV_SWITCHES = cv.SWITCHES
 
 # Allow-list. Auth and audit tables can never be named here.
 DELETABLE = {
     "message": ContactMessage,
     "section": Section,
     "item": SectionItem,
+    "cv_version": CvVersion,
 }
 # Content that must be in the trash first, and still be there when it runs.
 TRASH_FIRST = {"section", "item"}
@@ -82,11 +86,15 @@ def clean(kind, payload):
         rows = model.objects.filter(id=target)
         if entity in TRASH_FIRST:
             rows = rows.exclude(trashed_at=None)
+        if entity == "cv_version":
+            rows = rows.filter(is_live=False)
         if not rows.exists():
             return None
         return {"entity": entity, "id": target}
     if kind == ERASE_SENDER:
         return erase.clean(payload)
+    if kind == CV_SWITCHES:
+        return cv.clean_switches(payload)
     return None
 
 
@@ -230,6 +238,8 @@ def run(action_id, credential=None):
                 return action, Outcome.CONFLICT
             if result is None:
                 return action, Outcome.CONFLICT
+        elif action.kind == CV_SWITCHES:
+            cv.set_switches(action.payload)
         elif action.kind == PERMANENT_DELETE:
             entity = action.payload.get("entity")
             model = DELETABLE.get(entity)
@@ -237,6 +247,10 @@ def run(action_id, credential=None):
                 return action, Outcome.CONFLICT
             if entity in TRASH_FIRST:
                 if not content.delete_for_good(entity, action.payload["id"]):
+                    return action, Outcome.CONFLICT
+            elif entity == "cv_version":
+                # Its file too, and never the live one.
+                if not cv.delete_version(action.payload["id"]):
                     return action, Outcome.CONFLICT
             else:
                 model.objects.filter(id=action.payload["id"]).delete()

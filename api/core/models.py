@@ -51,6 +51,12 @@ class SiteSettings(Timestamped):
     contact_max_links = models.PositiveSmallIntegerField(null=True, blank=True)
     contact_spam_threshold = models.PositiveSmallIntegerField(null=True, blank=True)
     blocklist_months = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Whether visitors may view the public CV, ask for a copy, and get a
+    # download link once they have asked (core.cv). Changed only by a vital
+    # action.
+    cv_view_enabled = models.BooleanField(default=True, db_default=True)
+    cv_request_enabled = models.BooleanField(default=True, db_default=True)
+    cv_instant_download_enabled = models.BooleanField(default=True, db_default=True)
 
     class Meta:
         db_table = "site_settings"
@@ -126,16 +132,61 @@ class Media(Base):
         db_table = "media"
 
 
-class CvFile(Base):
-    storage_key = models.CharField(max_length=255, unique=True)
+class CvVersion(Base):
+    """One uploaded public CV (core.cv). The key, size and hash never change
+    once stored (the app role cannot update them); only which one is live does,
+    and the database allows one live version at most."""
+
+    storage_key = models.CharField(max_length=60, unique=True)
+    size = models.PositiveIntegerField()
     sha256 = models.CharField(max_length=64)
-    size = models.PositiveBigIntegerField()
-    is_current = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
-    trashed_at = models.DateTimeField(null=True, blank=True)
+    is_live = models.BooleanField(default=False)
 
     class Meta:
-        db_table = "cv_files"
+        db_table = "cv_versions"
+        ordering = ["-created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_live"],
+                condition=models.Q(is_live=True),
+                name="cv_versions_one_live",
+            )
+        ]
+
+
+class CvView(Base):
+    """One time a visitor opened or downloaded the public CV. No address, email
+    or free text. The version is a plain id, not a foreign key: the log is
+    append-only (the app role cannot update it), so deleting a version must not
+    touch it."""
+
+    class Kind(models.TextChoices):
+        VIEW = "view"
+        DOWNLOAD = "download"
+
+    at = models.DateTimeField(default=timezone.now, db_index=True)
+    version = models.UUIDField()
+    kind = models.CharField(
+        max_length=8, choices=Kind.choices, default="view", db_default="view"
+    )
+    country = models.CharField(max_length=2, blank=True, default="")
+    user_agent = models.CharField(max_length=200, blank=True, default="")
+
+    class Meta:
+        db_table = "cv_views"
+        ordering = ["-at", "id"]
+
+
+class CvDayCount(Base):
+    """Views per day, kept after the daily job removes the rows behind them."""
+
+    day = models.DateField(unique=True)
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "cv_day_counts"
+        ordering = ["-day"]
 
 
 class Contact(Timestamped):
@@ -181,6 +232,10 @@ class ContactMessage(Base):
         PROJECT = "project"
         OTHER = "other"
 
+    class Kind(models.TextChoices):
+        MESSAGE = "message"
+        CV_REQUEST = "cv_request"
+
     name = models.CharField(max_length=100)
     email = models.EmailField()
     body = models.TextField()
@@ -190,6 +245,10 @@ class ContactMessage(Base):
     # 0 to 100: how many of the bot checks the message tripped, and how hard
     # (core.contact.spam_score). A score of 100 or more is quarantined.
     spam_score = models.PositiveSmallIntegerField(default=0)
+    # A message from the form, or a request for a copy of the CV (core.cv).
+    kind = models.CharField(
+        max_length=12, choices=Kind.choices, default="message", db_default="message"
+    )
     status = models.CharField(max_length=10, choices=Status.choices, default="new")
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
     read_at = models.DateTimeField(null=True, blank=True)

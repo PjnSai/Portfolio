@@ -9,7 +9,7 @@
    same as known ones.
 3. Admin requests are capped per client per minute.
 4. Bodies over the size limit are refused before anything reads them. The
-   limit is 1 MB, except for the media upload route.
+   limit is 1 MB, except for the media and CV upload routes.
 5. If the database or Redis is down, admin requests get a plain 503. This
    applies under /api/v1/admin/ only: the guard uses neither for a public
    request, so public routes keep answering.
@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 
 ADMIN_PREFIX = "/api/v1/admin"
 UPLOAD_PATH = ADMIN_PREFIX + "/media"
+CV_UPLOAD_PATH = ADMIN_PREFIX + "/cv/versions"
 FORM_OVERHEAD = 65_536
 UNAVAILABLE = (DatabaseError, InterfaceError, redis.RedisError)
 
@@ -59,6 +60,8 @@ def _body_refusal(request):
     limit = settings.MAX_BODY_BYTES
     if request.path == UPLOAD_PATH:
         limit = settings.MEDIA_MAX_BYTES + FORM_OVERHEAD
+    elif request.path == CV_UPLOAD_PATH:
+        limit = settings.CV_MAX_BYTES + FORM_OVERHEAD
     return responses.too_large() if int(raw) > limit else None
 
 

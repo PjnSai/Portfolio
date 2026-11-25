@@ -5,10 +5,12 @@ another host of the same domain, with cookies. Only SITE_ORIGIN, exactly, may
 read admin responses; public routes send no CORS headers, as the site reads
 them at build time and shows images with plain tags.
 
-The contact form's POST is the one public route the site's pages call from the
-browser, so it gets its own, narrower rule: the site origin only, POST only,
-Content-Type only, no credentials (the form sends no cookie), and a short
-cache for the preflight. Nothing else public is opened up.
+The site's pages call a few public routes from the browser: the contact
+form, and the CV's status, view link, file and copy request. They get their
+own, narrower rule: the site origin only, no credentials (they send no
+cookie), and for the forms POST and Content-Type only with a short cache for
+the preflight. The CV status and file are plain GETs, which need no
+preflight. Nothing else public is opened up.
 
 Preflights are answered here, before the guard, because they carry no
 credentials. They change nothing: the request that follows is checked in full.
@@ -27,6 +29,10 @@ HEADERS = ("content-type", "x-csrf-token")
 MAX_AGE = "600"
 
 CONTACT_PATH = "/api/v1/contact"
+# Public routes the site's pages POST to, and public routes they GET.
+FORM_PATHS = {CONTACT_PATH, "/api/v1/cv/link", "/api/v1/cv/request"}
+READ_PATHS = {"/api/v1/cv"}
+CV_FILE_PREFIX = "/api/v1/cv/file/"
 CONTACT_METHODS = ("POST",)
 CONTACT_HEADERS = ("content-type",)
 CONTACT_MAX_AGE = "120"
@@ -40,7 +46,14 @@ def _admin(path):
 
 
 def _contact(path):
-    return path == CONTACT_PATH
+    return path in FORM_PATHS
+
+
+def _site_read(path):
+    if path in READ_PATHS:
+        return True
+    token = path.removeprefix(CV_FILE_PREFIX)
+    return path.startswith(CV_FILE_PREFIX) and bool(token) and "/" not in token
 
 
 def _from_site(request):
@@ -75,7 +88,7 @@ class CorsMiddleware:
             patch_vary_headers(response, ("Origin",))
             if _from_site(request):
                 _allow(response)
-        elif _contact(request.path):
+        elif _contact(request.path) or _site_read(request.path):
             patch_vary_headers(response, ("Origin",))
             if _from_site(request):
                 response["Access-Control-Allow-Origin"] = settings.SITE_ORIGIN

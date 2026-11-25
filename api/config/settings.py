@@ -142,6 +142,13 @@ MAX_BODY_BYTES = 1_000_000
 MEDIA_MAX_BYTES = 8 * 1024 * 1024
 MEDIA_MAX_PIXELS = 40_000_000
 MEDIA_DAILY_UPLOADS = 50
+# The public CV, a PDF (core.cv). Uploads count against MEDIA_DAILY_UPLOADS.
+CV_MAX_BYTES = 5 * 1024 * 1024
+# View links: per client an hour (before the human check), and for the whole
+# site a day (only visitors who passed it). Copy requests share the contact
+# form's limits.
+CV_VIEW_PER_ADDRESS_PER_HOUR = 10
+CV_VIEW_DAILY_CAP = 200
 FILE_UPLOAD_HANDLERS = ["django.core.files.uploadhandler.MemoryFileUploadHandler"]
 FILE_UPLOAD_MAX_MEMORY_SIZE = MEDIA_MAX_BYTES + 65_536
 DATA_UPLOAD_MAX_NUMBER_FILES = 1
@@ -150,6 +157,10 @@ DATA_UPLOAD_MAX_NUMBER_FILES = 1
 MEDIA_STORAGE = os.environ.get("MEDIA_STORAGE", "local")
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / ".media"))
 GCS_MEDIA_BUCKET = os.environ.get("GCS_MEDIA_BUCKET", "")
+# CV files: private, in a folder beside the media root in development and a
+# bucket of their own in production (core.storage.cv_backend).
+CV_ROOT = Path(os.environ.get("CV_ROOT", MEDIA_ROOT.parent / ".cv"))
+GCS_CV_BUCKET = os.environ.get("GCS_CV_BUCKET", "")
 
 # Dotted path of a class with purge(). The default only logs.
 CACHE_PURGER = os.environ.get("CACHE_PURGER", "core.purge.LogPurger")

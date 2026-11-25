@@ -1,4 +1,4 @@
-"""How long contact messages are kept (SPEC 5.8a, 6.2).
+"""How long contact messages and the CV view log are kept (SPEC 5.8a, 6.2).
 
 Spam goes after 30 days by default, other messages after 12 months. A message
 the owner marked kept, has written notes on or linked to a contact is never
@@ -12,12 +12,13 @@ all of them are moved when the owner changes a period. The spam period runs
 from spam_at, so an old message marked spam today still has the full period.
 """
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from django.conf import settings
 from django.db import transaction
 from django.db.models import (
     BooleanField,
+    Count,
     Exists,
     F,
     Func,
@@ -26,7 +27,7 @@ from django.db.models import (
     Subquery,
     Value,
 )
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 
 from core import audit, content
@@ -34,6 +35,8 @@ from core.models import (
     BlockedSender,
     ContactMessage,
     ContactNote,
+    CvDayCount,
+    CvView,
     Owner,
     SiteSettings,
 )
@@ -150,11 +153,43 @@ def _expired_blocks(now, dry_run):
     return expired.count() if dry_run else expired._raw_delete(expired.db)
 
 
+# CV views keep their raw rows for 90 days (SPEC 5.8a (e)); then only the
+# count for each day is kept. Whole UTC days only, so a day is never split
+# between the rows and its total.
+CV_VIEW_DAYS = 90
+
+
+def cv_view_cutoff(now):
+    day = (now.astimezone(UTC) - timedelta(days=CV_VIEW_DAYS)).date()
+    return datetime(day.year, day.month, day.day, tzinfo=UTC)
+
+
+def _old_cv_views(now, dry_run):
+    """Add the old rows to each day's total in cv_day_counts, then remove them
+    in one DELETE. Both run under the job's lock in its transaction, so no
+    other run adds to a total meanwhile, and no new row can be that old."""
+    cutoff = cv_view_cutoff(now)
+    old = CvView.objects.filter(at__lt=cutoff)
+    if dry_run:
+        return old.count()
+    per_day = (
+        old.annotate(day=TruncDate("at", tzinfo=UTC))
+        .values("day")
+        .annotate(n=Count("id"))
+        .values_list("day", "n")
+    )
+    for day, n in per_day:
+        if not CvDayCount.objects.filter(day=day).update(count=F("count") + n):
+            CvDayCount.objects.create(day=day, count=n)
+    return old._raw_delete(old.db)
+
+
 def run(dry_run=False, batch_size=BATCH_SIZE):
-    """Remove every message whose time is up and which no rule keeps, and every
-    blocklist entry that has expired. One transaction: if anything fails,
-    nothing is removed and nothing recorded. Returns counts only; the audit
-    entry holds the same counts."""
+    """Remove every message whose time is up and which no rule keeps, every
+    blocklist entry that has expired, and CV views past their period once they
+    are counted. One transaction: if anything fails, nothing is removed and
+    nothing recorded. Returns counts only; the audit entry holds the same
+    counts."""
     now = timezone.now()
     with transaction.atomic():
         _lock()
@@ -174,6 +209,7 @@ def run(dry_run=False, batch_size=BATCH_SIZE):
             "exempt": expired - (deleted if dry_run else 0),
             "batches": batches,
             "blocklist_deleted": _expired_blocks(now, dry_run),
+            "cv_views_deleted": _old_cv_views(now, dry_run),
             "dry_run": dry_run,
         }
         audit.record("retention_run", **counts)

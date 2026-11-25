@@ -1,6 +1,6 @@
-"""The public contact form routes. Neither takes a cookie or a session, so
-neither needs a CSRF token; the request guard still requires the site's own
-Origin on the POST."""
+"""The public contact form route. It takes no cookie or session, so it needs
+no CSRF token; the request guard still requires the site's own Origin on the
+POST. The CV copy request (core.cv_views) goes through the same steps."""
 
 import json
 import logging
@@ -13,6 +13,7 @@ from django.views.decorators.csrf import csrf_exempt
 from core import blocklist, contact, ratelimit, responses, turnstile
 from core import limits as contact_limits
 from core.guard import UNAVAILABLE
+from core.models import ContactMessage
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ def _logged(outcome, message=None):
 def submit(request):
     if request.method != "POST":
         return responses.method_not_allowed(("POST",))
-    data, refusal = _read(request)
+    data, refusal = read_json(request)
     if refusal:
         return refusal
     values, errors = contact.clean(data)
@@ -40,15 +41,15 @@ def submit(request):
         _logged("invalid")
         return responses.invalid(errors)
     try:
-        return _accept(data, values, ratelimit.client_address(request))
+        return accept(data, values, ratelimit.client_address(request))
     except contact.Limited as limit:
         _logged("rate_limited")
         return responses.contact_limited(limit.seconds)
     except (*UNAVAILABLE, turnstile.Unavailable) as error:
-        return _unavailable(error)
+        return unavailable(error)
 
 
-def _read(request):
+def read_json(request, fields=FIELDS):
     """(the JSON object sent, None), or (None, the refusal to send)."""
     length = request.META.get("CONTENT_LENGTH") or "0"
     if not length.isdigit() or int(length) > MAX_BODY_BYTES:
@@ -59,12 +60,12 @@ def _read(request):
         data = json.loads(request.body)
     except ValueError:
         return None, responses.bad_request()
-    if not isinstance(data, dict) or set(data) - FIELDS:
+    if not isinstance(data, dict) or set(data) - fields:
         return None, responses.bad_request()
     return data, None
 
 
-def _checked(token):
+def passes_turnstile(token):
     """True if Turnstile says this token is good. Raises Unavailable if it could
     not be asked."""
     if not isinstance(token, str) or not 0 < len(token) <= turnstile.TOKEN_MAX:
@@ -72,10 +73,22 @@ def _checked(token):
     return bool(import_string(settings.TURNSTILE_VERIFIER)().verify(token))
 
 
-def _accept(data, values, address):
+def accept(
+    data,
+    values,
+    address,
+    kind=ContactMessage.Kind.MESSAGE,
+    repeat=None,
+    sent=responses.contact_sent,
+):
+    """Every check and limit, then store. repeat is the text whose repeat
+    within a day counts as spam; the body unless given. sent makes the answer
+    once Turnstile and the limits have passed: the same one whether the
+    message was stored, quarantined, dropped as spam or from a blocked
+    sender."""
     limits = contact_limits.effective()
     contact.count_attempt(address, limits)
-    if not _checked(data.get("turnstile")):
+    if not passes_turnstile(data.get("turnstile")):
         _logged("bad_challenge")
         return responses.bad_challenge()
     # Before any cap is counted, so a blocked sender uses none of them, and
@@ -83,10 +96,11 @@ def _accept(data, values, address):
     # check itself fails the error reaches the handler: 503, nothing stored.
     if blocklist.hit(values["email"]):
         _logged("blocked_dropped")
-        return responses.contact_sent()
+        return sent()
     contact.count_email(values["email"], limits)
     seconds = contact.seconds_open(data.get("elapsed"))
-    repeated = not contact.claim_body(values["body"])
+    repeat = values["body"] if repeat is None else repeat
+    repeated = not contact.claim_body(repeat)
     # From here on, a message that is not stored gives its body's marker back,
     # so sending it again later is not taken for a repeat.
     try:
@@ -95,24 +109,24 @@ def _accept(data, values, address):
         )
         spam = outcome is not None
         if not contact.count_daily(spam, limits):
-            _release(values, repeated)
+            _release(repeat, repeated)
             _logged("spam_dropped")
-            return responses.contact_sent()
-        message = contact.store(values, address, score, spam=spam)
+            return sent()
+        message = contact.store(values, address, score, spam=spam, kind=kind)
     except Exception:
-        _release(values, repeated)
+        _release(repeat, repeated)
         raise
     _logged(outcome or "stored", message)
-    return responses.contact_sent()
+    return sent()
 
 
-def _release(values, repeated):
+def _release(text, repeated):
     # A repeat's marker belongs to the message stored earlier, so it stays.
     if not repeated:
         with suppress(*UNAVAILABLE):
-            contact.release_body(values["body"])
+            contact.release_body(text)
 
 
-def _unavailable(error):
+def unavailable(error):
     log.error("contact unavailable: %s", type(error).__name__)
     return responses.unavailable()
