@@ -210,13 +210,7 @@ def _link(data, address):
         return responses.bad_challenge()
     cv.count_link()
     log.info("cv link outcome=issued")
-    return JsonResponse(
-        {
-            "url": f"/api/v1/cv/file/{cv.link_token(item)}",
-            "expires_in": cv.LINK_SECONDS,
-        },
-        headers={"Cache-Control": "no-store"},
-    )
+    return JsonResponse(cv.link(item), headers={"Cache-Control": "no-store"})
 
 
 @csrf_exempt
@@ -225,9 +219,10 @@ def public_file(request, token):
     """The live PDF for a good link. A bad, changed, expired or outdated link
     gets the same plain 404. The view is logged once the file is in hand and
     before it is sent; if the log cannot be written, nothing is sent."""
-    binding = cv.linked(token)
-    if binding is None or request.GET:
+    found = cv.linked(token)
+    if found is None or found[0] != cv.VIEW or request.GET:
         return responses.not_found()
+    binding = found[1]
     wait = ratelimit.public_cap(request)
     if wait:
         return responses.too_many_requests(wait)
@@ -247,28 +242,45 @@ def public_file(request, token):
 @csrf_exempt
 def public_request(request):
     """Ask for a copy. Stored as a message marked as a CV request, through the
-    contact form's checks and limits, which it shares. The owner replies by
-    hand from the inbox."""
+    contact form's checks and limits, which it shares; the owner sees it in
+    the inbox. With instant download on and a live CV, every sender who
+    passes Turnstile and the limits also gets a download link for a minute,
+    whether the request is stored, quarantined or dropped, so the answer
+    never shows which."""
     if request.method != "POST":
         return responses.method_not_allowed(("POST",))
     data, refusal = form.read_json(request, cv.REQUEST_FIELDS)
     if refusal:
         return refusal
     try:
-        if not cv.switches()["request"]:
+        on = cv.switches()
+        if not on["request"]:
             return responses.forbidden()
         values, errors = cv.clean_request(data)
         if errors:
             return responses.invalid(errors)
+        item = cv.live() if on["instant_download"] else None
         return form.accept(
             data,
             values,
             ratelimit.client_address(request),
             kind=ContactMessage.Kind.CV_REQUEST,
             repeat=cv.repeat_text(values),
+            sent=_sent(on, item),
         )
     except contact.Limited as limit:
         log.info("cv request outcome=rate_limited")
         return responses.contact_limited(limit.seconds)
     except (*UNAVAILABLE, turnstile.Unavailable) as error:
         return form.unavailable(error)
+
+
+def _sent(on, item):
+    if not cv.instant_download(on, item):
+        return responses.contact_sent
+
+    def with_link():
+        log.info("cv request download=issued")
+        return responses.contact_sent(**cv.link(item, cv.DOWNLOAD))
+
+    return with_link

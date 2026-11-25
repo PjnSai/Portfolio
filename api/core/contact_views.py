@@ -73,9 +73,19 @@ def passes_turnstile(token):
     return bool(import_string(settings.TURNSTILE_VERIFIER)().verify(token))
 
 
-def accept(data, values, address, kind=ContactMessage.Kind.MESSAGE, repeat=None):
+def accept(
+    data,
+    values,
+    address,
+    kind=ContactMessage.Kind.MESSAGE,
+    repeat=None,
+    sent=responses.contact_sent,
+):
     """Every check and limit, then store. repeat is the text whose repeat
-    within a day counts as spam; the body unless given."""
+    within a day counts as spam; the body unless given. sent makes the answer
+    once Turnstile and the limits have passed: the same one whether the
+    message was stored, quarantined, dropped as spam or from a blocked
+    sender."""
     limits = contact_limits.effective()
     contact.count_attempt(address, limits)
     if not passes_turnstile(data.get("turnstile")):
@@ -86,7 +96,7 @@ def accept(data, values, address, kind=ContactMessage.Kind.MESSAGE, repeat=None)
     # check itself fails the error reaches the handler: 503, nothing stored.
     if blocklist.hit(values["email"]):
         _logged("blocked_dropped")
-        return responses.contact_sent()
+        return sent()
     contact.count_email(values["email"], limits)
     seconds = contact.seconds_open(data.get("elapsed"))
     repeat = values["body"] if repeat is None else repeat
@@ -101,13 +111,13 @@ def accept(data, values, address, kind=ContactMessage.Kind.MESSAGE, repeat=None)
         if not contact.count_daily(spam, limits):
             _release(repeat, repeated)
             _logged("spam_dropped")
-            return responses.contact_sent()
+            return sent()
         message = contact.store(values, address, score, spam=spam, kind=kind)
     except Exception:
         _release(repeat, repeated)
         raise
     _logged(outcome or "stored", message)
-    return responses.contact_sent()
+    return sent()
 
 
 def _release(text, repeated):

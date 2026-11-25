@@ -114,6 +114,7 @@ def test_status_says_what_a_visitor_can_do(live):
     assert response.json() == {
         "can_view": True,
         "can_request": True,
+        "instant_download": True,
         "updated": live.created_at.date().isoformat(),
     }
 

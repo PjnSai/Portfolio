@@ -61,11 +61,12 @@ def privacy_check(warnings):
     )
 
 
-def contact_sent():
+def contact_sent(**extra):
     """The one answer to a message that was saved, whether it went to the inbox
-    or to quarantine: nothing here lets a sender tell which."""
+    or to quarantine: nothing here lets a sender tell which. extra is added
+    the same way for every sender."""
     return JsonResponse(
-        {"detail": "Thank you. Your message has been received."},
+        {"detail": "Thank you. Your message has been received.", **extra},
         status=201,
         headers={"Cache-Control": "no-store"},
     )

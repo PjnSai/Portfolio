@@ -249,19 +249,31 @@ def file_name():
 
 def status():
     item, on = live(), switches()
-    return {
+    answer = {
         "can_view": bool(on["view"] and item),
         "can_request": on["request"],
-        "updated": item.created_at.date().isoformat() if item else None,
     }
+    if instant_download(on, item):
+        answer["instant_download"] = True
+    answer["updated"] = item.created_at.date().isoformat() if item else None
+    return answer
 
 
-# The view link. A visitor who passes Turnstile and the limits gets a path
-# that works for LINK_SECONDS. It is signed for this purpose alone and bound
-# to the live version by a keyed hash of its id, so it names no id, and it
-# stops working as soon as another version goes live.
+def instant_download(on, item):
+    """Whether a copy request is answered with a download link."""
+    return bool(on["instant_download"] and on["request"] and item)
 
-LINK_SALT = "core.cv.view-link"
+
+# The links. A visitor who passes Turnstile and the limits gets a path that
+# works for LINK_SECONDS: from /cv/link to view the CV on the site, or from
+# /cv/request to download it. Each is signed for its purpose alone, so one
+# never works as the other, and bound to the live version by a keyed hash of
+# its id, so it names no id and stops working as soon as another version goes
+# live.
+
+VIEW = "view"
+DOWNLOAD = "download"
+LINK_SALTS = {VIEW: "core.cv.view-link", DOWNLOAD: "core.cv.download-link"}
 LINK_SECONDS = 60
 TOKEN_MAX = 200
 HOUR = 3600
@@ -298,23 +310,32 @@ def _binding(item):
     return hmac.new(key, message, hashlib.sha256).hexdigest()[:32]
 
 
-def _signer():
-    return signing.TimestampSigner(salt=LINK_SALT)
+def _signer(purpose):
+    return signing.TimestampSigner(salt=LINK_SALTS[purpose])
 
 
-def link_token(item):
-    return _signer().sign(_binding(item))
+def link_token(item, purpose=VIEW):
+    return _signer(purpose).sign(_binding(item))
+
+
+def link(item, purpose=VIEW):
+    return {
+        "url": f"/api/v1/cv/file/{link_token(item, purpose)}",
+        "expires_in": LINK_SECONDS,
+    }
 
 
 def linked(token):
-    """The binding a good, unexpired token carries, else None. Needs nothing
+    """(purpose, binding) for a good, unexpired token, else None. Needs nothing
     but the secret key."""
     if not isinstance(token, str) or not 0 < len(token) <= TOKEN_MAX:
         return None
-    try:
-        return _signer().unsign(token, max_age=LINK_SECONDS)
-    except signing.BadSignature:
-        return None
+    for purpose in LINK_SALTS:
+        try:
+            return purpose, _signer(purpose).unsign(token, max_age=LINK_SECONDS)
+        except signing.BadSignature:
+            continue
+    return None
 
 
 def is_live_binding(binding):
