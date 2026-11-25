@@ -199,6 +199,15 @@ describe("the contact form's policy in _headers", () => {
     expect(hasContactForm({ route: "/projects/a", html: withForm.html })).toBe(false);
   });
 
+  it("is also for a home page built with the CV block alone, and for no other page", () => {
+    const withBlock = { route: "/", html: `${home.html}<div data-cv-block></div>` };
+    expect(hasContactForm(withBlock)).toBe(true);
+    expect(hasContactForm({ route: "/privacy", html: withBlock.html })).toBe(false);
+    const policy = policyOf([withBlock], "/");
+    expect(policy).toContain(ORIGIN);
+    expect(policy).toContain(`connect-src 'self' ${API}`);
+  });
+
   it("gives the home page Turnstile's origins and the API, and no other page", () => {
     const policy = policyOf([withForm, desk], "/");
     expect(policy).toContain(` ${ORIGIN}`);

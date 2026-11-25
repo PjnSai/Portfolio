@@ -284,3 +284,26 @@ export function requestFailureText(failure: Failure): string {
 }
 
 export const VIEW_CHECK_FAILED_TEXT = "The anti-spam check could not run. Check your connection and try again.";
+
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+/** "Updated 20 November 2026." from the API's date, or "" without one. */
+export function updatedText(updated: string | null): string {
+  const match = updated ? /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(updated) : null;
+  if (!match) return "";
+  const month = MONTHS[Number(match[2]) - 1];
+  return month ? `Updated ${Number(match[3])} ${month} ${match[1]}.` : "";
+}

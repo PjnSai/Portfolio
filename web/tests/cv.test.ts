@@ -9,6 +9,7 @@ import {
   requestFailureText,
   requestViewLink,
   sendCvRequest,
+  updatedText,
   validateRequest,
   viewFailureText,
 } from "@/lib/public/cv";
@@ -265,6 +266,15 @@ describe("sending the request", () => {
 
   it("fails on a network error", async () => {
     expect((await sendCvRequest(fetcherOf(new Error("x")).fetcher, ORIGIN, PAYLOAD)).kind).toBe("failed");
+  });
+});
+
+describe("the date", () => {
+  it("is said as a sentence, or not at all", () => {
+    expect(updatedText("2026-11-05")).toBe("Updated 5 November 2026.");
+    expect(updatedText(null)).toBe("");
+    expect(updatedText("2026-13-05")).toBe("");
+    expect(updatedText("junk")).toBe("");
   });
 });
 

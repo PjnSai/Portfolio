@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/public/bits";
+import { CvBlock } from "@/components/public/CvBlock";
 import { HomeEnhancer } from "@/components/public/HomeEnhancer";
 import { Hero, SectionBlock, SkillsStrip } from "@/components/public/Sections";
 import { SectionPager } from "@/components/public/SiteNav";
@@ -34,6 +35,7 @@ export default async function Home() {
       {model.sections.map((entry) => (
         <SectionBlock key={entry.anchor} entry={entry} site={site} model={model} />
       ))}
+      <CvBlock />
       <SectionPager sections={model.sections} />
       <HomeEnhancer />
     </>
