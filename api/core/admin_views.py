@@ -164,6 +164,7 @@ def bootstrap_verify(request):
             audit.record("passkey_added", passkey=str(passkey.id), via="bootstrap")
     if passkey is None:
         return _sign_in_failed(request, "bootstrap_failed")
+    notify.send_if_possible("passkey_added", via="bootstrap")
     return JsonResponse({"id": str(passkey.id), "recovery_key": key}, status=201)
 
 

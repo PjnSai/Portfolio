@@ -17,7 +17,7 @@ os.environ.pop("DJANGO_DEBUG", None)
 
 from config.settings import *  # noqa: E402, F403
 
-NOTIFIERS = ["tests.notifiers.Recorder"]
+NOTIFIERS = ["core.notify.DatabaseNotifier", "tests.notifiers.Recorder"]
 
 # Cloudflare's published dummy secret that always passes; the verifier is a
 # local fake, so tests never call Cloudflare.

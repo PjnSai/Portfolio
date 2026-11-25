@@ -97,4 +97,6 @@ urlpatterns = [
     path("cv/views", cv.view_log),
     path("cv/views/days", cv.view_days),
     path("abuse", security.abuse_summary),
+    path("alerts", security.alert_list),
+    path("alerts/<uuid:alert_id>/seen", security.alert_seen),
 ]

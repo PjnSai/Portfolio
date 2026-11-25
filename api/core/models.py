@@ -205,6 +205,22 @@ class AbuseCount(Base):
         ]
 
 
+class Alert(Base):
+    """Something the owner should look at (core.alerts). The summary is fixed
+    text with counts and kinds only: never an address, email, name or text a
+    visitor sent."""
+
+    created_at = models.DateTimeField(default=timezone.now)
+    kind = models.CharField(max_length=40)
+    summary = models.CharField(max_length=200)
+    seen_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "alerts"
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["kind", "created_at"], name="alerts_kind")]
+
+
 class Contact(Timestamped):
     """A sender the owner chose to keep a record of (core.contacts). One per
     email, found by the same keyed hash as the messages. Deleting one never

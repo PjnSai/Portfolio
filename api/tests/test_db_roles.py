@@ -372,3 +372,17 @@ def test_app_role_can_count_abuse_but_never_rewrite_a_day(roles):
         old = abuse.today() - timedelta(days=abuse.KEEP_DAYS + 1)
         AbuseCount.objects.create(day=old, kind="spam", count=1)
         assert retention.run()["abuse_counts_deleted"] == 1
+
+
+def test_app_role_can_record_and_mark_alerts_but_never_rewrite_one(roles):
+    from core import notify
+    from core.models import Alert
+
+    with as_app() as cursor:
+        notify.send("vital_action_requested", kind="add_passkey")
+        alert = Alert.objects.get()
+        Alert.objects.filter(id=alert.id).update(seen_at="2026-01-01T00:00:00Z")
+        denied(cursor, "UPDATE alerts SET summary = 'changed'")
+        denied(cursor, "UPDATE alerts SET kind = 'other'")
+        denied(cursor, "DELETE FROM alerts")
+        denied(cursor, "TRUNCATE alerts")

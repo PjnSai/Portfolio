@@ -47,6 +47,7 @@ INSTALLED_APPS = [
 # core.headers adds only what Django lacks.
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "core.alerts.ServerErrorMiddleware",
     "core.headers.SecurityHeadersMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -132,9 +133,25 @@ TURNSTILE_VERIFIER = os.environ.get(
     "TURNSTILE_VERIFIER", "core.turnstile.CloudflareVerifier"
 )
 
-# Dotted paths of classes with send(event, context), comma-separated. With none
-# configured, vital actions are refused because the owner could not be told.
-NOTIFIERS = [path for path in os.environ.get("NOTIFIERS", "").split(",") if path]
+# Dotted paths of classes with send(event, context), comma-separated, after the
+# database notifier, which records alerts for the admin. That one does not count
+# as telling the owner: with no other notifier configured, vital actions are
+# refused because the owner could not be told.
+NOTIFIERS = [
+    "core.notify.DatabaseNotifier",
+    *(path for path in os.environ.get("NOTIFIERS", "").split(",") if path),
+]
+
+# Alerts (core.alerts). Each threshold is a count inside a window in seconds;
+# reaching it raises one alert, and the same kind does not alert again inside
+# its window. No kind raises more than ALERT_DAILY_CAP alerts a UTC day.
+ALERT_SIGN_IN_FAILURES = 5
+ALERT_SIGN_IN_WINDOW = 15 * 60
+ALERT_RATE_LIMITED = 100
+ALERT_RATE_LIMITED_WINDOW = 10 * 60
+ALERT_SERVER_ERRORS = 20
+ALERT_SERVER_ERRORS_WINDOW = 5 * 60
+ALERT_DAILY_CAP = 5
 
 # Request bodies. The media upload route alone takes a larger multipart body,
 # held in memory only (nothing is written to a temporary file).

@@ -49,6 +49,11 @@ TO app_rw;
 GRANT SELECT, INSERT, DELETE ON abuse_counts TO app_rw;
 GRANT UPDATE (count) ON abuse_counts TO app_rw;
 
+-- Alerts for the owner: recorded, read, and marked seen. Never changed or
+-- removed otherwise; at most a few a day are kept (core.alerts).
+GRANT SELECT, INSERT ON alerts TO app_rw;
+GRANT UPDATE (seen_at) ON alerts TO app_rw;
+
 -- Auth state.
 GRANT SELECT, INSERT, UPDATE, DELETE ON
     admin_credentials, sessions, rate_limit_blocks, pending_actions

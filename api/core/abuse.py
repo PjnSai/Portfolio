@@ -16,6 +16,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
+from core import alerts
 from core.models import AbuseCount
 
 log = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ HONEYPOT_OR_TIMING = "honeypot_or_timing"
 LOGIN_FAILED = "login_failed"
 ELEVATION_FAILED = "elevation_failed"
 GUARD_REFUSED = "guard_refused"
+NOTICE_FAILED = "notice_failed"
 
 KINDS = (
     RATE_LIMITED,
@@ -40,6 +42,7 @@ KINDS = (
     LOGIN_FAILED,
     ELEVATION_FAILED,
     GUARD_REFUSED,
+    NOTICE_FAILED,
 )
 
 # The counts are kept as long as a contact message (SPEC 6.2: 12 months), then
@@ -63,6 +66,7 @@ def count(kind):
             _add(kind, today())
     except Exception as error:
         log.warning("abuse count failed kind=%s error=%s", kind, type(error).__name__)
+    alerts.observe(kind)
 
 
 def kind_of_spam(outcome):
