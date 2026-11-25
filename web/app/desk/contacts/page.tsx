@@ -11,6 +11,7 @@ import {
   LinkableMessages,
   LinkedMessages,
 } from "@/components/admin/contacts/ContactViews";
+import { EraseEverything } from "@/components/admin/inbox/EraseEverything";
 import { Button, Notice, PageTitle } from "@/components/admin/ui";
 import { api, ApiError, describeError } from "@/lib/admin/api";
 import {
@@ -331,6 +332,7 @@ function Detail({
           </Button>
         )}
       </section>
+      <EraseEverything from={{ contact: id }} />
     </>
   );
 }

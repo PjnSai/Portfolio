@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ADMIN, useAdmin } from "@/components/admin/AdminApp";
+import { EraseEverything } from "@/components/admin/inbox/EraseEverything";
 import { BlockPanel } from "@/components/admin/inbox/BlockPanel";
 import { ContactPanel } from "@/components/admin/inbox/ContactPanel";
 import {
@@ -441,6 +442,7 @@ function Detail({
           )
         }
       />
+      <EraseEverything from={{ message: id }} />
     </>
   );
 }
