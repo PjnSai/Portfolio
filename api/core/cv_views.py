@@ -1,12 +1,23 @@
-"""CV routes: the owner's versions under /api/v1/admin/cv."""
+"""CV routes: the owner's versions and switches under /api/v1/admin/cv, and
+the public status, view link, file and copy request under /api/v1/cv.
+
+The public routes take no cookie or session, so they need no CSRF token; the
+request guard still requires the site's own Origin on each POST. There is no
+public route to a file by name or id, and no download: the file is reached
+only through a link from /cv/link, and is sent for viewing on the site.
+"""
 
 import logging
 
 from django.http import JsonResponse, StreamingHttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET
 
-from core import cv, media, responses, storage, vital
+from core import contact, cv, media, ratelimit, responses, storage, turnstile, vital
+from core import contact_views as form
 from core.authz import Level, admin_route
-from core.models import CvVersion
+from core.guard import UNAVAILABLE
+from core.models import ContactMessage, CvVersion
 
 log = logging.getLogger(__name__)
 
@@ -121,3 +132,118 @@ def switches(request):
     return JsonResponse(
         {**cv.switches(), "pending": [vital.describe(action) for action in waiting]}
     )
+
+
+# Public
+
+# A minute in browsers and at the edge. A change of live version or switch
+# shows within that; if the API cannot answer, the edge may keep the last good
+# answer for a day (fail static).
+STATUS_CACHE = "public, max-age=60, s-maxage=60, stale-if-error=86400"
+LINK_FIELDS = {"turnstile"}
+
+
+@csrf_exempt
+@require_GET
+def public_status(request):
+    if request.GET:
+        return responses.bad_request()
+    wait = ratelimit.public_cap(request)
+    if wait:
+        return responses.too_many_requests(wait)
+    return JsonResponse(cv.status(), headers={"Cache-Control": STATUS_CACHE})
+
+
+def _unavailable(where, error):
+    log.error("cv %s unavailable: %s", where, type(error).__name__)
+    return responses.unavailable()
+
+
+@csrf_exempt
+def public_link(request):
+    if request.method != "POST":
+        return responses.method_not_allowed(("POST",))
+    data, refusal = form.read_json(request, LINK_FIELDS)
+    if refusal:
+        return refusal
+    try:
+        return _link(data, ratelimit.client_address(request))
+    except cv.Limited as limit:
+        log.info("cv link outcome=rate_limited")
+        return responses.too_many_requests(limit.seconds)
+    except (*UNAVAILABLE, turnstile.Unavailable) as error:
+        return _unavailable("link", error)
+
+
+def _link(data, address):
+    item = cv.live()
+    if not cv.switches()["view"] or item is None:
+        return responses.forbidden()
+    cv.count_link_attempt(address)
+    if not form.passes_turnstile(data.get("turnstile")):
+        log.info("cv link outcome=bad_challenge")
+        return responses.bad_challenge()
+    cv.count_link()
+    log.info("cv link outcome=issued")
+    return JsonResponse(
+        {
+            "url": f"/api/v1/cv/file/{cv.link_token(item)}",
+            "expires_in": cv.LINK_SECONDS,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@csrf_exempt
+@require_GET
+def public_file(request, token):
+    """The live PDF for a good link. A bad, changed, expired or outdated link
+    gets the same plain 404. The view is logged once the file is in hand and
+    before it is sent; if the log cannot be written, nothing is sent."""
+    binding = cv.linked(token)
+    if binding is None or request.GET:
+        return responses.not_found()
+    wait = ratelimit.public_cap(request)
+    if wait:
+        return responses.too_many_requests(wait)
+    try:
+        if not cv.switches()["view"]:
+            return responses.forbidden()
+        item = cv.is_live_binding(binding)
+        if item is None:
+            return responses.not_found()
+        data = cv.read(item)
+        cv.log_view(item, request)
+    except (*UNAVAILABLE, *STORAGE_ERRORS) as error:
+        return _unavailable("file", error)
+    return pdf_response(data, "inline")
+
+
+@csrf_exempt
+def public_request(request):
+    """Ask for a copy. Stored as a message marked as a CV request, through the
+    contact form's checks and limits, which it shares. The owner replies by
+    hand from the inbox."""
+    if request.method != "POST":
+        return responses.method_not_allowed(("POST",))
+    data, refusal = form.read_json(request, cv.REQUEST_FIELDS)
+    if refusal:
+        return refusal
+    try:
+        if not cv.switches()["request"]:
+            return responses.forbidden()
+        values, errors = cv.clean_request(data)
+        if errors:
+            return responses.invalid(errors)
+        return form.accept(
+            data,
+            values,
+            ratelimit.client_address(request),
+            kind=ContactMessage.Kind.CV_REQUEST,
+            repeat=cv.repeat_text(values),
+        )
+    except contact.Limited as limit:
+        log.info("cv request outcome=rate_limited")
+        return responses.contact_limited(limit.seconds)
+    except (*UNAVAILABLE, turnstile.Unavailable) as error:
+        return form.unavailable(error)

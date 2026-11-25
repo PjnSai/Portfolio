@@ -261,9 +261,10 @@ def spam_score(values, honeypot, seconds, repeated, limits):
     return score, code
 
 
-def store(values, address, score, spam):
+def store(values, address, score, spam, kind=ContactMessage.Kind.MESSAGE):
     arrived = timezone.now()
     message = ContactMessage(
+        kind=kind,
         name=values["name"],
         email=values["email"],
         body=values["body"],

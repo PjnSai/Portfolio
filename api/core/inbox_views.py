@@ -20,8 +20,9 @@ def _valid(serializer_class, data):
     return None, responses.invalid(serializer.errors)
 
 
-FILTERS = ("status", "q", "reason", "since", "until")
+FILTERS = ("status", "q", "reason", "since", "until", "kind")
 REASONS = {"hiring", "project", "other", "none"}
+KINDS = {"message", "cv_request"}
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 SEARCH_MAX = 100
 
@@ -46,19 +47,21 @@ def message_list(request):
     search = params.get("q", "").strip()
     reason = params.get("reason")
     since, until = _day(params.get("since")), _day(params.get("until"))
+    kind = params.get("kind")
     refused = (
         number is None
         or (status is not None and status not in STATUSES)
         or len(search) > SEARCH_MAX
         or not search.isprintable()
         or (reason is not None and reason not in REASONS)
+        or (kind is not None and kind not in KINDS)
         or since is False
         or until is False
     )
     if refused:
         return responses.bad_request()
     body = pages.page_of(
-        inbox.listing(status, search, reason, since, until),
+        inbox.listing(status, search, reason, since, until, kind),
         number,
         inbox.summary,
         size=inbox.PAGE_SIZE,

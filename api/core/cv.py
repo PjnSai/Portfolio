@@ -11,14 +11,17 @@ returns a key, an id or a hash.
 """
 
 import hashlib
+import hmac
 import logging
 import re
+import time
 
 from django.conf import settings
+from django.core import signing
 from django.db import transaction
 
-from core import audit, storage
-from core.models import CvVersion, Owner, SiteSettings
+from core import audit, contact, ratelimit, storage
+from core.models import CvVersion, CvView, Owner, SiteSettings
 
 log = logging.getLogger(__name__)
 
@@ -229,3 +232,166 @@ def file_name():
     title = row.get("title") if isinstance(row, dict) else None
     clean = WORD.sub("-", title if isinstance(title, str) else "").strip("-")[:60]
     return f"{clean.strip('-')}-CV.pdf" if clean else "cv.pdf"
+
+
+# What visitors may know: whether they can view or ask, and the day of the
+# live version. Never a key, an id or a hash.
+
+
+def status():
+    item, on = live(), switches()
+    return {
+        "can_view": bool(on["view"] and item),
+        "can_request": on["request"],
+        "updated": item.created_at.date().isoformat() if item else None,
+    }
+
+
+# The view link. A visitor who passes Turnstile and the limits gets a path
+# that works for LINK_SECONDS. It is signed for this purpose alone and bound
+# to the live version by a keyed hash of its id, so it names no id, and it
+# stops working as soon as another version goes live.
+
+LINK_SALT = "core.cv.view-link"
+LINK_SECONDS = 60
+TOKEN_MAX = 200
+HOUR = 3600
+DAY = 86400
+
+
+class Limited(Exception):
+    def __init__(self, seconds):
+        super().__init__("rate limited")
+        self.seconds = seconds
+
+
+def _over(bucket, seconds, limit):
+    now = time.time()
+    window = int(now // seconds)
+    if ratelimit.hit(f"cv:{bucket}:{window}", seconds) > limit:
+        raise Limited(int(seconds - now % seconds) or 1)
+
+
+def count_link_attempt(address):
+    """Per client, before the human check, so a bot cannot hammer Turnstile."""
+    key = contact.address_hash(address)
+    _over(f"address:{key}", HOUR, settings.CV_VIEW_PER_ADDRESS_PER_HOUR)
+
+
+def count_link():
+    """The whole site's day, counted only for visitors who passed the check."""
+    _over("day", DAY, settings.CV_VIEW_DAILY_CAP)
+
+
+def _binding(item):
+    key = settings.SECRET_KEY.encode()
+    message = f"cv-version:{item.id}".encode()
+    return hmac.new(key, message, hashlib.sha256).hexdigest()[:32]
+
+
+def _signer():
+    return signing.TimestampSigner(salt=LINK_SALT)
+
+
+def link_token(item):
+    return _signer().sign(_binding(item))
+
+
+def linked(token):
+    """The binding a good, unexpired token carries, else None. Needs nothing
+    but the secret key."""
+    if not isinstance(token, str) or not 0 < len(token) <= TOKEN_MAX:
+        return None
+    try:
+        return _signer().unsign(token, max_age=LINK_SECONDS)
+    except signing.BadSignature:
+        return None
+
+
+def is_live_binding(binding):
+    """The live version, if the binding names it, else None."""
+    item = live()
+    if item is None or not hmac.compare_digest(binding, _binding(item)):
+        return None
+    return item
+
+
+# The view log: no address, no email, no free text.
+
+COUNTRY = re.compile(r"[A-Z]{2}")
+AGENT_MAX = 200
+
+
+def _country(request):
+    value = request.headers.get("Cf-Ipcountry", "")
+    # XX is Cloudflare's "unknown"; T1 (Tor) fails the pattern.
+    return value if COUNTRY.fullmatch(value) and value != "XX" else ""
+
+
+def _agent(request):
+    value = contact.HIDDEN.sub("", request.headers.get("User-Agent", ""))
+    return value.strip()[:AGENT_MAX]
+
+
+def log_view(item, request):
+    return CvView.objects.create(
+        version=item.id, country=_country(request), user_agent=_agent(request)
+    )
+
+
+# A request for a copy, through the contact form's pipeline (core.contact,
+# core.contact_views). The owner replies by hand; the site sends nothing.
+
+REQUEST_FIELDS = {"name", "email", "note", "website", "elapsed", "turnstile"}
+REQUEST_TEXT = "Request for a copy of the CV."
+NOTE_HEADING = "Note from the sender:"
+NOTE_MAX = 500
+
+
+def _clean_note(value):
+    value = contact.LINE_BREAKS.sub("\n", value.replace("\r\n", "\n"))
+    value = contact.HIDDEN.sub("", value.replace("\t", " ")).strip()
+    if len(value) > NOTE_MAX:
+        return value, f"Use {NOTE_MAX} characters or fewer."
+    return value, None
+
+
+def clean_request(data):
+    """(values, errors) in the form contact.store takes: a fixed body naming
+    the request, then the note if there is one. The name is optional."""
+    values, errors = {"reason": ""}, {}
+    email = data.get("email")
+    if "email" not in data:
+        errors["email"] = ["This field is required."]
+    elif not isinstance(email, str):
+        errors["email"] = ["Enter text."]
+    else:
+        values["email"], problem = contact._clean_field("email", email)
+        if problem:
+            errors["email"] = [problem]
+    name = data.get("name", "")
+    if not isinstance(name, str):
+        errors["name"] = ["Enter text."]
+    elif name.strip():
+        values["name"], problem = contact._clean_field("name", name)
+        if problem:
+            errors["name"] = [problem]
+    else:
+        values["name"] = ""
+    note = data.get("note", "")
+    if not isinstance(note, str):
+        errors["note"] = ["Enter text."]
+        note = ""
+    note, problem = _clean_note(note)
+    if problem:
+        errors["note"] = [problem]
+    values["body"] = (
+        f"{REQUEST_TEXT}\n\n{NOTE_HEADING}\n{note}" if note else REQUEST_TEXT
+    )
+    return values, errors
+
+
+def repeat_text(values):
+    """What counts as asking again: the same email with the same note. The
+    body alone would make every request without a note look like a repeat."""
+    return f"cv-request\n{values['email'].lower()}\n{values['body']}"

@@ -190,6 +190,7 @@ def test_the_list_shows_what_the_owner_needs_and_no_more(signed_in):
 
     assert set(row) == {
         "id",
+        "kind",
         "name",
         "email",
         "status",
@@ -204,6 +205,7 @@ def test_the_list_shows_what_the_owner_needs_and_no_more(signed_in):
     assert row["name"] == PERSON
     assert row["email"] == MAIL
     assert row["kept"] is True
+    assert row["kind"] == "message"
     assert row["snippet"].startswith("Hello, a long confidential")
 
 
@@ -367,6 +369,7 @@ def test_the_first_view_marks_it_read(signed_in):
     assert body["notes"] == []
     assert set(body) == {
         "id",
+        "kind",
         "name",
         "email",
         "body",
