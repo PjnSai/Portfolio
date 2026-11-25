@@ -194,3 +194,39 @@ def test_the_rule_runs_under_the_job_lock(monkeypatch):
 
 def test_the_period_is_90_days():
     assert retention.CV_VIEW_DAYS == 90
+
+
+def test_if_the_delete_fails_no_count_is_kept(monkeypatch):
+    from django.db import OperationalError
+    from django.db.models.query import QuerySet
+
+    view(at=days_ago(100))
+    real = QuerySet._raw_delete
+
+    def failing(self, using):
+        if self.model is CvView:
+            raise OperationalError("gone")
+        return real(self, using)
+
+    monkeypatch.setattr(QuerySet, "_raw_delete", failing)
+
+    with pytest.raises(OperationalError):
+        retention.run()
+    assert CvView.objects.count() == 1
+    assert CvDayCount.objects.count() == 0
+    assert not AuditLog.objects.filter(event="retention_run").exists()
+
+
+def test_every_row_removed_is_counted_and_every_row_counted_is_removed():
+    cutoff = retention.cv_view_cutoff(timezone.now())
+    before = view(at=cutoff - timedelta(microseconds=1))
+    at_cutoff = view(at=cutoff)
+
+    removed = retention.run()["cv_views_deleted"]
+
+    assert removed == 1
+    assert not CvView.objects.filter(id=before.id).exists()
+    assert CvView.objects.filter(id=at_cutoff.id).exists()
+    assert {c.day: c.count for c in CvDayCount.objects.all()} == {
+        before.at.astimezone(UTC).date(): 1
+    }
