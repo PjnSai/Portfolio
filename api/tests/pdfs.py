@@ -27,6 +27,38 @@ def pdf(catalog=b"", trailer=b"", body=b"", stream=b"BT /F1 12 Tf (CV) Tj ET"):
 GOOD = pdf()
 
 
+def text_pdf(pages=2, label="Seeded CV"):
+    """A small, plain PDF of text pages (no scripts, no fonts embedded)."""
+    objects = [b"<< /Type /Catalog /Pages 2 0 R >>"]
+    kids = " ".join(f"{3 + 2 * n} 0 R" for n in range(pages))
+    objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {pages} >>".encode())
+    font = 3 + 2 * pages
+    for n in range(pages):
+        objects.append(
+            (
+                f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                f"/Contents {4 + 2 * n} 0 R "
+                f"/Resources << /Font << /F1 {font} 0 R >> >> >>"
+            ).encode()
+        )
+        text = f"BT /F1 24 Tf 72 700 Td ({label} page {n + 1} of {pages}) Tj ET"
+        body = f"<< /Length {len(text)} >>\nstream\n{text}\nendstream"
+        objects.append(body.encode())
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+    start = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    for offset in offsets:
+        out += f"{offset:010d} 00000 n \n".encode()
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n".encode()
+    out += f"startxref\n{start}\n%%EOF\n".encode()
+    return bytes(out)
+
+
 def zip_with_pdf_header():
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:

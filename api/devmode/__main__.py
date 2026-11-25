@@ -1,7 +1,9 @@
-"""python -m devmode check | serve [--port N]
+"""python -m devmode check | serve [--port N] | seed [--reset]
 
 check  runs the guards only and says whether local mode may start.
 serve  starts the API on 127.0.0.1 with the stand-in Access gate.
+seed   adds the SAMPLE content that is missing; --reset removes the content
+       first (the owner, passkeys, sessions and audit log are kept).
 """
 
 import argparse
@@ -123,6 +125,22 @@ def serve(args):
         ) from error
 
 
+def seed(args):
+    prepare()
+    from django.conf import settings
+
+    from devmode import seed as samples
+
+    samples.require_dev_database(settings.DATABASES["default"]["NAME"])
+    create_database()
+    migrate_and_grant()
+    if args.reset:
+        say("Removing content, CV files, media, messages, counts and alerts.")
+    added = samples.run(reset=args.reset)
+    for part, done in added.items():
+        say(f"{part}: {'added' if done else 'already there, left alone'}")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m devmode")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -131,6 +149,9 @@ def main(argv=None):
     run.add_argument("--host", default=config.API_HOST)
     run.add_argument("--port", type=int, default=config.API_PORT)
     run.set_defaults(func=serve, action="start")
+    fill = commands.add_parser("seed")
+    fill.add_argument("--reset", action="store_true")
+    fill.set_defaults(func=seed, action="seed")
     args = parser.parse_args(argv)
     try:
         args.func(args)
