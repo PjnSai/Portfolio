@@ -294,7 +294,9 @@ def seed_contacts_and_blocks(now):
     from core import contact as contact_hash
     from core.models import BlockedSender, Contact, ContactMessage
 
-    long_email = "a.very.long.address.that.keeps.going.and.going@a-long-domain-name.example"
+    long_email = (
+        "a.very.long.address.that.keeps.going.and.going@a-long-domain-name.example"
+    )
     people = [
         (
             "Matrix Sender Two With A Very Long Name That Keeps Going",
@@ -322,9 +324,9 @@ def seed_contacts_and_blocks(now):
             notes=notes,
             follow_up=follow_up,
         )
-        ContactMessage.objects.filter(
-            email_hash=contact_hash.email_hash(email)
-        ).update(contact=found)
+        ContactMessage.objects.filter(email_hash=contact_hash.email_hash(email)).update(
+            contact=found
+        )
     kept = "long.blocked.address.that.keeps.going@a-long-domain-name.example"
     for email, keep, note, hits in [
         ("hash.only@matrix.example", None, "Kept sending offers", 4),
