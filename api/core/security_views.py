@@ -1,5 +1,5 @@
-"""Admin pages about the site's own security: the abuse overview (SPEC 5.13)
-and alerts (SPEC 10.15)."""
+"""Admin pages about the site's own security: the abuse overview (SPEC 5.13),
+alerts (SPEC 10.15) and the access review (SPEC 5.11)."""
 
 import re
 from datetime import date, timedelta
@@ -9,7 +9,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
 
-from core import abuse, audit, responses
+from core import abuse, access_review, audit, responses
 from core.authz import Level, admin_route
 from core.models import Alert
 
@@ -122,3 +122,10 @@ def alert_seen(request, alert_id):
             alert.save(update_fields=["seen_at"])
             audit.record("alert_seen", id=str(alert.id), kind=alert.kind)
     return JsonResponse(_alert(alert))
+
+
+@admin_route(Level.SESSION)
+def access(request):
+    if request.GET:
+        return responses.bad_request()
+    return JsonResponse({"principals": access_review.review(request.admin_session)})

@@ -99,4 +99,5 @@ urlpatterns = [
     path("abuse", security.abuse_summary),
     path("alerts", security.alert_list),
     path("alerts/<uuid:alert_id>/seen", security.alert_seen),
+    path("access", security.access),
 ]
