@@ -22,8 +22,8 @@ def batch_size(text):
 
 class Command(BaseCommand):
     help = (
-        "Delete contact messages whose retention period has ended, and count "
-        "then remove old CV views (run daily)."
+        "Delete contact messages whose retention period has ended, count "
+        "then remove old CV views, and remove old abuse counts (run daily)."
     )
 
     def add_arguments(self, parser):

@@ -353,3 +353,22 @@ def test_app_role_can_count_and_remove_old_cv_views(roles):
         assert CvView.objects.count() == 1
         assert CvDayCount.objects.get().count == 1
         denied(cursor, "DELETE FROM cv_day_counts")
+
+
+def test_app_role_can_count_abuse_but_never_rewrite_a_day(roles):
+    from datetime import timedelta
+
+    from core import abuse, retention
+    from core.models import AbuseCount
+
+    with as_app() as cursor:
+        abuse.count(abuse.SPAM)
+        abuse.count(abuse.SPAM)
+        assert AbuseCount.objects.get(day=abuse.today(), kind="spam").count == 2
+        denied(cursor, "UPDATE abuse_counts SET kind = 'other'")
+        denied(cursor, "UPDATE abuse_counts SET day = '2020-01-01'")
+        denied(cursor, "TRUNCATE abuse_counts")
+
+        old = abuse.today() - timedelta(days=abuse.KEEP_DAYS + 1)
+        AbuseCount.objects.create(day=old, kind="spam", count=1)
+        assert retention.run()["abuse_counts_deleted"] == 1

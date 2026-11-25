@@ -189,6 +189,22 @@ class CvDayCount(Base):
         ordering = ["-day"]
 
 
+class AbuseCount(Base):
+    """How many refusals or flags of one kind there were on one UTC day
+    (core.abuse). Counts only: never an address, email or text."""
+
+    day = models.DateField()
+    kind = models.CharField(max_length=32)
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "abuse_counts"
+        ordering = ["-day", "kind"]
+        constraints = [
+            models.UniqueConstraint(fields=["day", "kind"], name="abuse_day_kind")
+        ]
+
+
 class Contact(Timestamped):
     """A sender the owner chose to keep a record of (core.contacts). One per
     email, found by the same keyed hash as the messages. Deleting one never

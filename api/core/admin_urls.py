@@ -9,6 +9,7 @@ from core import cv_views as cv
 from core import inbox_views as inbox
 from core import media_views as media
 from core import palette_views as palettes
+from core import security_views as security
 
 urlpatterns = [
     path("csrf", views.csrf),
@@ -95,4 +96,5 @@ urlpatterns = [
     path("cv/switches", cv.switches),
     path("cv/views", cv.view_log),
     path("cv/views/days", cv.view_days),
+    path("abuse", security.abuse_summary),
 ]

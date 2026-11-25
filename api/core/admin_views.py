@@ -10,7 +10,16 @@ from django.http import JsonResponse
 from django.middleware.csrf import get_token, rotate_token
 from django.utils import timezone
 
-from core import audit, notify, passkeys, ratelimit, responses, sessions, vital
+from core import (
+    abuse,
+    audit,
+    notify,
+    passkeys,
+    ratelimit,
+    responses,
+    sessions,
+    vital,
+)
 from core.authz import Level, admin_route
 from core.models import AdminCredential, AuditLog, Owner
 
@@ -25,6 +34,7 @@ def _credential(request):
 def _sign_in_failed(request, event):
     ratelimit.sign_in_failed(request)
     audit.record(event, actor="anonymous")
+    abuse.count(abuse.LOGIN_FAILED)
     return responses.sign_in_failed()
 
 
@@ -50,7 +60,7 @@ def login_options(request):
     # the owner from starting a sign-in; it is enforced in login_verify.
     wait = ratelimit.client_cool_down(request)
     if wait:
-        return responses.too_many_requests(wait)
+        return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(wait))
     return JsonResponse(passkeys.authentication_options("login"))
 
 
@@ -58,7 +68,7 @@ def login_options(request):
 def login_verify(request):
     wait = ratelimit.client_cool_down(request)
     if wait:
-        return responses.too_many_requests(wait)
+        return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(wait))
     credential = _credential(request)
     if credential is None:
         return responses.bad_request()
@@ -125,7 +135,7 @@ def _name(request, default):
 def bootstrap_options(request):
     wait = ratelimit.cool_down(request)
     if wait:
-        return responses.too_many_requests(wait)
+        return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(wait))
     if not _bootstrap_open(Owner.objects.get(), request.json.get("token")):
         return _sign_in_failed(request, "bootstrap_failed")
     return JsonResponse(passkeys.registration_options("bootstrap"))
@@ -135,7 +145,7 @@ def bootstrap_options(request):
 def bootstrap_verify(request):
     wait = ratelimit.cool_down(request)
     if wait:
-        return responses.too_many_requests(wait)
+        return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(wait))
     credential = _credential(request)
     name = _name(request, "First passkey")
     if name is None:
@@ -174,7 +184,7 @@ def _reset_access(keep=None):
 def recovery_options(request):
     wait = ratelimit.cool_down(request)
     if wait:
-        return responses.too_many_requests(wait)
+        return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(wait))
     owner = Owner.objects.get()
     if not _recovery_key_matches(request.json.get("key"), owner):
         return _sign_in_failed(request, "recovery_failed")
@@ -185,7 +195,7 @@ def recovery_options(request):
 def recovery_verify(request):
     wait = ratelimit.cool_down(request)
     if wait:
-        return responses.too_many_requests(wait)
+        return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(wait))
     credential = _credential(request)
     name = _name(request, "Recovery passkey")
     if name is None:
@@ -300,7 +310,7 @@ def elevate_verify(request):
     passkey = passkeys.authenticate(credential, "elevate", str(current.id))
     if passkey is None:
         audit.record("elevation_failed")
-        return responses.forbidden()
+        return abuse.refused(abuse.ELEVATION_FAILED, responses.forbidden())
     response = JsonResponse({})
     with transaction.atomic():
         sessions.rotate(

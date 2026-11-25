@@ -15,6 +15,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
 from core import (
+    abuse,
     contact,
     cv,
     media,
@@ -98,7 +99,7 @@ def _upload(request):
     except cv.Full:
         return JsonResponse({"detail": cv.FULL, "code": "cv_versions_full"}, status=409)
     except media.OverCap:
-        return responses.too_many_requests(3600)
+        return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(3600))
     except STORAGE_ERRORS as error:
         log.error("cv storage failed: %s", type(error).__name__)
         return responses.unavailable()
@@ -182,7 +183,7 @@ def public_status(request):
         return responses.bad_request()
     wait = ratelimit.public_cap(request)
     if wait:
-        return responses.too_many_requests(wait)
+        return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(wait))
     return JsonResponse(cv.status(), headers={"Cache-Control": STATUS_CACHE})
 
 
@@ -202,7 +203,9 @@ def public_link(request):
         return _link(data, ratelimit.client_address(request))
     except cv.Limited as limit:
         log.info("cv link outcome=rate_limited")
-        return responses.too_many_requests(limit.seconds)
+        return abuse.refused(
+            abuse.RATE_LIMITED, responses.too_many_requests(limit.seconds)
+        )
     except (*UNAVAILABLE, turnstile.Unavailable) as error:
         return _unavailable("link", error)
 
@@ -214,7 +217,7 @@ def _link(data, address):
     cv.count_link_attempt(address)
     if not form.passes_turnstile(data.get("turnstile")):
         log.info("cv link outcome=bad_challenge")
-        return responses.bad_challenge()
+        return abuse.refused(abuse.TURNSTILE_FAILED, responses.bad_challenge())
     cv.count_link()
     log.info("cv link outcome=issued")
     return JsonResponse(cv.link(item), headers={"Cache-Control": "no-store"})
@@ -234,7 +237,7 @@ def public_file(request, token):
     purpose, binding = found
     wait = ratelimit.public_cap(request)
     if wait:
-        return responses.too_many_requests(wait)
+        return abuse.refused(abuse.RATE_LIMITED, responses.too_many_requests(wait))
     try:
         if not cv.link_allowed(purpose, cv.switches()):
             return responses.forbidden()
@@ -267,7 +270,7 @@ def public_request(request):
             return responses.forbidden()
         values, errors = cv.clean_request(data)
         if errors:
-            return responses.invalid(errors)
+            return abuse.refused(abuse.REJECTED_FORM, responses.invalid(errors))
         item = cv.live() if on["instant_download"] else None
         return form.accept(
             data,
@@ -279,7 +282,9 @@ def public_request(request):
         )
     except contact.Limited as limit:
         log.info("cv request outcome=rate_limited")
-        return responses.contact_limited(limit.seconds)
+        return abuse.refused(
+            abuse.RATE_LIMITED, responses.contact_limited(limit.seconds)
+        )
     except (*UNAVAILABLE, turnstile.Unavailable) as error:
         return form.unavailable(error)
 
