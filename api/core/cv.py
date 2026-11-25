@@ -188,28 +188,35 @@ def read(item):
     return storage.cv_backend().read(item.storage_key)
 
 
-# The two switches. Both are on until the owner changes them, and each change
-# is a vital action (core.vital), turning off as much as turning on: one kind,
-# whose payload holds both values.
+# The three switches: view, request and instant download. All are on until the
+# owner changes them, and each change is a vital action (core.vital), turning
+# off as much as turning on: one kind, whose payload holds all three values.
+# Instant download only counts while request is on.
 
 SWITCHES = "cv_switches"
+SWITCH_NAMES = ("view", "request", "instant_download")
+COLUMNS = {
+    "view": "cv_view_enabled",
+    "request": "cv_request_enabled",
+    "instant_download": "cv_instant_download_enabled",
+}
 
 
 def switches():
-    """{"view", "request"}. Reading them never creates the settings row."""
+    """{"view", "request", "instant_download"}. Reading them never creates the
+    settings row."""
     row = SiteSettings.objects.values_list(
-        "cv_view_enabled", "cv_request_enabled"
+        *(COLUMNS[name] for name in SWITCH_NAMES)
     ).first()
-    view, request = row or (True, True)
-    return {"view": view, "request": request}
+    return dict(zip(SWITCH_NAMES, row or (True,) * len(SWITCH_NAMES), strict=True))
 
 
 def clean_switches(payload):
-    if not isinstance(payload, dict) or set(payload) != {"view", "request"}:
+    if not isinstance(payload, dict) or set(payload) != set(SWITCH_NAMES):
         return None
     if not all(isinstance(payload[name], bool) for name in payload):
         return None
-    return {"view": payload["view"], "request": payload["request"]}
+    return {name: payload[name] for name in SWITCH_NAMES}
 
 
 def set_switches(payload):
@@ -218,10 +225,10 @@ def set_switches(payload):
 
     row = content.site_settings()
     SiteSettings.objects.filter(id=row.id).update(
-        cv_view_enabled=payload["view"], cv_request_enabled=payload["request"]
+        **{COLUMNS[name]: payload[name] for name in SWITCH_NAMES}
     )
     audit.record(
-        "cv_switches_changed", view=payload["view"], request=payload["request"]
+        "cv_switches_changed", **{name: payload[name] for name in SWITCH_NAMES}
     )
 
 
@@ -404,6 +411,7 @@ def describe_view(row):
         "id": str(row.id),
         "at": row.at.isoformat(),
         "version": str(row.version),
+        "kind": row.kind,
         "country": row.country,
         "user_agent": row.user_agent,
     }

@@ -51,10 +51,12 @@ class SiteSettings(Timestamped):
     contact_max_links = models.PositiveSmallIntegerField(null=True, blank=True)
     contact_spam_threshold = models.PositiveSmallIntegerField(null=True, blank=True)
     blocklist_months = models.PositiveSmallIntegerField(null=True, blank=True)
-    # Whether visitors may view the public CV, and ask for a copy (core.cv).
-    # Changed only by a vital action.
+    # Whether visitors may view the public CV, ask for a copy, and get a
+    # download link once they have asked (core.cv). Changed only by a vital
+    # action.
     cv_view_enabled = models.BooleanField(default=True, db_default=True)
     cv_request_enabled = models.BooleanField(default=True, db_default=True)
+    cv_instant_download_enabled = models.BooleanField(default=True, db_default=True)
 
     class Meta:
         db_table = "site_settings"
@@ -154,12 +156,20 @@ class CvVersion(Base):
 
 
 class CvView(Base):
-    """One time a visitor opened the public CV. No address, email or free text.
-    The version is a plain id, not a foreign key: the log is append-only (the
-    app role cannot update it), so deleting a version must not touch it."""
+    """One time a visitor opened or downloaded the public CV. No address, email
+    or free text. The version is a plain id, not a foreign key: the log is
+    append-only (the app role cannot update it), so deleting a version must not
+    touch it."""
+
+    class Kind(models.TextChoices):
+        VIEW = "view"
+        DOWNLOAD = "download"
 
     at = models.DateTimeField(default=timezone.now, db_index=True)
     version = models.UUIDField()
+    kind = models.CharField(
+        max_length=8, choices=Kind.choices, default="view", db_default="view"
+    )
     country = models.CharField(max_length=2, blank=True, default="")
     user_agent = models.CharField(max_length=200, blank=True, default="")
 

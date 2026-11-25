@@ -323,6 +323,19 @@ def test_app_role_can_store_a_cv_request_and_change_the_switches(roles):
     assert ContactMessage.objects.get().kind == "cv_request"
 
 
+def test_app_role_can_change_instant_download_and_log_a_download(roles):
+    from core.models import CvView
+
+    with as_app() as cursor:
+        cursor.execute("UPDATE site_settings SET cv_instant_download_enabled = false")
+        CvView.objects.create(
+            version="00000000-0000-4000-8000-000000000000", kind="download"
+        )
+        denied(cursor, "UPDATE cv_views SET kind = 'view'")
+
+    assert CvView.objects.get().kind == "download"
+
+
 def test_app_role_can_count_and_remove_old_cv_views(roles):
     from datetime import timedelta
 

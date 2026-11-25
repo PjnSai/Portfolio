@@ -19,6 +19,7 @@ pytestmark = pytest.mark.django_db
 
 BEFORE = [("core", "0021_blocklist_address_hits")]
 CV = [("core", "0022_cv")]
+DOWNLOAD = [("core", "0023_cv_instant_download")]
 
 
 def version(**fields):
@@ -63,7 +64,21 @@ def test_many_versions_can_be_not_live():
 
 
 def test_the_view_log_has_no_address_email_or_free_text():
-    assert columns("cv_views") == {"id", "at", "version", "country", "user_agent"}
+    assert columns("cv_views") == {
+        "id",
+        "at",
+        "version",
+        "kind",
+        "country",
+        "user_agent",
+    }
+
+
+def test_a_logged_view_is_a_view_unless_marked():
+    row = CvView.objects.create(version="00000000-0000-4000-8000-000000000000")
+
+    assert row.kind == CvView.Kind.VIEW
+    assert set(CvView.Kind.values) == {"view", "download"}
 
 
 def test_the_view_log_limits_its_fields():
@@ -95,10 +110,14 @@ def test_a_message_is_a_normal_message_unless_marked():
     assert set(ContactMessage.Kind.values) == {"message", "cv_request"}
 
 
-def test_both_switches_are_on_by_default():
+def test_all_three_switches_are_on_by_default():
     row = SiteSettings.objects.create()
 
-    assert (row.cv_view_enabled, row.cv_request_enabled) == (True, True)
+    assert (
+        row.cv_view_enabled,
+        row.cv_request_enabled,
+        row.cv_instant_download_enabled,
+    ) == (True, True, True)
 
 
 def test_the_unused_cv_files_table_is_gone():
@@ -153,3 +172,30 @@ def test_the_migration_reverses():
     assert "cv_files" in tables()
     assert not {"cv_versions", "cv_views", "cv_day_counts"} & tables()
     assert "kind" not in columns("contact_messages")
+
+
+@pytest.mark.usefixtures("at_latest")
+def test_existing_settings_and_views_get_the_new_defaults():
+    old = migrate(CV)
+    row = old.get_model("core", "SiteSettings").objects.create(cv_view_enabled=False)
+    seen = old.get_model("core", "CvView").objects.create(
+        version="00000000-0000-4000-8000-000000000000"
+    )
+    with connection.cursor() as cursor:
+        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+
+    new = migrate(DOWNLOAD)
+
+    settings_row = new.get_model("core", "SiteSettings").objects.get(id=row.id)
+    assert settings_row.cv_view_enabled is False
+    assert settings_row.cv_instant_download_enabled is True
+    assert new.get_model("core", "CvView").objects.get(id=seen.id).kind == "view"
+
+
+@pytest.mark.usefixtures("at_latest")
+def test_the_download_migration_reverses():
+    migrate(DOWNLOAD)
+    migrate(CV)
+
+    assert "cv_instant_download_enabled" not in columns("site_settings")
+    assert "kind" not in columns("cv_views")

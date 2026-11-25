@@ -45,6 +45,7 @@ def test_the_list_is_newest_first_and_needs_a_session(signed_in, api):
         "id": str(newer.id),
         "at": newer.at.isoformat(),
         "version": VERSION,
+        "kind": "view",
         "country": "GB",
         "user_agent": "Browser/1.0",
     }
