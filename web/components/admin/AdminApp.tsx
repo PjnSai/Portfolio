@@ -21,7 +21,7 @@ export const ADMIN = "/desk";
 export type PendingAction = {
   id: string;
   kind: string;
-  target: Record<string, string>;
+  target: Record<string, string | number | boolean>;
   state: "waiting" | "ready";
   requested_at: string;
   execute_after: string;
@@ -105,6 +105,8 @@ async function checkSession(): Promise<SessionState> {
 const NAV = [
   ["sections", "Sections"],
   ["messages", "Messages"],
+  ["contacts", "Contacts"],
+  ["blocklist", "Blocklist"],
   ["media", "Media"],
   ["settings", "Settings"],
   ["trash", "Trash"],
