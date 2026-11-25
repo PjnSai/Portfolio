@@ -3,8 +3,9 @@ the public status, view link, file and copy request under /api/v1/cv.
 
 The public routes take no cookie or session, so they need no CSRF token; the
 request guard still requires the site's own Origin on each POST. There is no
-public route to a file by name or id, and no download: the file is reached
-only through a link from /cv/link, and is sent for viewing on the site.
+public route to a file by name or id: the file is reached only through a
+one-minute link, from /cv/link to view it on the site, or from /cv/request to
+download it.
 """
 
 import logging
@@ -216,27 +217,29 @@ def _link(data, address):
 @csrf_exempt
 @require_GET
 def public_file(request, token):
-    """The live PDF for a good link. A bad, changed, expired or outdated link
-    gets the same plain 404. The view is logged once the file is in hand and
-    before it is sent; if the log cannot be written, nothing is sent."""
+    """The live PDF for a good link: shown inline for a view link, sent as an
+    attachment for a download link, each only while its switches are on. A
+    bad, changed, expired or outdated link gets the same plain 404. The visit
+    is logged, with its kind, once the file is in hand and before it is sent;
+    if the log cannot be written, nothing is sent."""
     found = cv.linked(token)
-    if found is None or found[0] != cv.VIEW or request.GET:
+    if found is None or request.GET:
         return responses.not_found()
-    binding = found[1]
+    purpose, binding = found
     wait = ratelimit.public_cap(request)
     if wait:
         return responses.too_many_requests(wait)
     try:
-        if not cv.switches()["view"]:
+        if not cv.link_allowed(purpose, cv.switches()):
             return responses.forbidden()
         item = cv.is_live_binding(binding)
         if item is None:
             return responses.not_found()
         data = cv.read(item)
-        cv.log_view(item, request)
+        cv.log_view(item, request, purpose)
     except (*UNAVAILABLE, *STORAGE_ERRORS) as error:
         return _unavailable("file", error)
-    return pdf_response(data, "inline")
+    return pdf_response(data, "attachment" if purpose == cv.DOWNLOAD else "inline")
 
 
 @csrf_exempt

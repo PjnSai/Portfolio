@@ -1,6 +1,6 @@
 """Viewing the public CV: the status, the link given after a human check, and
-the file behind it. No download route, no public file URL, nothing public that
-names a key, an id or a hash."""
+the file behind it. No lasting public file URL, nothing public that names a
+key, an id or a hash. Downloads are in test_cv_download."""
 
 import json
 

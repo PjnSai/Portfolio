@@ -2,9 +2,10 @@
 
 Only the public CV, with professional details alone, is stored, as a PDF. The
 owner uploads versions behind a fresh passkey and chooses which one is live.
-Visitors never get a file URL or a download: after a human check they get a
-link that works for a minute, for a viewer on the site. A copy is had only by
-asking through the inbox (core.cv_request), and the owner answers by hand.
+Visitors never get a lasting file URL. After a human check they get a link
+that works for a minute: from /cv/link, to view the CV on the site; from
+/cv/request, which also puts the request in the inbox, to download it, while
+the instant download switch is on.
 
 Storage keys never leave this module and the admin routes; nothing public
 returns a key, an id or a hash.
@@ -338,6 +339,14 @@ def linked(token):
     return None
 
 
+def link_allowed(purpose, on):
+    """Whether a link of this purpose may still be used with the switches as
+    they are now."""
+    if purpose == DOWNLOAD:
+        return bool(on["instant_download"] and on["request"])
+    return bool(on["view"])
+
+
 def is_live_binding(binding):
     """The live version, if the binding names it, else None."""
     item = live()
@@ -363,9 +372,12 @@ def _agent(request):
     return value.strip()[:AGENT_MAX]
 
 
-def log_view(item, request):
+def log_view(item, request, purpose=VIEW):
     return CvView.objects.create(
-        version=item.id, country=_country(request), user_agent=_agent(request)
+        version=item.id,
+        kind=CvView.Kind.DOWNLOAD if purpose == DOWNLOAD else CvView.Kind.VIEW,
+        country=_country(request),
+        user_agent=_agent(request),
     )
 
 

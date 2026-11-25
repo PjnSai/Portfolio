@@ -7,14 +7,21 @@ import json
 
 import pytest
 import redis
+from django.core import signing
 from django.db import OperationalError
 from django.test import Client
 
 from core import blocklist, cache, contact, cv
-from core.models import ContactMessage, SiteSettings
+from core.models import ContactMessage, CvView, SiteSettings
 from tests import pdfs
 from tests.conftest import ORIGIN
-from tests.test_cv_public import add_version, assert_nothing_secret, fetch
+from tests.test_cv_public import (
+    add_version,
+    assert_nothing_secret,
+    body_of,
+    fetch,
+    secrets_of,
+)
 from tests.turnstile import PASSES
 
 pytestmark = pytest.mark.django_db
@@ -23,6 +30,8 @@ STATUS = "/api/v1/cv"
 REQUEST = "/api/v1/cv/request"
 SENT = {"detail": "Thank you. Your message has been received."}
 ADDRESS = "203.0.113.7"
+NOT_FOUND = {"detail": "Not found."}
+FORBIDDEN = {"detail": "Forbidden."}
 _counter = iter(range(1, 10**6))
 
 
@@ -247,3 +256,169 @@ def test_the_link_is_for_the_version_live_when_asked(live):
     cv.set_live(add_version(pdfs.pdf(stream=b"(new)"), live=False).id)
 
     assert fetch(url).status_code == 404
+
+
+# The file behind a download link
+
+
+def download_url():
+    response = ask()
+    assert response.status_code == 201, response.content
+    return response.json()["url"]
+
+
+def view_url():
+    response = Client(enforce_csrf_checks=True).post(
+        "/api/v1/cv/link",
+        json.dumps({"turnstile": f"{PASSES}#v{next(_counter)}"}),
+        content_type="application/json",
+        secure=True,
+        headers={"Origin": ORIGIN, "Sec-Fetch-Site": "same-site"},
+    )
+    assert response.status_code == 200, response.content
+    return response.json()["url"]
+
+
+def token_of(url):
+    return url.rsplit("/", 1)[1]
+
+
+def test_a_download_link_gives_the_pdf_as_an_attachment(live):
+    SiteSettings.objects.create(published={"title": "Pujan Shahi"})
+
+    response = fetch(download_url())
+
+    assert response.status_code == 200
+    assert body_of(response) == pdfs.GOOD
+    assert response["Content-Type"] == "application/pdf"
+    assert response["Content-Disposition"] == (
+        'attachment; filename="Pujan-Shahi-CV.pdf"'
+    )
+    assert response["Content-Length"] == str(len(pdfs.GOOD))
+    assert response["X-Content-Type-Options"] == "nosniff"
+    assert response["Cache-Control"] == "no-store"
+    assert response["X-Robots-Tag"] == "noindex"
+    assert response["X-Frame-Options"] == "DENY"
+    assert_nothing_secret_in_headers(response, live)
+
+
+def assert_nothing_secret_in_headers(response, item):
+    headers = json.dumps(dict(response.items()))
+    for secret in secrets_of(item):
+        assert secret not in headers
+
+
+def test_a_download_is_logged_as_a_download(live):
+    fetch(download_url(), **{"Cf-Ipcountry": "GB", "User-Agent": "Browser/2.0"})
+
+    row = CvView.objects.get()
+    assert (row.kind, row.version, row.country, row.user_agent) == (
+        "download",
+        live.id,
+        "GB",
+        "Browser/2.0",
+    )
+
+
+def test_a_view_is_still_logged_as_a_view_and_shown_inline(live):
+    response = fetch(view_url())
+
+    assert response["Content-Disposition"].startswith("inline;")
+    assert CvView.objects.get().kind == "view"
+
+
+def test_a_view_token_never_works_as_a_download_token(live):
+    view = token_of(view_url())
+    download = token_of(download_url())
+
+    with pytest.raises(signing.BadSignature):
+        signing.TimestampSigner(salt=cv.LINK_SALTS[cv.DOWNLOAD]).unsign(view)
+    with pytest.raises(signing.BadSignature):
+        signing.TimestampSigner(salt=cv.LINK_SALTS[cv.VIEW]).unsign(download)
+    assert cv.linked(view)[0] == cv.VIEW
+    assert cv.linked(download)[0] == cv.DOWNLOAD
+
+
+def test_a_view_token_cannot_download_once_viewing_is_off(live):
+    url = view_url()
+    switches(view=False)
+
+    assert fetch(url).status_code == 403
+    assert CvView.objects.count() == 0
+
+
+def test_a_download_token_works_with_viewing_off(live):
+    switches(view=False)
+
+    response = fetch(download_url())
+
+    assert response.status_code == 200
+    assert response["Content-Disposition"].startswith("attachment;")
+
+
+@pytest.mark.parametrize(
+    "off", [{"instant_download": False}, {"request": False}], ids=["off", "no request"]
+)
+def test_a_download_token_is_refused_once_its_switch_is_off(live, off):
+    url = download_url()
+    switches(**off)
+
+    response = fetch(url)
+
+    assert response.status_code == 403
+    assert response.json() == FORBIDDEN
+    assert CvView.objects.count() == 0
+
+
+def tampered(url):
+    return url[:-1] + ("A" if url[-1] != "A" else "B")
+
+
+@pytest.mark.parametrize(
+    "change",
+    [tampered, lambda url: url + "x", lambda url: url.rsplit(":", 2)[0] + ":a:b"],
+    ids=["tampered", "longer", "forged"],
+)
+def test_a_bad_download_link_is_a_plain_not_found(live, change):
+    response = fetch(change(download_url()))
+
+    assert response.status_code == 404
+    assert response.json() == NOT_FOUND
+    assert CvView.objects.count() == 0
+
+
+def test_an_expired_download_link_is_a_plain_not_found(live, monkeypatch):
+    import time
+
+    url = download_url()
+    now = time.time()
+    monkeypatch.setattr(time, "time", lambda: now + 61)
+
+    response = fetch(url)
+
+    assert response.status_code == 404
+    assert response.json() == NOT_FOUND
+
+
+def test_if_the_download_cannot_be_logged_the_file_is_not_sent(live, monkeypatch):
+    url = download_url()
+
+    def broken(*args, **kwargs):
+        raise OperationalError("gone")
+
+    monkeypatch.setattr(CvView.objects, "create", broken)
+
+    response = fetch(url)
+
+    assert response.status_code == 503
+    assert pdfs.GOOD not in body_of(response)
+
+
+def test_if_the_file_cannot_be_read_no_download_is_logged(live, cv_root):
+    url = download_url()
+    (cv_root / live.storage_key).unlink()
+
+    response = fetch(url)
+
+    assert response.status_code == 503
+    assert CvView.objects.count() == 0
