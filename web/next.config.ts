@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { apiOrigin } from "./lib/api-base";
+import { privacyEmailFrom } from "./lib/public/privacy-email";
 import { siteKeyFrom } from "./lib/public/turnstile-key";
 import { siteOrigin } from "./lib/seo";
 
@@ -15,6 +16,7 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_API_BASE_URL: apiOrigin(process.env.API_BASE_URL),
     NEXT_PUBLIC_TURNSTILE_SITE_KEY: siteKeyFrom(process.env),
+    NEXT_PUBLIC_PRIVACY_EMAIL: privacyEmailFrom(process.env),
   },
   turbopack: {
     rules: {

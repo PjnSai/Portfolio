@@ -3,8 +3,9 @@
 // (docs/PROGRESS.md lists what remains).
 
 import type { ReactNode } from "react";
+import { PRIVACY_EMAIL } from "@/lib/public/privacy-email";
 import { REPORT_URL, REPOSITORY } from "@/lib/seo";
-const REVIEWED = "23 November 2026";
+const REVIEWED = "25 November 2026";
 
 function Doc({ label, title, lead, children }: { label: string; title: string; lead: string; children: ReactNode }) {
   return (
@@ -26,7 +27,16 @@ const External = ({ href, children }: { href: string; children: ReactNode }) => 
   </a>
 );
 
-export function PrivacyPage({ name }: { name: string }) {
+/** The data-request address as a link, or the words that say it is still to come. */
+function RequestAddress({ email }: { email: string }) {
+  return email ? (
+    <a href={`mailto:${email}`}>{email}</a>
+  ) : (
+    <>the data-request email address, which will be added before the site launches</>
+  );
+}
+
+export function PrivacyPage({ name, email = PRIVACY_EMAIL }: { name: string; email?: string }) {
   return (
     <Doc
       label="Site"
@@ -71,10 +81,11 @@ export function PrivacyPage({ name }: { name: string }) {
         It is shown only in the private editing area, as plain text, and is not shared.
       </p>
       <p>
-        <strong>How long.</strong> Messages are kept for 12 months by default. A message is kept for longer only if
-        {name} marks it to be kept or has written notes on it, and then until it is deleted. {name} can change the
-        periods, and can delete a message at any time. Deleting is a deliberate step that needs a passkey and waits
-        24 hours before it runs.
+        <strong>How long.</strong> Messages, and any notes written on them, are kept for 12 months by default.
+        Messages held back by the checks (see below) are kept for 30 days. {name} can change both periods. A message
+        is kept until {name} deletes it, and not removed automatically, if it has notes on it, if {name} has marked
+        it to keep, or if it is linked to a saved contact (see below). {name} can delete a message at any time.
+        Deleting is a deliberate step that needs a passkey and waits 24 hours before it runs.
       </p>
       <p>
         <strong>Checks against abuse.</strong> The form uses Cloudflare Turnstile to tell people from automated
@@ -85,11 +96,13 @@ export function PrivacyPage({ name }: { name: string }) {
         field that only scripts fill in, and counts how long it was open.
       </p>
       <p>
-        <strong>Your address.</strong> To limit abuse, the server limits each address to 5 messages an hour, each
-        email address to 3 a day, and the whole form to 25 a day. It counts them using a keyed hash of your IP
-        address and of your email address. A hash cannot be turned back into the address without a secret key kept on
-        the server. A hash of your IP address is also kept with your message, and the counts are deleted after an
-        hour or a day.
+        <strong>Limits and your address.</strong> To limit abuse, the form works to daily and hourly limits that{" "}
+        {name} can change. The current defaults are 5 messages an hour from each address, 3 a day from each email
+        address, and, for the whole form, 25 real messages and 20 held-back messages a day. The server counts them
+        using a keyed hash of your IP address and of your email address. A hash cannot be turned back into the
+        address without a secret key kept on the server. The counts are deleted after an hour or a day. A hash of
+        your IP address and a hash of your email address are also kept with your message; the second lets {name}
+        find every message from one email address when asked to delete them.
       </p>
       <p>
         <strong>Messages held back.</strong> A message that fails the checks (the hidden field filled in, sent faster
@@ -98,8 +111,24 @@ export function PrivacyPage({ name }: { name: string }) {
         to the inbox. You are told your message was received either way.
       </p>
       <p>
-        <strong>Without JavaScript.</strong> The form needs JavaScript. If it is switched off, the page says so and
-        points to the professional links instead. No email address is shown on this site.
+        <strong>Saved contacts.</strong> {name} can save the sender of a message as a contact. A contact holds the
+        name and email address from the message and, if {name} adds them, an organisation, tags, notes and a
+        follow-up date. Contacts are private: they are shown only in the private editing area and are not shared.
+        A contact is kept until {name} deletes it, and messages linked to it are kept for as long as they are linked.
+      </p>
+      <p>
+        <strong>Blocked senders.</strong> If a sender is sending abuse, {name} can block them. By default a block
+        keeps only a scrambled hash of the email address, which cannot be turned back into the address. For one
+        block {name} can choose to keep the address itself as well, to be able to see who is blocked; it is shown
+        only in the private editing area. A block is removed automatically after 12 months by default, unless{" "}
+        {name} renews it, and {name} can remove it at any time. A blocked sender is told the message was received,
+        and the message is not stored. Each block also counts how many messages it stopped and when it last stopped
+        one. That count holds no personal data.
+      </p>
+      <p>
+        <strong>Without JavaScript.</strong> The form needs JavaScript. If it is switched off, the page says so
+        and points to the professional links instead. The only email address shown on this site is the
+        data-request address below, and only once it has been set.
       </p>
 
       <h2>CV download</h2>
@@ -111,8 +140,26 @@ export function PrivacyPage({ name }: { name: string }) {
       <h2>Your rights</h2>
       <p>
         You can ask what is held about you, ask for it to be corrected or deleted, or object to how it is used.
-        To ask, send a message through the contact form on the home page, saying what you want and which email
-        address you used, or use one of the professional profiles linked there. If you are not happy with the answer, you can complain to the Information Commissioner&apos;s Office at{" "}
+        To ask, email <RequestAddress email={email} />. That address is for these requests only. {name} will check
+        that the request comes from the email address your messages came from, or ask for other proof that the
+        address is yours, so that nobody can read or delete another person&apos;s messages. You will get a reply
+        within one month.
+      </p>
+      <p>
+        <strong>What deleting everything removes.</strong> If you ask for everything to be deleted, {name} removes
+        all the messages from your email address, the notes written on them, and your saved contact if there is one,
+        including messages marked to keep. The block on your address is removed too, unless {name} chooses to keep
+        you blocked, in which case only a scrambled hash of the address stays and any address kept with the block is
+        removed. Like any deletion, it waits 24 hours before it runs.
+      </p>
+      <p>
+        <strong>The exception: security and audit logs.</strong> The site keeps a log of what is done in the private
+        editing area, such as signing in and deleting. It cannot be edited. It holds no message text, names or
+        email addresses. For a deletion it may keep a scrambled code of the email address and counts of what was
+        removed, to show that the deletion happened.
+      </p>
+      <p>
+        If you are not happy with the answer, you can complain to the Information Commissioner&apos;s Office at{" "}
         <External href="https://ico.org.uk/make-a-complaint/">ico.org.uk</External>.
       </p>
     </Doc>
