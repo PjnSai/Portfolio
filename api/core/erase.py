@@ -103,7 +103,8 @@ def run(payload, batch_size=None):
         )
         unblocked = 0
         if also_block:
-            blocklist.ensure(email_hash)
+            # Blocked by hash only from now on: a kept address goes.
+            blocklist.drop_address(blocklist.ensure(email_hash)[0])
         else:
             gone = BlockedSender.objects.filter(email_hash=email_hash)
             unblocked = gone._raw_delete(gone.db)

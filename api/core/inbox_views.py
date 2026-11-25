@@ -144,7 +144,9 @@ def message_block(request, message_id):
     if error:
         return error
     try:
-        entry, found = blocklist.block_message(message_id, data.get("note", ""))
+        entry, found = blocklist.block_message(
+            message_id, data.get("note", ""), data["keep_address"]
+        )
     except blocklist.Full:
         return responses.conflict("blocklist_full")
     if found is None:
@@ -161,7 +163,9 @@ def blocklist_view(request):
         if error:
             return error
         try:
-            entry, _ = blocklist.block_email(data["email"], data.get("note", ""))
+            entry, _ = blocklist.block_email(
+                data["email"], data.get("note", ""), data["keep_address"]
+            )
         except blocklist.Full:
             return responses.conflict("blocklist_full")
         return JsonResponse(blocklist.describe(entry), status=201)

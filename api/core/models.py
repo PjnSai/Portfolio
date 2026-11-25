@@ -254,14 +254,20 @@ class ContactNote(Base):
 
 
 class BlockedSender(Base):
-    """A sender the owner blocked. Only the keyed hash of the email is kept
-    (core.contact.email_hash), never the address; it stops blocking at
+    """A sender the owner blocked, found by the keyed hash of the email
+    (core.contact.email_hash). The address itself is kept only if the owner
+    chose to, and only for the entry's lifetime; it stops blocking at
     expires_at and the daily job removes it then (core.blocklist)."""
 
     email_hash = models.CharField(max_length=64, unique=True)
+    # Null, not blank, when no address is kept: the default.
+    email = models.CharField(max_length=254, null=True, blank=True)  # noqa: DJ001
     note = models.CharField(max_length=200, blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
     expires_at = models.DateTimeField(db_index=True)
+    # How many messages it stopped, and when it last did. No personal data.
+    hit_count = models.PositiveIntegerField(default=0)
+    last_hit_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "blocked_senders"

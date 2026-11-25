@@ -454,6 +454,14 @@ class Limits(Strict):
 
 class BlockNote(Strict):
     note = Text(max_length=200, required=False, allow_blank=True)
+    # Store the address, so the list can show it, as well as its hash.
+    keep_address = Flag(required=False, default=False)
+
+    def validate_note(self, value):
+        # A guard against pasting an address into the note, not a guarantee.
+        if "@" in value:
+            raise serializers.ValidationError("Leave email addresses out of notes.")
+        return value
 
 
 class Block(BlockNote):

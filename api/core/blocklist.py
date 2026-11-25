@@ -1,15 +1,20 @@
 """Senders the owner has blocked (SPEC 5.8a (d), 10.13).
 
-Only the keyed hash of an email is stored, the same one the form counts by
-(core.contact.email_hash), so the list cannot be read back as addresses. The
-form answers a blocked sender exactly as it answers dropped spam, and nothing
-is stored or counted. An entry blocks until expires_at; the owner may renew it,
-and the daily job removes it once it has expired. Nothing here returns the hash.
+An entry is found by the keyed hash of an email, the same one the form counts
+by (core.contact.email_hash). By default only the hash is stored, so the list
+cannot be read back as addresses; the owner may choose, per block, to keep the
+address so the list can show it. A kept address is written only when the entry
+is made, shown only to the signed-in owner while the entry still blocks, and
+goes with the entry. The form answers a blocked sender exactly as it answers
+dropped spam, and nothing is stored; the entry only counts that it stopped one.
+An entry blocks until expires_at; the owner may renew it, and the daily job
+removes it once it has expired. Nothing here returns the hash.
 """
 
 import calendar
 
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
 from core import audit, contact, retention
@@ -44,12 +49,25 @@ def is_blocked(email):
     return active().filter(email_hash=contact.email_hash(email)).exists()
 
 
+def hit(email):
+    """True if an entry still blocks this email. Finding it and counting the
+    hit are one UPDATE statement, so there is no second lookup."""
+    now = timezone.now()
+    with transaction.atomic():
+        found = active(now).filter(email_hash=contact.email_hash(email))
+        return found.update(hit_count=F("hit_count") + 1, last_hit_at=now) > 0
+
+
 def describe(entry):
+    blocking = entry.expires_at > timezone.now()
     return {
         "id": str(entry.id),
+        "email": entry.email if blocking else None,
         "note": entry.note,
         "created_at": entry.created_at.isoformat(),
         "expires_at": entry.expires_at.isoformat(),
+        "hit_count": entry.hit_count,
+        "last_hit_at": entry.last_hit_at.isoformat() if entry.last_hit_at else None,
     }
 
 
@@ -68,10 +86,31 @@ def _serialise_adds():
     SiteSettings.objects.select_for_update().get(id=content.site_settings().id)
 
 
-def ensure(email_hash, note=""):
+def _replace(entry, **fields):
+    """The entry made again under the same id with fields changed. The app role
+    cannot rewrite a stored email or hash, so this deletes and adds it."""
+    names = (
+        "id",
+        "email_hash",
+        "email",
+        "note",
+        "created_at",
+        "expires_at",
+        "hit_count",
+        "last_hit_at",
+    )
+    values = {name: getattr(entry, name) for name in names}
+    values.update(fields)
+    BlockedSender.objects.filter(id=entry.id).delete()
+    return BlockedSender.objects.create(**values)
+
+
+def ensure(email_hash, note="", email=None):
     """The entry for this hash, added with the normal lifetime if there is none
-    that still blocks. One that is there and blocking is left as it is; one that
-    has expired is renewed. Must run inside a transaction. Raises Full."""
+    that still blocks. One that is there and blocking is left as it is,
+    including whether it keeps an address. One that has expired is renewed and
+    keeps an address only if one is given now. email is the address to keep,
+    None for the hash only. Must run inside a transaction. Raises Full."""
     _serialise_adds()
     now = timezone.now()
     entry = (
@@ -82,24 +121,35 @@ def ensure(email_hash, note=""):
     if active(now).count() >= MAX_ENTRIES:
         raise Full
     if entry is not None:
-        entry.expires_at = _expiry(now)
-        entry.note = note or entry.note
-        entry.save(update_fields=["expires_at", "note"])
+        entry = _replace(
+            entry, email=email, expires_at=_expiry(now), note=note or entry.note
+        )
         audit.record("sender_block_renewed", id=str(entry.id))
         return entry, False
     entry = BlockedSender.objects.create(
-        email_hash=email_hash, note=note, created_at=now, expires_at=_expiry(now)
+        email_hash=email_hash,
+        email=email,
+        note=note,
+        created_at=now,
+        expires_at=_expiry(now),
     )
     audit.record("sender_blocked", id=str(entry.id))
     return entry, True
 
 
-def block_email(email, note=""):
+def drop_address(entry):
+    """The same entry with its address removed; hit counts and dates stay."""
+    if entry.email is None:
+        return entry
+    return _replace(entry, email=None)
+
+
+def block_email(email, note="", keep_address=False):
     with transaction.atomic():
-        return ensure(contact.email_hash(email), note)
+        return ensure(contact.email_hash(email), note, email if keep_address else None)
 
 
-def block_message(message_id, note=""):
+def block_message(message_id, note="", keep_address=False):
     """Block the message's sender and move the message to spam. None if there
     is no such message."""
     with transaction.atomic():
@@ -107,7 +157,8 @@ def block_message(message_id, note=""):
         message = message.first()
         if message is None:
             return None, None
-        entry, created = ensure(contact.email_hash(message.email), note)
+        email = message.email if keep_address else None
+        entry, _ = ensure(contact.email_hash(message.email), note, email)
         if message.status != Status.SPAM:
             old = message.status
             message.status, message.spam_at = Status.SPAM, timezone.now()

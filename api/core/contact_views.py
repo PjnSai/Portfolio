@@ -7,6 +7,7 @@ import logging
 from contextlib import suppress
 
 from django.conf import settings
+from django.db import DatabaseError
 from django.utils.module_loading import import_string
 from django.views.decorators.csrf import csrf_exempt
 
@@ -79,8 +80,14 @@ def _accept(data, values, address):
         _logged("bad_challenge")
         return responses.bad_challenge()
     # Before any cap is counted, so a blocked sender uses none of them, and
-    # answered like dropped spam, so they cannot tell they are blocked.
-    if blocklist.is_blocked(values["email"]):
+    # answered like dropped spam, so they cannot tell they are blocked. If the
+    # check itself fails nothing is stored, and the answer is the same.
+    try:
+        blocked = blocklist.hit(values["email"])
+    except DatabaseError:
+        _logged("block_check_failed")
+        return responses.contact_sent()
+    if blocked:
         _logged("blocked_dropped")
         return responses.contact_sent()
     contact.count_email(values["email"], limits)
