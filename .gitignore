@@ -10,3 +10,4 @@ __pycache__/
 .e2e-session-token
 .media/
 .cv/
+.devmode/

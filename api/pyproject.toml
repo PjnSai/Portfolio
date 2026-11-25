@@ -11,7 +11,12 @@ select = ["E", "F", "I", "B", "S", "UP", "DJ"]
 "tests/settings.py" = ["S105"]
 "tests/e2e_server.py" = ["S105"]
 "gunicorn.conf.py" = ["S104", "S108"]
+"devmode/config.py" = ["S105"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
 testpaths = ["tests"]
+
+# The local development launcher is not part of the production app.
+[tool.coverage.run]
+omit = ["devmode/*", "tests/*"]
