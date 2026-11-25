@@ -56,6 +56,16 @@ Routes (all need a session behind Cloudflare Access): `GET /api/v1/admin/abuse`,
 - S/E: reaching these routes without the owner. The same `admin_route` guard as every admin route (deny by default, session on each request); none of them changes access. Revoking is only through the existing routes, which the page names.
 - Not covered by the app: the scopes of the pipeline identity, the Cloudflare token and the deploy hook, the Access policy, and where the recovery key is kept. They are reviewed by hand each quarter (`docs/ACCESS.md`).
 
+## Local development mode (phase L)
+
+`api/devmode` stands in for Cloudflare Access on the owner's PC (docs/LOCAL-DEV.md).
+
+- E/S: the stand-in gate reaching production. It is a separate launcher that production code never imports (checked by a test that parses `config/` and `core/`, and by one that imports `config.wsgi` in a fresh process). `.dockerignore` leaves it out of the image, and the Dockerfile copies only `config` and `core`. The real check is unchanged and refuses the dev token with the real key lookup, so the patch exists only inside a running launcher.
+- E/S: the launcher run against production data. Before Django starts and again after, it refuses when the database name does not end in `_dev`, the database or Redis is not on loopback, the bind is not 127.0.0.1, or production values are present (Cloudflare purge token or zone, the Pages deploy hook, Cloud Storage buckets, a real Turnstile secret, a non-local site origin, Cloud Run's variables). Anything it cannot check is a refusal. The seed, reset and drop commands also refuse, on their own, a database not ending in `_dev`.
+- S: someone on the local network using the stand-in gate. The server binds to 127.0.0.1 only, and the wrapper adds a token only for a loopback client and always drops one the client sent.
+- I: real data in the dev database. The seed writes SAMPLE text only, checked by tests and the privacy scan; senders are at example.com.
+- Residual risk: someone runs the launcher on a machine where a production database is reachable through a loopback tunnel, after renaming that database to end in `_dev`, with none of the production values in the environment. That takes deliberate work on a database that should not have that name. The live site's own Access policy, passkeys and least-privilege role are untouched, and the launcher never contacts the live site.
+
 ## Out of scope
 
 Visitor accounts (there are none), and compromise of the GitHub, Cloudflare or Google Cloud accounts themselves beyond the separate-account and MFA measures in the design.
