@@ -51,17 +51,29 @@ Routes (all need a session behind Cloudflare Access): `GET /api/v1/admin/abuse`,
 - I: the access review drifting from reality. The database rights are read from Postgres for every table at request time; a test compares them with `information_schema` after `grants.sql`, and another changes a grant and checks the page follows. A superuser connection is shown as a warning.
 - D: counting as a way to slow the site. A count is one UPDATE on one row and never raises; if it fails, the answer is unchanged. The edge limit comes before it.
 - D: flooding the owner with alerts. Threshold alerts fire once per window, do not repeat inside it, and each kind is capped at 5 a day. Held-back threshold alerts go to no notifier.
-- T/R: hiding an attack by dismissing its alert. Marking seen is audited, and the database notifier never counts as telling the owner: required notices still need a notifier outside the site (log now, email later).
+- T/R: hiding an attack by dismissing its alert. Marking seen is audited, and the database notifier never counts as telling the owner: required notices still need a notifier outside the site (log, and email from phase 5-3).
 - D: a notifier failure breaking an action. The database notifier is best effort in its own savepoint; a failure is logged and counted, and the action goes ahead.
 - S/E: reaching these routes without the owner. The same `admin_route` guard as every admin route (deny by default, session on each request); none of them changes access. Revoking is only through the existing routes, which the page names.
 - Not covered by the app: the scopes of the pipeline identity, the Cloudflare token and the deploy hook, the Access policy, and where the recovery key is kept. They are reviewed by hand each quarter (`docs/ACCESS.md`).
+
+## Email notices (phase 5-3)
+
+`core.notify.ResendNotifier` emails notices to the owner through Resend.
+
+- I: personal data or secrets in an email. Plain text built from fixed words, numbers, values from fixed lists and a short passkey name; no links, no cancel path, no message text, no address, no token. Tests push each of those through every context field and check none reaches the request. The key, headers and addresses are never logged.
+- S/T: email is not authenticated end to end. Anyone can send a message that looks like a notice, and the mail providers in between can read it. A notice only tells the owner to look in the admin; it never carries a link or a way to act, so a forged one cannot lead to anything but a visit to the admin by the owner's usual route.
+- D: Resend or the owner's mail provider down. Required notices then fail and vital actions, new passkeys and recovery are refused. Accepted: an action the owner cannot hear about is worse than a delay. Alerts that are not required still reach the admin and the log.
+- D: notices landing in spam. SPF and DKIM for the sending domain are set up in Phase 7 and checked once with a test notice. Delivery to the inbox is not checked by the app.
+- D: an alert storm using up the provider's daily limit. Alert emails share a budget of 20 a UTC day; required notices are never counted, so the rest of the free plan's 100 a day stays for them.
+- I: the owner's address leaking from the repo. It is a secret setting (`NOTICE_EMAIL_TO`), never in code, docs or `.env.example`.
+- E/S: a stolen Resend key. It can only send from the site's domain; it is in Secret Manager and rotated as in `docs/ACCESS.md`. Local mode refuses to start with any Resend setting present.
 
 ## Local development mode (phase L)
 
 `api/devmode` stands in for Cloudflare Access on the owner's PC (docs/LOCAL-DEV.md).
 
 - E/S: the stand-in gate reaching production. It is a separate launcher that production code never imports (checked by a test that parses `config/` and `core/`, and by one that imports `config.wsgi` in a fresh process). `.dockerignore` leaves it out of the image, and the Dockerfile copies only `config` and `core`. The real check is unchanged and refuses the dev token with the real key lookup, so the patch exists only inside a running launcher.
-- E/S: the launcher run against production data. Before Django starts and again after, it refuses when the database name does not end in `_dev`, the database or Redis is not on loopback, the bind is not 127.0.0.1, or production values are present (Cloudflare purge token or zone, the Pages deploy hook, Cloud Storage buckets, a real Turnstile secret, a non-local site origin, Cloud Run's variables). Anything it cannot check is a refusal. The seed, reset and drop commands also refuse, on their own, a database not ending in `_dev`.
+- E/S: the launcher run against production data. Before Django starts and again after, it refuses when the database name does not end in `_dev`, the database or Redis is not on loopback, the bind is not 127.0.0.1, or production values are present (Cloudflare purge token or zone, the Pages deploy hook, Cloud Storage buckets, the Resend key and notice addresses or the Resend notifier, a real Turnstile secret, a non-local site origin, Cloud Run's variables). Anything it cannot check is a refusal. The seed, reset and drop commands also refuse, on their own, a database not ending in `_dev`.
 - S: someone on the local network using the stand-in gate. The server binds to 127.0.0.1 only, and the wrapper adds a token only for a loopback client and always drops one the client sent.
 - I: real data in the dev database. The seed writes SAMPLE text only, checked by tests and the privacy scan; senders are at example.com.
 - Residual risk: someone runs the launcher on a machine where a production database is reachable through a loopback tunnel, after renaming that database to end in `_dev`, with none of the production values in the environment. That takes deliberate work on a database that should not have that name. The live site's own Access policy, passkeys and least-privilege role are untouched, and the launcher never contacts the live site.
