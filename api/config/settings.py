@@ -105,6 +105,9 @@ ADMIN_REQUESTS_PER_MINUTE = 300
 # serves nearly all of these; this catches what gets past it.
 PUBLIC_REQUESTS_PER_MINUTE = 120
 LOGIN_MAX_FAILURES = 5
+# Passkeys the owner may hold at once. Adding one more is refused before its
+# 24-hour wait starts; revoking one frees a place.
+ADMIN_MAX_PASSKEYS = 5
 LOGIN_GLOBAL_MAX_FAILURES = 20
 
 # Contact form (core.contact). Its limits have their own Redis buckets, apart

@@ -136,6 +136,12 @@ describe("error messages", () => {
     expect(describeError(new ApiError(status, {}))).toBe(text);
   });
 
+  it("explains the passkey limit and what to do about it", () => {
+    expect(describeError(new ApiError(409, { code: "passkey_limit" }))).toBe(
+      "You already have the most passkeys allowed. Remove one you no longer use, then add the new one.",
+    );
+  });
+
   it("explains a network failure", () => {
     expect(describeError(new TypeError("fetch failed"))).toBe(
       "Something went wrong. Try again.",

@@ -422,3 +422,7 @@ The API is unchanged. These are the web choices; the rules they follow are in Ph
 - **Logging.** Only the event name and the error type or status are logged; never the key, the headers or the addresses.
 - **Local mode refuses it.** The launcher refuses `RESEND_API_KEY`, `NOTICE_EMAIL_FROM`, `NOTICE_EMAIL_TO` and `ResendNotifier` in `NOTIFIERS` (exit 2), before and after Django starts.
 - **`notice_skipped` is a new abuse counter kind**, with a label on the abuse overview, so the owner can see when the budget was reached.
+
+## Phase 6A: code hardening
+
+- **At most 5 passkeys** (`ADMIN_MAX_PASSKEYS` in settings, a fixed value like the other limits, not read from the environment). A passkey that could never be added should not start a 24-hour wait or send a notice, so `add_passkey` is refused with 409 `passkey_limit` at the request, before anything is queued, and checked again at the registration options and inside the run, since another passkey could be added while it waited. Removing a passkey deletes its row, so every stored passkey counts and a removal frees a place at once. A pending add does not hold a place: the run checks again. Bootstrap and recovery are not affected (they start from none and leave one). The Security page says "up to five" and words the refusal; change both if the setting changes.
