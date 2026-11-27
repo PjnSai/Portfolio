@@ -143,18 +143,9 @@ test("a held-back message offers Not spam and no reply", async ({ page }) => {
 // kept address and a long note). As above, nothing here changes anything: forms
 // are opened, never sent.
 
-/** axe at the widths the matrix checks colour at, in the project's scheme.
- *  skipInFirefox: Firefox crashes the page when axe scans these pages (see
- *  DECISIONS.md, Phase 4B-3b). Chromium, WebKit and the e2e suite still scan them. */
-async function noViolations(page: Page, label: string, skipInFirefox = false) {
+/** axe at the widths the matrix checks colour at, in the project's scheme. */
+async function noViolations(page: Page, label: string) {
   if (![390, 1280].includes(combo().width)) return;
-  if (skipInFirefox && combo().browser === "firefox") {
-    test.info().annotations.push({
-      type: "axe skipped",
-      description: "Firefox crashes when axe scans this page",
-    });
-    return;
-  }
   // Let the page finish loading before axe reads it.
   await expect(page.getByText("Loading…")).toHaveCount(0);
   await page.waitForLoadState("networkidle");
@@ -175,7 +166,7 @@ test("the contacts list and its filters fit the screen", async ({ page }) => {
   await expect(list.first()).toBeVisible();
   expect(await list.count()).toBeGreaterThanOrEqual(2);
   await noSidewaysScroll(page, "contacts");
-  await noViolations(page, "contacts", true);
+  await noViolations(page, "contacts");
 
   await page.goto("/desk/contacts?due=1");
   await expect(list).toHaveCount(1);
@@ -200,7 +191,7 @@ test("a contact with a long name, address, organisation and notes fits", async (
   ).toBeVisible();
   await expect(page.getByTestId("erase-warning")).toBeVisible();
   await noSidewaysScroll(page, "contact");
-  await noViolations(page, "contact", true);
+  await noViolations(page, "contact");
 });
 
 test("the blocklist, with a kept address and a long note, fits", async ({
@@ -225,7 +216,7 @@ test("the blocklist, with a kept address and a long note, fits", async ({
       .getByLabel(/^Keep the address/),
   ).not.toBeChecked();
   await noSidewaysScroll(page, "blocklist");
-  await noViolations(page, "blocklist", true);
+  await noViolations(page, "blocklist");
 });
 
 test("the limits card in settings fits and lists the fixed limits", async ({
@@ -234,7 +225,7 @@ test("the limits card in settings fits and lists the fixed limits", async ({
   await page.goto("/desk/settings");
   const card = page.getByRole("region", { name: "Contact form limits" });
   await expect(card.getByLabel("Months a block lasts")).toBeVisible();
-  await noViolations(page, "limits", true);
+  await noViolations(page, "limits");
   await expect(card.getByRole("textbox")).toHaveCount(8);
   await expect(card.getByText("Fixed limits")).toBeVisible();
   await expect(
@@ -266,5 +257,5 @@ test("a message offers its contact, Block sender and delete everything, and fits
   ).toBeVisible();
   await expect(page.getByRole("form", { name: "Block sender" })).toBeVisible();
   await noSidewaysScroll(page, "message with the forms open");
-  await noViolations(page, "message with the forms open", true);
+  await noViolations(page, "message with the forms open");
 });
