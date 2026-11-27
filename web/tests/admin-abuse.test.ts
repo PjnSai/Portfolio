@@ -73,8 +73,8 @@ describe("unexpected answers in words", () => {
 });
 
 describe("kinds in plain words", () => {
-  it("has words for all ten kinds and no raw name", () => {
-    expect(KINDS).toHaveLength(10);
+  it("has words for all eleven kinds and no raw name", () => {
+    expect(KINDS).toHaveLength(11);
     for (const kind of KINDS) {
       expect(KIND_WORDS[kind].label).not.toContain("_");
       expect(KIND_WORDS[kind].help.length).toBeGreaterThan(10);

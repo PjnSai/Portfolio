@@ -17,6 +17,7 @@ export const KINDS = [
   "elevation_failed",
   "guard_refused",
   "notice_failed",
+  "notice_skipped",
 ] as const;
 
 export type AbuseKind = (typeof KINDS)[number];
@@ -61,6 +62,10 @@ export const KIND_WORDS: Record<AbuseKind, { label: string; help: string }> = {
   notice_failed: {
     label: "Notice not sent",
     help: "A notice to you could not be recorded or sent.",
+  },
+  notice_skipped: {
+    label: "Email notice skipped",
+    help: "An alert email was not sent because the day's email budget was used up. The alert is still listed here.",
   },
 };
 

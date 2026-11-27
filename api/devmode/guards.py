@@ -20,14 +20,18 @@ DUMMY_TURNSTILE_SECRETS = frozenset(
         "3x0000000000000000000000000000000AA",
     }
 )
-# Set only for production: Cloudflare and Cloud Storage credentials or names,
-# and the variables Cloud Run sets in every container.
+# Set only for production: Cloudflare, Cloud Storage and Resend credentials or
+# names, the notice email addresses, and the variables Cloud Run sets in every
+# container.
 PRODUCTION_NAMES = (
     "CLOUDFLARE_PURGE_TOKEN",
     "CLOUDFLARE_ZONE_ID",
     "PAGES_DEPLOY_HOOK_URL",
     "GCS_MEDIA_BUCKET",
     "GCS_CV_BUCKET",
+    "RESEND_API_KEY",
+    "NOTICE_EMAIL_FROM",
+    "NOTICE_EMAIL_TO",
     "K_SERVICE",
     "K_REVISION",
     "K_CONFIGURATION",
@@ -38,6 +42,8 @@ DEV_CHOICES = {
     "SITE_DEPLOYER": "core.deploy.LogDeployer",
     "DJANGO_SETTINGS_MODULE": "config.settings",
 }
+# Notifiers that reach outside this computer. Local mode only logs notices.
+PRODUCTION_NOTIFIERS = ("core.notify.ResendNotifier",)
 LOCAL_NAMES = ("localhost", "127.0.0.1", "::1")
 # Databases 14 and 15 belong to the browser tests and the tests, which empty them.
 SHARED_REDIS = ("14", "15")
@@ -81,7 +87,16 @@ def inherited(env):
         value = env.get(name)
         if value and value != wanted:
             problems.append(f"{name} is {value!r}; local mode needs {wanted!r}.")
+    problems += _notifiers(env.get("NOTIFIERS", "").split(","))
     return problems
+
+
+def _notifiers(paths):
+    return [
+        f"NOTIFIERS names {path}: local mode only logs notices."
+        for path in PRODUCTION_NOTIFIERS
+        if path in [p.strip() for p in paths]
+    ]
 
 
 def is_loopback_host(host, lookup=socket.getaddrinfo):
@@ -168,12 +183,16 @@ def _loaded(settings, env, lookup):
         "CLOUDFLARE_PURGE_TOKEN",
         "CLOUDFLARE_ZONE_ID",
         "PAGES_DEPLOY_HOOK_URL",
+        "RESEND_API_KEY",
+        "NOTICE_EMAIL_FROM",
+        "NOTICE_EMAIL_TO",
     ):
         if getattr(settings, name):
             problems.append(f"{name} is set.")
     for name in ("CACHE_PURGER", "SITE_DEPLOYER"):
         if getattr(settings, name) != DEV_CHOICES[name]:
             problems.append(f"{name} is not the logging one.")
+    problems += _notifiers(settings.NOTIFIERS)
     if settings.CF_ACCESS_TEAM_DOMAIN != config.TEAM:
         problems.append("CF_ACCESS_TEAM_DOMAIN is not the local stand-in.")
     return problems

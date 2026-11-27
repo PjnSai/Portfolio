@@ -31,6 +31,8 @@ LOGIN_FAILED = "login_failed"
 ELEVATION_FAILED = "elevation_failed"
 GUARD_REFUSED = "guard_refused"
 NOTICE_FAILED = "notice_failed"
+# An email notice skipped because its daily budget was spent.
+NOTICE_SKIPPED = "notice_skipped"
 
 KINDS = (
     RATE_LIMITED,
@@ -43,6 +45,7 @@ KINDS = (
     ELEVATION_FAILED,
     GUARD_REFUSED,
     NOTICE_FAILED,
+    NOTICE_SKIPPED,
 )
 
 # The counts are kept as long as a contact message (SPEC 6.2: 12 months), then

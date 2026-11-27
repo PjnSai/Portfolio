@@ -141,6 +141,16 @@ NOTIFIERS = [
     "core.notify.DatabaseNotifier",
     *(path for path in os.environ.get("NOTIFIERS", "").split(",") if path),
 ]
+# Email notices through Resend (core.notify.ResendNotifier), sent only when
+# NOTIFIERS names it. With any of these empty it raises, so required notices
+# are refused. The key can only send email.
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+NOTICE_EMAIL_FROM = os.environ.get("NOTICE_EMAIL_FROM", "")
+NOTICE_EMAIL_TO = os.environ.get("NOTICE_EMAIL_TO", "")
+# Emails a UTC day for notices that are not required (alerts, lockouts, revoked
+# sessions). Required ones are never counted. Resend's free plan allows 100 a
+# day, so this leaves room for every required notice.
+NOTICE_EMAIL_DAILY_BUDGET = 20
 
 # Alerts (core.alerts). Each threshold is a count inside a window in seconds;
 # reaching it raises one alert, and the same kind does not alert again inside

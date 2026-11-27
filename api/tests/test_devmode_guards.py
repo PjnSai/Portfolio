@@ -46,6 +46,9 @@ def test_a_clean_environment_passes():
         "PAGES_DEPLOY_HOOK_URL",
         "GCS_MEDIA_BUCKET",
         "GCS_CV_BUCKET",
+        "RESEND_API_KEY",
+        "NOTICE_EMAIL_FROM",
+        "NOTICE_EMAIL_TO",
         "K_SERVICE",
         "K_REVISION",
     ],
@@ -103,6 +106,23 @@ def test_a_local_site_origin_passes(origin):
 def test_other_production_choices_are_refused(name, value):
     problems = guards.inherited({name: value})
     assert problems and name in problems[0]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "core.notify.ResendNotifier",
+        "core.notify.LogNotifier,core.notify.ResendNotifier",
+        "core.notify.LogNotifier, core.notify.ResendNotifier",
+    ],
+)
+def test_the_email_notifier_is_refused(value):
+    problems = guards.inherited({"NOTIFIERS": value})
+    assert len(problems) == 1 and "ResendNotifier" in problems[0]
+
+
+def test_the_log_notifier_passes():
+    assert guards.inherited({"NOTIFIERS": "core.notify.LogNotifier"}) == []
 
 
 # Database and Redis
@@ -215,6 +235,10 @@ def good_settings(**changes):
         "CLOUDFLARE_PURGE_TOKEN": "",
         "CLOUDFLARE_ZONE_ID": "",
         "PAGES_DEPLOY_HOOK_URL": "",
+        "RESEND_API_KEY": "",
+        "NOTICE_EMAIL_FROM": "",
+        "NOTICE_EMAIL_TO": "",
+        "NOTIFIERS": ["core.notify.DatabaseNotifier", "core.notify.LogNotifier"],
         "CACHE_PURGER": "core.purge.LogPurger",
         "SITE_DEPLOYER": "core.deploy.LogDeployer",
         "CF_ACCESS_TEAM_DOMAIN": config.TEAM,
@@ -251,6 +275,10 @@ def test_debug_must_have_been_set_by_the_launcher():
         {"CLOUDFLARE_PURGE_TOKEN": "token"},
         {"CLOUDFLARE_ZONE_ID": "zone"},
         {"PAGES_DEPLOY_HOOK_URL": "https://api.cloudflare.com/hook"},
+        {"RESEND_API_KEY": "re_key"},
+        {"NOTICE_EMAIL_FROM": "notices@example.com"},
+        {"NOTICE_EMAIL_TO": "owner@example.com"},
+        {"NOTIFIERS": ["core.notify.DatabaseNotifier", "core.notify.ResendNotifier"]},
         {"CACHE_PURGER": "core.purge.CloudflarePurger"},
         {"SITE_DEPLOYER": "core.deploy.PagesDeployer"},
         {"CF_ACCESS_TEAM_DOMAIN": "pujan.cloudflareaccess.com"},
@@ -328,6 +356,21 @@ def test_the_launcher_refuses_a_production_token_and_exits_non_zero():
     assert result.returncode != 0
     assert "Refusing to start" in result.stderr
     assert "CLOUDFLARE_PURGE_TOKEN" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "name", ["RESEND_API_KEY", "NOTICE_EMAIL_FROM", "NOTICE_EMAIL_TO"]
+)
+def test_the_launcher_refuses_email_settings_with_exit_2(name):
+    result = run_launcher("check", **{name: "x"})
+    assert result.returncode == 2
+    assert name in result.stderr
+
+
+def test_the_launcher_refuses_the_email_notifier_with_exit_2():
+    result = run_launcher("check", NOTIFIERS="core.notify.ResendNotifier")
+    assert result.returncode == 2
+    assert "ResendNotifier" in result.stderr
 
 
 def test_the_launcher_refuses_a_database_not_ending_in_dev():
