@@ -20,15 +20,19 @@ def database_from_url(url: str) -> dict:
     if parts.scheme not in {"postgres", "postgresql"}:
         raise ImproperlyConfigured("DATABASE_URL must be a postgres URL")
     config = {
-        "ENGINE": "django.db.backends.postgresql",
+        # django.db.backends.postgresql with one more try of a failed connection.
+        "ENGINE": "config.database",
         "NAME": unquote(parts.path.lstrip("/")),
         "USER": unquote(parts.username or ""),
         "PASSWORD": unquote(parts.password or ""),
         "HOST": parts.hostname or "",
         "PORT": str(parts.port or ""),
     }
-    if "sslmode=require" in parts.query:
-        config["OPTIONS"] = {"sslmode": "require"}
+    options = {"sslmode": "require"} if "sslmode=require" in parts.query else {}
+    # Long enough for a sleeping Neon database to wake, short enough that a
+    # request fails well inside gunicorn's 30-second timeout after one retry.
+    options["connect_timeout"] = 10
+    config["OPTIONS"] = options
     return config
 
 
