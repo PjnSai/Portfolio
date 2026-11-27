@@ -134,6 +134,22 @@ function fieldErrors(body: unknown): Errors | null {
 }
 
 /**
+ * One GET as the form's code loads, so an API and database that have gone to
+ * sleep start waking before the visitor sends. The CV status is a cheap read
+ * that reaches the database; its answer is not used. It carries nothing about
+ * the visitor and goes to the API origin the page already allows.
+ */
+export function warmUp(fetcher: Fetcher, origin: string): void {
+  if (!origin) return;
+  fetcher(`${origin}/api/v1/cv`, {
+    method: "GET",
+    credentials: "omit",
+    referrerPolicy: "no-referrer",
+    cache: "no-store",
+  }).catch(() => undefined);
+}
+
+/**
  * Send the message. No cookie, no referrer and no credentials go with it: the
  * only thing the API gets is the form. Every answer becomes one outcome the
  * form can say in words; none of them says which other check failed.

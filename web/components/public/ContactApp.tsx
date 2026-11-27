@@ -19,6 +19,7 @@ import {
   summary,
   tidy,
   validate,
+  warmUp,
 } from "@/lib/public/contact";
 
 type Config = { apiOrigin: string; siteKey: string };
@@ -133,5 +134,6 @@ function ContactApp({ config, root }: { config: Config; root: HTMLElement }) {
 
 /** Take over the form already in the page. */
 export function mountContact(root: HTMLElement, config: Config) {
+  warmUp((url, init) => fetch(url, init), config.apiOrigin);
   return hydrateRoot(root, <ContactApp config={config} root={root} />);
 }

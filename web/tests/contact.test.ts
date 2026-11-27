@@ -18,6 +18,7 @@ import {
   validate,
   type Values,
   waitText,
+  warmUp,
 } from "@/lib/public/contact";
 import { armLazyLoad, NEAR_VIEWPORT } from "@/lib/public/lazy";
 import { DUMMY_INVISIBLE_KEY, siteKeyFrom } from "@/lib/public/turnstile-key";
@@ -433,6 +434,28 @@ describe("when the form's code is fetched", () => {
 
     expect(load).not.toHaveBeenCalled();
     expect(FakeObserver.last.disconnected).toBe(true);
+  });
+});
+
+describe("the warm-up request", () => {
+  it("sends one plain GET to the CV status, with nothing about the visitor", () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response("{}"));
+    warmUp(fetcher, "https://api.example.test");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith("https://api.example.test/api/v1/cv", {
+      method: "GET",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      cache: "no-store",
+    });
+  });
+
+  it("sends nothing with no API, and never throws", async () => {
+    const fetcher = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
+    warmUp(fetcher, "");
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(() => warmUp(fetcher, "https://api.example.test")).not.toThrow();
+    await Promise.resolve();
   });
 });
 
