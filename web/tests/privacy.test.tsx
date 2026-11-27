@@ -21,6 +21,15 @@ describe("the data-request address", () => {
     expect(privacyEmailFrom({ NEXT_PUBLIC_PRIVACY_EMAIL: "   " })).toBe("");
   });
 
+  it("fails a Cloudflare Pages build that has none", () => {
+    for (const unset of [undefined, "", "   "]) {
+      expect(() => privacyEmailFrom({ CF_PAGES: "1", NEXT_PUBLIC_PRIVACY_EMAIL: unset })).toThrow(
+        "NEXT_PUBLIC_PRIVACY_EMAIL is not set",
+      );
+    }
+    expect(privacyEmailFrom({ CF_PAGES: "1", NEXT_PUBLIC_PRIVACY_EMAIL: ADDRESS })).toBe(ADDRESS);
+  });
+
   it("is the address when set, trimmed", () => {
     expect(privacyEmailFrom({ NEXT_PUBLIC_PRIVACY_EMAIL: ` ${ADDRESS} ` })).toBe(ADDRESS);
   });
