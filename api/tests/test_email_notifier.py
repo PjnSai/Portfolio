@@ -4,13 +4,16 @@ reaches the network."""
 import json
 import logging
 import secrets
+from datetime import timedelta
 from email.message import Message
 from urllib.error import HTTPError, URLError
 
 import pytest
+import redis
+from django.utils import timezone
 
-from core import notify
-from core.models import AdminCredential, AuditLog, PendingAction
+from core import abuse, notify, ratelimit
+from core.models import AbuseCount, AdminCredential, Alert, AuditLog, PendingAction
 from tests.authenticator import SoftAuthenticator
 from tests.conftest import mature, new_message
 
@@ -280,3 +283,105 @@ def test_new_passkey_is_undone_when_the_email_fails(
     assert AdminCredential.objects.count() == 1
     assert PendingAction.objects.get().status == "pending"
     assert not AuditLog.objects.filter(event="vital_action_executed").exists()
+
+
+# The daily budget for emails that are not required
+
+ALL = [
+    "core.notify.DatabaseNotifier",
+    "core.notify.LogNotifier",
+    "core.notify.ResendNotifier",
+]
+
+
+def spend_budget(settings):
+    for _ in range(settings.NOTICE_EMAIL_DAILY_BUDGET):
+        assert notify._within_budget()
+
+
+def skipped_today():
+    row = AbuseCount.objects.filter(day=abuse.today(), kind=abuse.NOTICE_SKIPPED)
+    return row.first().count if row.exists() else 0
+
+
+def test_the_budget_is_twenty_a_day(settings):
+    assert settings.NOTICE_EMAIL_DAILY_BUDGET == 20
+
+
+def test_alert_emails_stop_at_the_budget_but_the_alert_is_kept(
+    configured, transport, caplog
+):
+    configured.NOTIFIERS = ALL
+    configured.NOTICE_EMAIL_DAILY_BUDGET = 2
+    notify.send("lockout", scope="login")
+    notify.send("lockout", scope="login")
+    assert len(transport.sent) == 2
+
+    with caplog.at_level(logging.INFO, logger="core.notify"):
+        notify.send_if_possible("error_spike", count=20, minutes=5)
+
+    assert len(transport.sent) == 2
+    assert Alert.objects.filter(kind="error_spike").exists()
+    assert "notice error_spike" in caplog.text
+    assert "skipped" in caplog.text
+    assert skipped_today() == 1
+
+
+def test_alert_emails_are_skipped_when_the_counter_cannot_be_read(
+    configured, transport, monkeypatch
+):
+    configured.NOTIFIERS = ALL
+
+    def down(*args, **kwargs):
+        raise redis.ConnectionError("down")
+
+    monkeypatch.setattr(ratelimit, "hit", down)
+
+    notify.send_if_possible("error_spike", count=20, minutes=5)
+    assert transport.sent == []
+    assert Alert.objects.filter(kind="error_spike").exists()
+    assert skipped_today() == 1
+
+    notify.send_required("vital_action_requested", kind="add_passkey")
+    assert len(transport.sent) == 1
+
+
+def test_required_notices_are_sent_at_the_budget_limit(configured, transport):
+    spend_budget(configured)
+
+    notify.send_required("vital_action_requested", kind="add_passkey")
+    notify.send_required("passkey_added", name="Second key")
+    notify.send_required("passkey_revoked", name="Spare")
+    notify.send_required("recovery_used", name="New key")
+
+    assert len(transport.sent) == 4
+    assert skipped_today() == 0
+
+
+def test_required_notices_do_not_use_the_budget(configured, transport):
+    configured.NOTICE_EMAIL_DAILY_BUDGET = 1
+    for _ in range(3):
+        notify.send_required("vital_action_requested", kind="add_passkey")
+
+    notify.send_if_possible("error_spike", count=20, minutes=5)
+
+    assert len(transport.sent) == 4
+    assert transport.body()["subject"] == "Portfolio: Server errors"
+
+
+def test_a_vital_action_goes_ahead_at_the_budget_limit(elevated, configured, transport):
+    spend_budget(configured)
+
+    response = elevated.post("/vital-actions/request", delete_body())
+
+    assert response.status_code == 201
+    assert len(transport.sent) == 1
+
+
+def test_the_budget_is_per_utc_day(configured):
+    configured.NOTICE_EMAIL_DAILY_BUDGET = 1
+    today = timezone.now()
+
+    assert notify._within_budget(today)
+    assert not notify._within_budget(today)
+    assert notify._within_budget(today + timedelta(days=1))

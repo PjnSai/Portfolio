@@ -14,6 +14,7 @@ band.
 import json
 import logging
 import re
+from contextvars import ContextVar
 from datetime import UTC
 from http.client import HTTPException
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -22,9 +23,11 @@ from django.conf import settings
 from django.utils import timezone
 from django.utils.module_loading import import_string
 
-from core import abuse, alerts
+from core import abuse, alerts, ratelimit
 
 log = logging.getLogger(__name__)
+
+_required = ContextVar("notice_required", default=False)
 
 
 class Undelivered(Exception):
@@ -58,10 +61,18 @@ def send_required(event, **context):
     failed one, raises."""
     if not any(not _in_band(notifier) for notifier in _notifiers()):
         raise Undelivered("no notifier is configured")
+    token = _required.set(True)
     try:
         send(event, **context)
     except Exception as error:
         raise Undelivered(type(error).__name__) from error
+    finally:
+        _required.reset(token)
+
+
+def required():
+    """Whether the notice being sent now came through send_required."""
+    return _required.get()
 
 
 def send_if_possible(event, **context):
@@ -204,11 +215,27 @@ def email_text(event, context, now=None):
     return f"Portfolio: {title}", body
 
 
+def _within_budget(now=None):
+    """Take one email from today's budget for notices that are not required.
+    False when it is spent or the counter cannot be read."""
+    day = (now or timezone.now()).astimezone(UTC).date().isoformat()
+    try:
+        count = ratelimit.hit(f"notice-email:{day}", 2 * 24 * 60 * 60)
+    except Exception as error:
+        log.warning("notice email budget unreadable: %s", type(error).__name__)
+        return False
+    return count <= settings.NOTICE_EMAIL_DAILY_BUDGET
+
+
 class ResendNotifier:
     """Sends the notice as a plain text email through Resend. The settings come
     from the environment; with any of them missing it raises, so a required
     notice is refused. No retries: a failure raises at once. Only the event
-    and the error type are ever logged."""
+    and the error type are ever logged.
+
+    Required notices are always sent. Others share a daily budget; past it, or
+    with the counter unreadable, the email is skipped and counted, and the
+    other notifiers still record the notice."""
 
     def send(self, event, context):
         text = email_text(event, context)
@@ -219,6 +246,10 @@ class ResendNotifier:
         if not (key and sender and to):
             log.warning("notice email %s not sent: not configured", event)
             raise EmailFailed("email notifier is not configured")
+        if not required() and not _within_budget():
+            log.info("notice email %s skipped: daily budget", event)
+            abuse.count(abuse.NOTICE_SKIPPED)
+            return
         subject, body = text
         request = Request(
             EMAIL_URL,
