@@ -9,6 +9,10 @@ fails, that is logged and counted and the notice still goes to the others. It
 never counts as telling the owner, since whoever holds the admin could read
 and dismiss it: a required notice needs at least one notifier that is not in
 band.
+
+Every notifier is told even if an earlier one fails, so the order in
+settings.NOTIFIERS does not matter for that. The first failure of a notifier
+that is not in band is raised afterwards.
 """
 
 import json
@@ -43,17 +47,29 @@ def _in_band(notifier):
 
 
 def send(event, **context):
-    """Tell every configured notifier. Raises if one that is not in band
-    fails."""
+    """Tell every configured notifier, in order, whether or not an earlier one
+    failed, so a broken email can never keep the log or the admin alert from
+    recording the notice. Once all have been told, raises the first failure of
+    one that is not in band."""
+    failure = None
     for notifier in _notifiers():
-        if not _in_band(notifier):
-            notifier.send(event, context)
-            continue
         try:
             notifier.send(event, context)
         except Exception as error:
-            log.warning("notice %s not recorded: %s", event, type(error).__name__)
-            abuse.count(abuse.NOTICE_FAILED)
+            if _in_band(notifier):
+                log.warning("notice %s not recorded: %s", event, type(error).__name__)
+                abuse.count(abuse.NOTICE_FAILED)
+            else:
+                log.warning(
+                    "notice %s not sent by %s: %s",
+                    event,
+                    type(notifier).__name__,
+                    type(error).__name__,
+                )
+                if failure is None:
+                    failure = error
+    if failure is not None:
+        raise failure
 
 
 def send_required(event, **context):
