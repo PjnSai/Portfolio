@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -30,6 +31,10 @@ def database_from_url(url: str) -> dict:
         config["OPTIONS"] = {"sslmode": "require"}
     return config
 
+
+# Cloud Run sets K_SERVICE in every container it starts. Nothing else here does,
+# and local mode refuses to start with it set (devmode.guards).
+PRODUCTION = bool(os.environ.get("K_SERVICE"))
 
 SECRET_KEY = required_env("DJANGO_SECRET_KEY")
 DEBUG = os.environ.get("DJANGO_DEBUG") == "1"
@@ -129,12 +134,34 @@ CONTACT_MAX_LINKS = 2
 # How long a blocked sender stays blocked unless the owner renews it.
 BLOCKLIST_MONTHS = 12
 # Cloudflare Turnstile (core.turnstile). With no secret key the form is
-# refused (503), never open: production must set it. Development and tests use
+# refused (503), never open, and production does not start. Development and tests use
 # Cloudflare's published dummy keys (see tests/settings.py and docker-compose).
 TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
 TURNSTILE_VERIFIER = os.environ.get(
     "TURNSTILE_VERIFIER", "core.turnstile.CloudflareVerifier"
 )
+# Cloudflare's dummy secrets are 1x, 2x and 3x followed by zeros and AA.
+TURNSTILE_DUMMY_SECRET = re.compile(r"[0-9]x0+AA")
+
+
+def turnstile_problems(secret: str, verifier: str) -> list[str]:
+    """Why these values cannot run in production; empty if they can."""
+    problems = []
+    if not secret:
+        problems.append("TURNSTILE_SECRET_KEY is not set")
+    elif TURNSTILE_DUMMY_SECRET.fullmatch(secret):
+        problems.append("TURNSTILE_SECRET_KEY is a Cloudflare test secret")
+    if verifier != "core.turnstile.CloudflareVerifier":
+        problems.append("TURNSTILE_VERIFIER is not core.turnstile.CloudflareVerifier")
+    return problems
+
+
+# Production refuses to start, rather than refuse every form later or accept
+# them unchecked.
+if PRODUCTION and (
+    problems := turnstile_problems(TURNSTILE_SECRET_KEY, TURNSTILE_VERIFIER)
+):
+    raise ImproperlyConfigured("; ".join(problems))
 
 # Dotted paths of classes with send(event, context), comma-separated, after the
 # database notifier, which records alerts for the admin. That one does not count
