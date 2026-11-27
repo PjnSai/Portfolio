@@ -42,6 +42,45 @@ def test_required_notice_fails_when_any_notifier_fails(settings):
         notify.send_required("vital_action_requested", kind="add_passkey")
 
 
+def test_every_notifier_is_told_when_one_fails(settings):
+    settings.NOTIFIERS = ["tests.notifiers.Broken", "tests.notifiers.Recorder"]
+
+    with pytest.raises(ConnectionError):
+        notify.send("lockout", scope="login")
+
+    assert Recorder.sent == [("lockout", {"scope": "login"})]
+
+
+def test_required_notice_reaches_the_others_when_one_fails_first(settings):
+    settings.NOTIFIERS = ["tests.notifiers.Broken", "tests.notifiers.Recorder"]
+
+    with pytest.raises(notify.Undelivered):
+        notify.send_required("vital_action_requested", kind="add_passkey")
+
+    assert Recorder.sent == [("vital_action_requested", {"kind": "add_passkey"})]
+
+
+def test_a_failed_notifier_in_band_does_not_raise_or_stop_the_others(settings):
+    settings.NOTIFIERS = ["tests.notifiers.BrokenInBand", "tests.notifiers.Recorder"]
+
+    notify.send("lockout", scope="login")
+
+    assert Recorder.sent == [("lockout", {"scope": "login"})]
+
+
+def test_a_failure_outside_the_site_is_raised_after_an_in_band_failure(settings):
+    settings.NOTIFIERS = [
+        "tests.notifiers.BrokenInBand",
+        "tests.notifiers.Broken",
+        "tests.notifiers.Recorder",
+    ]
+
+    with pytest.raises(ConnectionError, match="notifier is down"):
+        notify.send("lockout", scope="login")
+
+    assert Recorder.sent == [("lockout", {"scope": "login"})]
+
+
 def test_log_notifier_writes_the_notice_to_the_log(settings, caplog):
     settings.NOTIFIERS = ["core.notify.LogNotifier"]
 
