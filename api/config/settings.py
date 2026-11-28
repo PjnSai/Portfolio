@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -19,17 +20,25 @@ def database_from_url(url: str) -> dict:
     if parts.scheme not in {"postgres", "postgresql"}:
         raise ImproperlyConfigured("DATABASE_URL must be a postgres URL")
     config = {
-        "ENGINE": "django.db.backends.postgresql",
+        # django.db.backends.postgresql with one more try of a failed connection.
+        "ENGINE": "config.database",
         "NAME": unquote(parts.path.lstrip("/")),
         "USER": unquote(parts.username or ""),
         "PASSWORD": unquote(parts.password or ""),
         "HOST": parts.hostname or "",
         "PORT": str(parts.port or ""),
     }
-    if "sslmode=require" in parts.query:
-        config["OPTIONS"] = {"sslmode": "require"}
+    options = {"sslmode": "require"} if "sslmode=require" in parts.query else {}
+    # Long enough for a sleeping Neon database to wake, short enough that a
+    # request fails well inside gunicorn's 30-second timeout after one retry.
+    options["connect_timeout"] = 10
+    config["OPTIONS"] = options
     return config
 
+
+# Cloud Run sets K_SERVICE in every container it starts. Nothing else here does,
+# and local mode refuses to start with it set (devmode.guards).
+PRODUCTION = bool(os.environ.get("K_SERVICE"))
 
 SECRET_KEY = required_env("DJANGO_SECRET_KEY")
 DEBUG = os.environ.get("DJANGO_DEBUG") == "1"
@@ -105,6 +114,9 @@ ADMIN_REQUESTS_PER_MINUTE = 300
 # serves nearly all of these; this catches what gets past it.
 PUBLIC_REQUESTS_PER_MINUTE = 120
 LOGIN_MAX_FAILURES = 5
+# Passkeys the owner may hold at once. Adding one more is refused before its
+# 24-hour wait starts; revoking one frees a place.
+ADMIN_MAX_PASSKEYS = 5
 LOGIN_GLOBAL_MAX_FAILURES = 20
 
 # Contact form (core.contact). Its limits have their own Redis buckets, apart
@@ -126,12 +138,34 @@ CONTACT_MAX_LINKS = 2
 # How long a blocked sender stays blocked unless the owner renews it.
 BLOCKLIST_MONTHS = 12
 # Cloudflare Turnstile (core.turnstile). With no secret key the form is
-# refused (503), never open: production must set it. Development and tests use
+# refused (503), never open, and production does not start. Development and tests use
 # Cloudflare's published dummy keys (see tests/settings.py and docker-compose).
 TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
 TURNSTILE_VERIFIER = os.environ.get(
     "TURNSTILE_VERIFIER", "core.turnstile.CloudflareVerifier"
 )
+# Cloudflare's dummy secrets are 1x, 2x and 3x followed by zeros and AA.
+TURNSTILE_DUMMY_SECRET = re.compile(r"[0-9]x0+AA")
+
+
+def turnstile_problems(secret: str, verifier: str) -> list[str]:
+    """Why these values cannot run in production; empty if they can."""
+    problems = []
+    if not secret:
+        problems.append("TURNSTILE_SECRET_KEY is not set")
+    elif TURNSTILE_DUMMY_SECRET.fullmatch(secret):
+        problems.append("TURNSTILE_SECRET_KEY is a Cloudflare test secret")
+    if verifier != "core.turnstile.CloudflareVerifier":
+        problems.append("TURNSTILE_VERIFIER is not core.turnstile.CloudflareVerifier")
+    return problems
+
+
+# Production refuses to start, rather than refuse every form later or accept
+# them unchecked.
+if PRODUCTION and (
+    problems := turnstile_problems(TURNSTILE_SECRET_KEY, TURNSTILE_VERIFIER)
+):
+    raise ImproperlyConfigured("; ".join(problems))
 
 # Dotted paths of classes with send(event, context), comma-separated, after the
 # database notifier, which records alerts for the admin. That one does not count

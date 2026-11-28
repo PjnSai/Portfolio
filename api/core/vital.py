@@ -12,6 +12,7 @@ import enum
 import re
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
@@ -55,6 +56,17 @@ class Outcome(enum.Enum):
     MISSING = "missing"
     CONFLICT = "conflict"
     INVALID = "invalid"
+    # The owner already holds settings.ADMIN_MAX_PASSKEYS passkeys.
+    LIMIT = "limit"
+
+
+class PasskeyLimit(Exception):
+    """Adding a passkey would go over settings.ADMIN_MAX_PASSKEYS."""
+
+
+def room_for_passkey():
+    # Revoking deletes the row, so every stored passkey is an active one.
+    return AdminCredential.objects.count() < settings.ADMIN_MAX_PASSKEYS
 
 
 def clean(kind, payload):
@@ -145,7 +157,10 @@ def _detail(action):
 
 def request(kind, payload):
     """Start the wait. Raises notify.Undelivered, leaving nothing behind, if the
-    owner cannot be told."""
+    owner cannot be told, and PasskeyLimit, before anything is queued, for a
+    passkey that could never be added."""
+    if kind == ADD_PASSKEY and not room_for_passkey():
+        raise PasskeyLimit
     now = timezone.now()
     with transaction.atomic():
         action = PendingAction.objects.create(
@@ -212,6 +227,8 @@ def passkey_options(action_id):
         action, outcome = _claim(action_id)
         if outcome is Outcome.OK and action.kind != ADD_PASSKEY:
             outcome = Outcome.CONFLICT
+        if outcome is Outcome.OK and not room_for_passkey():
+            outcome = Outcome.LIMIT
     if outcome is not Outcome.OK:
         return None, outcome
     return passkeys.registration_options(ADD_PASSKEY, str(action.id)), outcome
@@ -226,6 +243,8 @@ def run(action_id, credential=None):
             return action, outcome
         result = None
         if action.kind == ADD_PASSKEY:
+            if not room_for_passkey():
+                return action, Outcome.LIMIT
             if not _add_passkey(action, credential):
                 return action, Outcome.INVALID
         elif action.kind == REVOKE_PASSKEY:

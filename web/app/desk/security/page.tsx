@@ -133,7 +133,7 @@ export default function Security() {
         </form>
         <p className="mt-2 text-sm text-muted">
           A new passkey can be added 24 hours after you ask, from the Pending actions
-          page.
+          page. You can hold up to five; remove one to make room for another.
         </p>
       </section>
     </>

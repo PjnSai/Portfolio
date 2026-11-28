@@ -47,7 +47,7 @@ export function abuseTests(getPage: () => Page) {
       await expect(total(page, "rate_limited")).toHaveText("6");
       await expect(total(page, "login_failed")).toHaveText("0");
       await expect(page.getByTestId("abuse-total-all")).toHaveText("13");
-      await expect(page.getByTestId("abuse-totals").locator("tbody tr")).toHaveCount(11);
+      await expect(page.getByTestId("abuse-totals").locator("tbody tr")).toHaveCount(12);
       const text = await page.getByTestId("abuse-totals").innerText();
       expect(text).not.toMatch(/[a-z]+_[a-z]+/);
       for (const label of ["Too many requests", "Human check failed", "Held back as spam", "Refused at the door"]) {

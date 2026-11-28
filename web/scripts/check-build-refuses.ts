@@ -25,6 +25,7 @@ function build(apiBase: string, extra: Record<string, string> = {}): Promise<{ e
   const env: NodeJS.ProcessEnv = { ...process.env, API_BASE_URL: apiBase, ...extra };
   Reflect.deleteProperty(env, "SKIP_SITE_FETCH");
   if (!("SITE_ORIGIN" in extra)) Reflect.deleteProperty(env, "SITE_ORIGIN");
+  if (!("NEXT_PUBLIC_PRIVACY_EMAIL" in extra)) Reflect.deleteProperty(env, "NEXT_PUBLIC_PRIVACY_EMAIL");
   return new Promise((done) => {
     const child = spawn("npm run build", { env, shell: true });
     let output = "";
@@ -55,6 +56,14 @@ const noOrigin = await build(origin, { CF_PAGES: "1" });
 const named = /SITE_ORIGIN is not set/.test(noOrigin.output);
 console.log(`Pages build without SITE_ORIGIN: build exited ${noOrigin.exit}${named ? "" : ", for another reason"}`);
 if (noOrigin.exit === 0 || !named) wrong.push("Pages build without SITE_ORIGIN");
+
+// A Pages build must name the data-request address the Privacy page promises.
+const noEmail = await build(origin, { CF_PAGES: "1", SITE_ORIGIN: "https://site.example.org" });
+const unnamed = /NEXT_PUBLIC_PRIVACY_EMAIL is not set/.test(noEmail.output);
+console.log(
+  `Pages build without NEXT_PUBLIC_PRIVACY_EMAIL: build exited ${noEmail.exit}${unnamed ? "" : ", for another reason"}`,
+);
+if (noEmail.exit === 0 || !unnamed) wrong.push("Pages build without NEXT_PUBLIC_PRIVACY_EMAIL");
 
 const cases: [string, () => void, RegExp][] = [
   ["API answers 503", () => (answer = { status: 503, body: "{}" }), /answered 503/],

@@ -401,6 +401,7 @@ REFUSALS = {
     vital.Outcome.MISSING: responses.not_found,
     vital.Outcome.CONFLICT: responses.conflict,
     vital.Outcome.INVALID: responses.bad_request,
+    vital.Outcome.LIMIT: lambda: responses.conflict("passkey_limit"),
 }
 
 
@@ -419,6 +420,9 @@ def vital_request(request):
         return responses.bad_request()
     try:
         action = vital.request(kind, payload)
+    except vital.PasskeyLimit:
+        audit.record("vital_action_refused", kind=kind, reason="passkey limit")
+        return responses.conflict("passkey_limit")
     except notify.Undelivered:
         audit.record("vital_action_refused", kind=kind, reason="notice not sent")
         return responses.unavailable()

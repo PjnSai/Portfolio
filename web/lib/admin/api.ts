@@ -65,6 +65,8 @@ const CONFLICTS: Record<string, string> = {
     "That message is from a different email address, so it cannot be linked to this contact.",
   blocklist_full:
     "The blocklist is full. Remove an entry you no longer need, then try again.",
+  passkey_limit:
+    "You already have the most passkeys allowed. Remove one you no longer use, then add the new one.",
 };
 
 export function describeError(error: unknown): string {

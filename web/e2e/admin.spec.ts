@@ -130,6 +130,26 @@ test("sign out, then sign in again with the passkey", async () => {
   await signIn();
 });
 
+test("a passkey over the limit is refused in plain words", async () => {
+  const route = `${API}/api/v1/admin/vital-actions/request`;
+  await page.route(route, (request) =>
+    request.request().method() === "POST"
+      ? request.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Not possible right now.", code: "passkey_limit" }),
+        })
+      : request.continue(),
+  );
+  await page.goto("/desk/security");
+  await page.getByLabel("Name for a new passkey").fill("Sixth key");
+  await page.getByRole("button", { name: "Add a passkey" }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText(
+    "You already have the most passkeys allowed",
+  );
+  await page.unroute(route);
+});
+
 test("sections can be added, reordered and hidden", async () => {
   await page.goto("/desk/sections");
   for (const title of ["Alpha", "Beta"]) {
